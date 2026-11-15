@@ -1,0 +1,290 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 alfinium
+"""Build the extension package, reproducibly: dist/sync443-<version>.xpi.
+
+The package is src/ as it is: every file, sorted by name, with a fixed date
+and fixed permissions, so that the same sources give the same bytes (with
+the same zlib). Junk left by file managers (.DS_Store, Thumbs.db,
+desktop.ini) is skipped; any other unexpected file (hidden, link, unknown
+type, name that only differs by case) stops the build.
+
+    python3 -I tools/build_xpi.py                           check, then build
+    python3 -I tools/build_xpi.py --check                   check only
+    python3 -I tools/build_xpi.py --expect-version v0.1.0   the manifest must have this version (release tag)
+    python3 -I tools/build_xpi.py --notes dist/notes.md     also write the CHANGELOG.md section of that version
+
+(Windows: py -3 -I tools\\build_xpi.py.)
+
+Checks: the manifest is valid JSON without duplicate keys, with the fields a
+release needs; every file it names exists in src/; every experiment schema
+is valid JSON; every local file an HTML page names (src, href) exists; every
+relative module import of a .mjs or .js file resolves to a file in src/.
+"""
+import argparse
+import hashlib
+import io
+import json
+import os
+import re
+import sys
+import zipfile
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SRC = os.path.join(ROOT, "src")
+DIST = os.path.join(ROOT, "dist")
+CHANGELOG = os.path.join(ROOT, "CHANGELOG.md")
+EXTENSION_ID = "sync443@alfinium.github.io"
+
+FIXED_TIME = (1980, 1, 1, 0, 0, 0)  # the earliest date a zip entry can carry
+JUNK = {".DS_Store", "Thumbs.db", "desktop.ini"}
+SHIPPED = {".mjs", ".js", ".json", ".html", ".css", ".svg", ".png"}
+NAME = re.compile(r"^[A-Za-z0-9_-][A-Za-z0-9._-]*(?:/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$")
+VERSION = re.compile(r"^(?:0|[1-9][0-9]{0,8})(?:\.(?:0|[1-9][0-9]{0,8})){1,3}$")
+
+# Relative module specifiers: static imports and re-exports (statements
+# starting a line, so that examples in comments are not taken), and import().
+STATIC_IMPORT = re.compile(r"""^[ \t]*(?:import|export)\b[^;]*?\bfrom[ \t]*["'](\.{1,2}/[^"'\n]+)["']""", re.M)
+BARE_IMPORT = re.compile(r"""^[ \t]*import[ \t]*["'](\.{1,2}/[^"'\n]+)["']""", re.M)
+DYNAMIC_IMPORT = re.compile(r"""\bimport\(\s*["'](\.{1,2}/[^"'\n]+)["']\s*\)""")
+HTML_REF = re.compile(r"""\b(?:src|href)\s*=\s*["']([^"']*)["']""", re.I)
+EXTERNAL = re.compile(r"^(?:[a-z][a-z0-9+.-]*:|//|#)", re.I)
+
+
+class BuildError(Exception):
+    pass
+
+
+def rel(path):
+    return os.path.relpath(path, ROOT).replace(os.sep, "/")
+
+
+def _no_duplicates(pairs):
+    out = {}
+    for key, value in pairs:
+        if key in out:
+            raise ValueError(f"clé en double : {key}")
+        out[key] = value
+    return out
+
+
+def load_json(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f, object_pairs_hook=_no_duplicates)
+    except (OSError, ValueError) as e:
+        raise BuildError(f"{rel(path)} : JSON invalide ({e})")
+
+
+def collect():
+    """[(name in the package, path)], sorted by name."""
+    files = []
+    seen = {}
+    for base, dirs, names in os.walk(SRC):
+        for d in dirs:
+            if os.path.islink(os.path.join(base, d)):
+                raise BuildError(f"lien symbolique refusé : {rel(os.path.join(base, d))}")
+        dirs[:] = sorted(d for d in dirs if d != "__pycache__")
+        for n in sorted(names):
+            if n in JUNK:
+                continue
+            path = os.path.join(base, n)
+            arc = os.path.relpath(path, SRC).replace(os.sep, "/")
+            if os.path.islink(path):
+                raise BuildError(f"lien symbolique refusé : src/{arc}")
+            if not NAME.match(arc):
+                raise BuildError(f"nom de fichier inattendu (caché ou caractère spécial) : src/{arc}")
+            if os.path.splitext(n)[1] not in SHIPPED:
+                raise BuildError(f"fichier inattendu, d'un type qui n'est pas publié : src/{arc}")
+            # Windows and macOS do not tell these apart.
+            folded = arc.lower()
+            if folded in seen:
+                raise BuildError(f"noms qui ne diffèrent que par la casse : src/{seen[folded]} et src/{arc}")
+            seen[folded] = arc
+            files.append((arc, path))
+    files.sort(key=lambda item: item[0].encode("ascii"))
+    return files
+
+
+def manifest_refs(m):
+    """[(where in the manifest, path)] of every file the manifest names."""
+    refs = []
+    background = m.get("background") or {}
+    for script in background.get("scripts") or []:
+        refs.append(("background.scripts", script))
+    if "page" in background:
+        refs.append(("background.page", background["page"]))
+    options = m.get("options_ui") or {}
+    if "page" in options:
+        refs.append(("options_ui.page", options["page"]))
+    for key in ("browser_action", "compose_action", "message_display_action"):
+        section = m.get(key) or {}
+        icon = section.get("default_icon")
+        if isinstance(icon, dict):
+            refs.extend((f"{key}.default_icon.{size}", p) for size, p in icon.items())
+        elif icon is not None:
+            refs.append((f"{key}.default_icon", icon))
+        for i, theme in enumerate(section.get("theme_icons") or []):
+            for side in ("light", "dark"):
+                refs.append((f"{key}.theme_icons[{i}].{side}", (theme or {}).get(side)))
+        if "default_popup" in section:
+            refs.append((f"{key}.default_popup", section["default_popup"]))
+    for size, p in (m.get("icons") or {}).items():
+        refs.append((f"icons.{size}", p))
+    for name, api in (m.get("experiment_apis") or {}).items():
+        refs.append((f"experiment_apis.{name}.schema", (api or {}).get("schema")))
+        for side in ("parent", "child"):
+            if side in (api or {}):
+                refs.append((f"experiment_apis.{name}.{side}.script", (api[side] or {}).get("script")))
+    return refs
+
+
+def resolve(base_dir, ref):
+    """Absolute path of `ref` (relative to base_dir, inside src/), or None if it leaves src/."""
+    path = os.path.normpath(os.path.join(base_dir, ref.replace("/", os.sep)))
+    inside = os.path.normcase(path).startswith(os.path.normcase(SRC) + os.sep)
+    return path if inside else None
+
+
+def check(files, expect_version=None):
+    """→ (manifest, [problem])."""
+    problems = []
+    manifest = load_json(os.path.join(SRC, "manifest.json"))
+    if not isinstance(manifest, dict):
+        raise BuildError("src/manifest.json : objet JSON attendu")
+
+    if manifest.get("manifest_version") != 2:
+        problems.append("manifest_version doit valoir 2")
+    for key in ("name", "description"):
+        if not isinstance(manifest.get(key), str) or not manifest[key].strip():
+            problems.append(f"champ « {key} » absent du manifeste")
+    version = manifest.get("version")
+    if not isinstance(version, str) or not VERSION.match(version):
+        problems.append(f"version invalide dans le manifeste : {version!r}")
+    gecko = (manifest.get("browser_specific_settings") or {}).get("gecko") or {}
+    if gecko.get("id") != EXTENSION_ID:
+        problems.append(f"identifiant de l'extension inattendu : {gecko.get('id')!r} (attendu {EXTENSION_ID})")
+    if not isinstance(gecko.get("strict_min_version"), str):
+        problems.append("strict_min_version absent du manifeste")
+    if expect_version is not None:
+        wanted = expect_version[1:] if expect_version.startswith("v") else expect_version
+        if not VERSION.match(wanted):
+            problems.append(f"version attendue invalide : {expect_version!r}")
+        elif wanted != version:
+            problems.append(f"la version du manifeste ({version}) n'est pas la version attendue ({wanted})")
+
+    for where, ref in manifest_refs(manifest):
+        if not isinstance(ref, str) or not ref or ref.startswith(("/", "\\")) or "\\" in ref or EXTERNAL.match(ref):
+            problems.append(f"manifeste, {where} : chemin invalide {ref!r}")
+            continue
+        path = resolve(SRC, ref)
+        if path is None or not os.path.isfile(path):
+            problems.append(f"manifeste, {where} : fichier absent : src/{ref}")
+        elif where.endswith(".schema"):
+            try:
+                load_json(path)
+            except BuildError as e:
+                problems.append(str(e))
+
+    for arc, path in files:
+        ext = os.path.splitext(arc)[1]
+        if ext not in (".html", ".mjs", ".js"):
+            continue
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        base_dir = os.path.dirname(path)
+        if ext == ".html":
+            refs = [r for r in HTML_REF.findall(text) if r and not EXTERNAL.match(r)]
+        else:
+            refs = STATIC_IMPORT.findall(text) + BARE_IMPORT.findall(text) + DYNAMIC_IMPORT.findall(text)
+        for ref in refs:
+            target = resolve(base_dir, re.split(r"[?#]", ref, maxsplit=1)[0])
+            if target is None:
+                problems.append(f"src/{arc} : {ref} sort de src/")
+            elif not os.path.isfile(target):
+                problems.append(f"src/{arc} : fichier absent : {ref}")
+    return manifest, problems
+
+
+def release_notes(version):
+    """The CHANGELOG.md section of `version` ("## 0.1.0" or "## [0.1.0] …"), without its heading."""
+    fallback = f"Sync443 {version}.\n"
+    if not os.path.isfile(CHANGELOG):
+        return fallback
+    with open(CHANGELOG, encoding="utf-8") as f:
+        lines = f.read().splitlines()
+    heading = re.compile(r"^##\s+\[?v?" + re.escape(version) + r"\]?(?:\s|$)")
+    out = []
+    inside = False
+    for line in lines:
+        if line.startswith("## "):
+            if inside:
+                break
+            inside = bool(heading.match(line))
+            continue
+        if inside:
+            out.append(line)
+    text = "\n".join(out).strip()
+    return text + "\n" if text else fallback
+
+
+def build(files, version):
+    """Write the package; → (path, bytes)."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for arc, path in files:
+            with open(path, "rb") as f:
+                data = f.read()
+            info = zipfile.ZipInfo(arc, FIXED_TIME)
+            info.create_system = 3  # the same on every OS
+            info.external_attr = 0o100644 << 16  # regular file, rw-r--r--
+            info.compress_type = zipfile.ZIP_DEFLATED
+            z.writestr(info, data, compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
+    data = buf.getvalue()
+    os.makedirs(DIST, exist_ok=True)
+    target = os.path.join(DIST, f"sync443-{version}.xpi")
+    tmp = target + ".tmp"
+    with open(tmp, "wb") as f:
+        f.write(data)
+    os.replace(tmp, target)
+    return target, data
+
+
+def main(argv=None):
+    # Windows consoles are not UTF-8 by default: the messages are in French.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    parser = argparse.ArgumentParser(description="Construit dist/sync443-<version>.xpi de façon reproductible.")
+    parser.add_argument("--check", action="store_true", help="vérifier seulement, sans construire")
+    parser.add_argument("--expect-version", metavar="VERSION", help="version attendue (une étiquette vX.Y.Z convient)")
+    parser.add_argument("--notes", metavar="FICHIER", help="écrire dans FICHIER la section de CHANGELOG.md de cette version")
+    args = parser.parse_args(argv)
+
+    try:
+        files = collect()
+        manifest, problems = check(files, args.expect_version)
+    except BuildError as e:
+        print(f"Échec : {e}")
+        return 1
+    if problems:
+        for problem in problems:
+            print(f"  - {problem}")
+        print(f"Échec : {len(problems)} problème(s).")
+        return 1
+    version = manifest["version"]
+    print(f"Vérifications réussies : {len(files)} fichiers, version {version}.")
+
+    if args.notes:
+        notes_dir = os.path.dirname(os.path.abspath(args.notes))
+        os.makedirs(notes_dir, exist_ok=True)
+        with open(args.notes, "w", encoding="utf-8", newline="\n") as f:
+            f.write(release_notes(version))
+        print(f"Notes de version : {args.notes}")
+    if args.check:
+        return 0
+    target, data = build(files, version)
+    print(f"{rel(target)} : {len(data)} octets, SHA-256 {hashlib.sha256(data).hexdigest()}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

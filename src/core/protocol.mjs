@@ -379,7 +379,8 @@ export function parseUserInformation(doc) {
       if (account.tag !== "Account") continue;
       const name = v.cleanText(text(account, "UserDisplayName") ?? "", { max: 256, singleLine: true, stripBidi: true }).trim();
       if (name && !displayName) displayName = name;
-      primarySmtpAddress ??= v.emailAddress(text(account, "PrimarySmtpAddress") ?? "");
+      // [MS-ASCMD] 14.1: Account/EmailAddresses/PrimarySmtpAddress (older servers put it directly under Account).
+      primarySmtpAddress ??= v.emailAddress(text(account, "EmailAddresses", "PrimarySmtpAddress") ?? text(account, "PrimarySmtpAddress") ?? "");
     }
   }
   return { status: v.status(text(doc, "Status")), displayName, primarySmtpAddress };

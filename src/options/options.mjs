@@ -1,0 +1,507 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 alfinium
+
+/**
+ * Settings page: mailboxes, the mailbox form, the log.
+ *
+ * The page never writes storage, passwords or accounts itself: it asks the
+ * background (runtime.sendMessage), which validates everything again. It
+ * only reads: statuses are refreshed when storage changes
+ * (storage.onChanged); the background never broadcasts to it.
+ * Everything shown goes through textContent (never HTML), under the
+ * default content security policy.
+ *
+ * ── Protocol: page → background (runtime.sendMessage) ─────────────────────
+ *
+ * Every answer is an object. Failure, for any request:
+ *   { ok: false, error: "<phrase en français, montrée telle quelle>", field? }
+ *   field (saveMailbox): "email" | "username" | "password" | "name" | "server"
+ *   | "syncMinutes" | "filterType" | "sync", the form field to point at.
+ *
+ * { type: "listMailboxes" }
+ *   → { ok: true, mailboxes: [MailboxView] }, in display order
+ *   MailboxView = { id, email, username, name, origin, server, syncMinutes,
+ *                   filterType, sync, status }
+ *     id           12 hexadecimal digits (store.newIds)
+ *     username     "" when the e-mail address is the sign-in name
+ *     origin       "https://host[:port]"; server: "host[:port]" (parseServer().display)
+ *     syncMinutes  0 (as soon as mail arrives: Ping) | 1 | 5 | 15 | 30 | 60
+ *     filterType   "1" 1 day | "2" 3 days | "3" 1 week | "4" 2 weeks | "5" 1 month | "0" all
+ *     sync         { mail, calendar, contacts, tasks } booleans, at least one true
+ *     status       { running: boolean,
+ *                    lastSuccessAt: ms | null,
+ *                    nextAttemptAt: ms (0: none),
+ *                    lastError: { code, message, at } | null,
+ *                    blocked: { code, message, at } | null,
+ *                    pendingDeletes: number }
+ *                  blocked.code "MASS_DELETE": deletions from the server held
+ *                  back by the mass-deletion threshold (pendingDeletes of them),
+ *                  waiting for "Confirmer les suppressions".
+ *
+ * { type: "saveMailbox", mailbox: MailboxInput, password: string | null }
+ *   → { ok: true, id }
+ *   MailboxInput = { id: string | null (null: new mailbox), email,
+ *                    username ("" = the e-mail address), name,
+ *                    server (parseServer().display), syncMinutes, filterType, sync }
+ *   password null keeps the stored password; it is refused for a new
+ *   mailbox, and when the origin or the sign-in name changes (the password
+ *   only ever goes to the origin it was typed for). The page has already
+ *   obtained the host permission https://host/* (permissions.request, in the
+ *   submit handler: Thunderbird only asks during a user action). The
+ *   background checks everything again (parseServer, checkMailbox, the
+ *   permission), creates or updates the Thunderbird account, stores the
+ *   password, removes the host permissions no mailbox uses any more, and
+ *   starts a sync.
+ *
+ * { type: "removeMailbox", id } → { ok: true }
+ *   The mailbox, its records, its Thunderbird account and its password go;
+ *   so does the host permission if no other mailbox uses that server.
+ *   Nothing is deleted on the server.
+ *
+ * { type: "syncMailbox", id, confirmDeletes?: true } → { ok: true }
+ *   Sync now, whatever happened before (health.clearForUser). confirmDeletes:
+ *   apply the deletions held back by the mass-deletion threshold (sent only
+ *   by "Confirmer les suppressions").
+ *
+ * { type: "getLog" }  → { ok: true, entries: [{ t, level, msg, details? }], debugUntil }
+ *   (log.getLog(); debugUntil: ms since the epoch, 0 when debugging is off)
+ * { type: "clearLog" } → { ok: true }
+ * { type: "setDebug", enabled: boolean } → { ok: true, debugUntil }
+ *   (log.setDebugFor(enabled ? one hour : 0))
+ *
+ * ── Storage keys the page watches (storage.local, read-only here) ─────────
+ *   "mailboxes", "mb/<id>/health", "mb/<id>/pendingDeletes", "mb/<id>/status"
+ *     → listMailboxes again (the background may write "mb/<id>/status",
+ *       e.g. { running: true }, for the page to show a sync under way);
+ *   "log", "settings" → getLog again.
+ */
+
+import { FREQUENCIES, PERIODS, KINDS, validateForm, formValues, statusView, frequencyLabel, periodLabel, kindsLabel, logText, debugText } from "./form.mjs";
+import { cleanText } from "../core/sanitize.mjs";
+import { SYNC_KINDS } from "../sync/store.mjs";
+
+const api = globalThis.messenger ?? globalThis.browser;
+const MAILBOX_ID = /^[a-f0-9]{12}$/;
+const FIELDS = new Set(["email", "password", "name", "server", "username", "syncMinutes", "filterType", "sync"]);
+const WATCHED = /^mb\/[a-f0-9]{12}\/(?:health|pendingDeletes|status)$/;
+const PASSWORD_HINT_NEW = "Si le serveur le permet, préférez un mot de passe d'application réservé à ActiveSync.";
+const PASSWORD_HINT_EDIT = "Laissez vide pour garder le mot de passe enregistré. Il faut le retaper si le serveur ou l'identifiant change.";
+
+const $ = (id) => document.getElementById(id);
+const shown = (s, max = 300) => cleanText(typeof s === "string" ? s : "", { max, singleLine: true, stripBidi: true }).trim();
+const errorText = (res, fallback) => shown(res?.error) || fallback;
+const labelOf = (mb) => shown(mb?.name) || shown(mb?.email) || "sans nom";
+
+let mailboxes = []; // as last listed by the background
+let editing = null; // the mailbox in the form, null for a new one
+let saving = false;
+let listSeq = 0;
+let logSeq = 0;
+let debugTimer = null;
+const confirming = new Set(); // mailboxes whose deletion awaits confirmation
+const busy = new Set(); // mailboxes with a request under way
+const items = new Map(); // mailbox id → its list item and parts
+const timers = new Map(); // debounced refreshes
+
+// ── Background ────────────────────────────────────────────────────────────
+
+async function call(type, payload = {}) {
+  let res;
+  try {
+    res = await api.runtime.sendMessage({ ...payload, type });
+  } catch {
+    return { ok: false, error: "L'extension ne répond pas. Rechargez cette page." };
+  }
+  return res && typeof res === "object" ? res : { ok: false, error: "Réponse inattendue de l'extension." };
+}
+
+function notice(text, { error = false } = {}) {
+  const p = $("notice");
+  p.textContent = text;
+  p.classList.toggle("error", error);
+  p.hidden = !text;
+}
+
+function later(name, fn, ms = 250) {
+  if (timers.has(name)) return;
+  timers.set(
+    name,
+    setTimeout(() => {
+      timers.delete(name);
+      fn();
+    }, ms),
+  );
+}
+
+// ── Mailbox list ──────────────────────────────────────────────────────────
+
+async function refreshMailboxes() {
+  const seq = ++listSeq;
+  const res = await call("listMailboxes");
+  if (seq !== listSeq) return; // a newer answer is on its way
+  if (res.ok !== true || !Array.isArray(res.mailboxes)) {
+    notice(errorText(res, "La liste des boîtes n'a pas pu être lue."), { error: true });
+    return;
+  }
+  mailboxes = res.mailboxes.filter((m) => m && typeof m === "object" && typeof m.id === "string" && MAILBOX_ID.test(m.id));
+  renderMailboxes();
+  if (editing && !mailboxes.some((m) => m.id === editing.id)) {
+    closeEditor();
+    notice("La boîte en cours de modification a été supprimée.");
+  }
+}
+
+function element(tag, className = "", text = "") {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text) node.textContent = text;
+  return node;
+}
+
+function button(text, className, onClick) {
+  const b = element("button", className, text);
+  b.type = "button";
+  b.addEventListener("click", onClick);
+  return b;
+}
+
+function createItem(id) {
+  const li = element("li", "mailbox");
+  const name = element("h3", "mb-name");
+  name.id = `mb-${id}-name`;
+  const email = element("span", "mb-email");
+  const title = element("div", "mb-title");
+  title.append(name, email);
+  const meta = element("p", "mb-meta");
+  const status = element("p", "mb-status");
+
+  const mass = element("div", "mb-mass");
+  const massButton = button("Confirmer les suppressions", "primary", () => syncNow(id, true));
+  mass.append(massButton);
+
+  const actions = element("div", "mb-actions");
+  const syncButton = button("Synchroniser", "", () => syncNow(id, false));
+  const editButton = button("Modifier", "", () => openEditor(id));
+  const removeButton = button("Supprimer", "danger", () => askRemove(id));
+  actions.append(syncButton, editButton, removeButton);
+
+  const confirm = element("div", "mb-confirm");
+  const question = element("p");
+  question.id = `mb-${id}-question`;
+  confirm.setAttribute("role", "group");
+  confirm.setAttribute("aria-labelledby", question.id);
+  const yes = button("Supprimer la boîte", "danger", () => remove(id));
+  const no = button("Annuler", "", () => cancelRemove(id));
+  confirm.append(question, yes, no);
+
+  // Each button says which mailbox it acts on.
+  for (const b of [massButton, syncButton, editButton, removeButton]) b.setAttribute("aria-describedby", name.id);
+  li.append(title, meta, status, mass, actions, confirm);
+  return { li, name, email, meta, status, mass, actions, confirm, question, removeButton, no, buttons: [massButton, syncButton, editButton, removeButton, yes, no] };
+}
+
+function updateItem(item, mb) {
+  const label = labelOf(mb);
+  const email = shown(mb.email);
+  item.name.textContent = label;
+  item.email.textContent = email !== label ? email : "";
+  const server = shown(mb.server) || shown(typeof mb.origin === "string" ? mb.origin.replace(/^https:\/\//, "") : "");
+  item.meta.textContent = [server, frequencyLabel(mb.syncMinutes), `courrier : ${periodLabel(mb.filterType)}`, kindsLabel(mb.sync)].join(" · ");
+  const view = statusView(mb.status);
+  item.status.textContent = view.text;
+  item.status.className = `mb-status tone-${view.tone}`;
+  item.mass.hidden = view.massDelete === null;
+  const asking = confirming.has(mb.id);
+  item.confirm.hidden = !asking;
+  item.actions.hidden = asking;
+  item.question.textContent = `Supprimer la boîte « ${label} » ? Son compte, ses dossiers locaux et son mot de passe seront retirés de Thunderbird. Rien n'est supprimé sur le serveur.`;
+  for (const b of item.buttons) b.disabled = busy.has(mb.id);
+}
+
+function renderMailboxes() {
+  const list = $("mailboxes");
+  $("mailboxes-empty").hidden = mailboxes.length > 0;
+  const seen = new Set();
+  let previous = null;
+  for (const mb of mailboxes) {
+    seen.add(mb.id);
+    let item = items.get(mb.id);
+    if (!item) {
+      item = createItem(mb.id);
+      items.set(mb.id, item);
+    }
+    updateItem(item, mb);
+    // Moved only when out of place, so that focus stays where it is.
+    const expected = previous ? previous.nextSibling : list.firstChild;
+    if (expected !== item.li) list.insertBefore(item.li, expected);
+    previous = item.li;
+  }
+  for (const [id, item] of items) {
+    if (seen.has(id)) continue;
+    item.li.remove();
+    items.delete(id);
+    confirming.delete(id);
+  }
+}
+
+async function syncNow(id, confirmDeletes) {
+  if (busy.has(id)) return;
+  busy.add(id);
+  renderMailboxes();
+  const res = await call("syncMailbox", confirmDeletes ? { id, confirmDeletes: true } : { id });
+  busy.delete(id);
+  renderMailboxes();
+  if (res.ok === true) notice(confirmDeletes ? "Suppressions confirmées, synchronisation lancée." : "Synchronisation lancée.");
+  else notice(errorText(res, "La synchronisation n'a pas pu être lancée."), { error: true });
+}
+
+function askRemove(id) {
+  confirming.add(id);
+  renderMailboxes();
+  items.get(id)?.no.focus(); // the safe choice has the focus
+}
+
+function cancelRemove(id) {
+  confirming.delete(id);
+  renderMailboxes();
+  items.get(id)?.removeButton.focus();
+}
+
+async function remove(id) {
+  if (busy.has(id)) return;
+  const label = labelOf(mailboxes.find((m) => m.id === id));
+  busy.add(id);
+  renderMailboxes();
+  const res = await call("removeMailbox", { id });
+  busy.delete(id);
+  confirming.delete(id);
+  if (res.ok === true) {
+    if (editing?.id === id) closeEditor();
+    notice(`Boîte « ${label} » supprimée.`);
+  } else {
+    notice(errorText(res, "La boîte n'a pas pu être supprimée."), { error: true });
+  }
+  await refreshMailboxes();
+  $("add").focus();
+}
+
+// ── Form ──────────────────────────────────────────────────────────────────
+
+function buildForm() {
+  const minutes = $("syncMinutes");
+  for (const [value, label] of FREQUENCIES) minutes.append(new Option(label, String(value)));
+  const period = $("filterType");
+  for (const [value, label] of PERIODS) period.append(new Option(label, value));
+  const kinds = $("kinds");
+  for (const kind of KINDS) {
+    const wrap = element("div");
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.id = `kind-${kind.key}`;
+    const label = element("label", "", kind.label);
+    label.htmlFor = box.id;
+    if (kind.soon) label.append(" ", element("span", "soon", "bientôt"));
+    wrap.append(box, " ", label);
+    kinds.append(wrap);
+  }
+}
+
+function fillForm(values) {
+  for (const field of ["email", "password", "name", "server", "username", "syncMinutes", "filterType"]) $(field).value = values[field];
+  for (const k of SYNC_KINDS) $(`kind-${k}`).checked = values.sync[k] === true;
+}
+
+function readForm() {
+  const values = {};
+  for (const field of ["email", "password", "name", "server", "username", "syncMinutes", "filterType"]) values[field] = $(field).value;
+  values.sync = Object.fromEntries(SYNC_KINDS.map((k) => [k, $(`kind-${k}`).checked]));
+  return values;
+}
+
+function clearErrors() {
+  $("form-error").hidden = true;
+  $("form-error").textContent = "";
+  for (const field of FIELDS) {
+    const p = $(`${field}-error`);
+    p.hidden = true;
+    p.textContent = "";
+    $(field).removeAttribute("aria-invalid");
+  }
+}
+
+function showErrors(errors) {
+  let first = null;
+  const general = [];
+  for (const { field, message } of errors) {
+    if (!FIELDS.has(field)) {
+      general.push(message);
+      continue;
+    }
+    const p = $(`${field}-error`);
+    p.textContent = message;
+    p.hidden = false;
+    $(field).setAttribute("aria-invalid", "true");
+    first ??= field;
+  }
+  if (general.length) {
+    $("form-error").textContent = general.join(" ");
+    $("form-error").hidden = false;
+  }
+  if (first === "sync") $(`kind-${SYNC_KINDS[0]}`).focus();
+  else if (first) $(first).focus();
+}
+
+function openEditor(id = null) {
+  const mb = id ? mailboxes.find((m) => m.id === id) : null;
+  if (id && !mb) return;
+  editing = mb;
+  clearErrors();
+  fillForm(formValues(mb));
+  $("editor-title").textContent = mb ? `Modifier « ${labelOf(mb)} »` : "Nouvelle boîte";
+  $("password-hint").textContent = mb ? PASSWORD_HINT_EDIT : PASSWORD_HINT_NEW;
+  $("editor").hidden = false;
+  $("editor").scrollIntoView({ block: "nearest" });
+  $("email").focus();
+}
+
+function closeEditor() {
+  $("editor").hidden = true;
+  $("password").value = "";
+  editing = null;
+  clearErrors();
+}
+
+function setFormBusy(on) {
+  $("save").disabled = on;
+  $("save").textContent = on ? "Enregistrement…" : "Enregistrer";
+}
+
+function onSubmit(event) {
+  event.preventDefault();
+  if (saving) return;
+  clearErrors();
+  // The latest copy of the mailbox being edited (the list may have been refreshed).
+  const existing = editing ? mailboxes.find((m) => m.id === editing.id) ?? editing : null;
+  const result = validateForm(readForm(), existing);
+  if (!result.ok) {
+    showErrors(result.errors);
+    return;
+  }
+  // Asked now, before any await: Thunderbird shows the request only during a user action.
+  let permission;
+  try {
+    permission = api.permissions.request({ origins: [result.permission] });
+  } catch (e) {
+    permission = Promise.reject(e);
+  }
+  saving = true;
+  setFormBusy(true);
+  save(result, permission, existing).finally(() => {
+    saving = false;
+    setFormBusy(false);
+  });
+}
+
+async function save(result, permission, existing) {
+  let granted = false;
+  try {
+    granted = (await permission) === true;
+  } catch {
+    granted = false;
+  }
+  if (!granted) {
+    showErrors([
+      {
+        field: "server",
+        message: `Sans l'autorisation d'accéder à ${result.server.display}, la boîte ne peut pas être synchronisée. Enregistrez de nouveau et acceptez la demande de Thunderbird.`,
+      },
+    ]);
+    return;
+  }
+  const res = await call("saveMailbox", result.request);
+  if (res.ok !== true) {
+    showErrors([{ field: FIELDS.has(res.field) ? res.field : null, message: errorText(res, "La boîte n'a pas pu être enregistrée.") }]);
+    return;
+  }
+  const label = shown(result.request.mailbox.name);
+  closeEditor();
+  notice(existing ? `Boîte « ${label} » enregistrée.` : `Boîte « ${label} » ajoutée. Première synchronisation en cours.`);
+  await refreshMailboxes();
+  $("add").focus();
+}
+
+// ── Diagnostic ────────────────────────────────────────────────────────────
+
+async function refreshLog() {
+  const seq = ++logSeq;
+  const res = await call("getLog");
+  if (seq !== logSeq) return;
+  if (res.ok !== true) {
+    $("log").textContent = errorText(res, "Journal indisponible.");
+    return;
+  }
+  $("log").textContent = logText(Array.isArray(res.entries) ? res.entries : []);
+  setDebugState(Number(res.debugUntil) || 0);
+}
+
+function setDebugState(until) {
+  const now = Date.now();
+  $("debug").checked = until > now;
+  $("debug-status").textContent = debugText(until, now);
+  if (debugTimer !== null) clearTimeout(debugTimer);
+  debugTimer = null;
+  // Shown as off once it has switched itself off.
+  if (until > now) debugTimer = setTimeout(refreshLog, Math.min(until - now + 500, 3_700_000));
+}
+
+async function onDebugChange() {
+  const box = $("debug");
+  const enabled = box.checked;
+  box.disabled = true;
+  const res = await call("setDebug", { enabled });
+  box.disabled = false;
+  if (res.ok === true) {
+    setDebugState(Number(res.debugUntil) || 0);
+  } else {
+    box.checked = !enabled;
+    notice(errorText(res, "Le débogage n'a pas pu être changé."), { error: true });
+  }
+  await refreshLog();
+}
+
+async function onClearLog() {
+  const res = await call("clearLog");
+  if (res.ok !== true) notice(errorText(res, "Le journal n'a pas pu être effacé."), { error: true });
+  await refreshLog();
+}
+
+// ── Start ─────────────────────────────────────────────────────────────────
+
+function start() {
+  buildForm();
+  if (!api?.runtime?.sendMessage) {
+    notice("Cette page ne fonctionne qu'ouverte depuis Thunderbird, dans les réglages de l'extension.", { error: true });
+    return;
+  }
+  $("add").addEventListener("click", () => openEditor(null));
+  $("form").addEventListener("submit", onSubmit);
+  $("cancel").addEventListener("click", () => {
+    closeEditor();
+    $("add").focus();
+  });
+  $("debug").addEventListener("change", onDebugChange);
+  $("log-refresh").addEventListener("click", () => refreshLog());
+  $("log-clear").addEventListener("click", onClearLog);
+  api.storage.onChanged.addListener((changes, area) => {
+    if (area !== "local" || !changes || typeof changes !== "object") return;
+    const keys = Object.keys(changes);
+    if (keys.some((k) => k === "mailboxes" || WATCHED.test(k))) later("list", refreshMailboxes);
+    if (keys.some((k) => k === "log" || k === "settings")) later("log", refreshLog);
+  });
+  // Times shown ("Nouvel essai à 14:05", "aujourd'hui") stay right as time passes.
+  setInterval(() => later("list", refreshMailboxes), 60_000);
+  refreshMailboxes();
+  refreshLog();
+}
+
+start();

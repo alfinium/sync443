@@ -1,0 +1,72 @@
+{
+  "manifest_version": 2,
+  "name": "Sync443 – EAS Client for Thunderbird",
+  "description": "Synchronise une boîte Exchange ActiveSync (courrier, dossiers, envoi) en passant uniquement par HTTPS, pour les réseaux où IMAP et SMTP sont bloqués.",
+  "version": "0.1.0",
+  "author": "alfinium",
+  "homepage_url": "https://github.com/alfinium/sync443",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "sync443@alfinium.github.io",
+      "strict_min_version": "140.0"
+    }
+  },
+  "permissions": [
+    "storage",
+    "alarms",
+    "menus",
+    "notifications",
+    "accountsRead",
+    "accountsFolders",
+    "messagesRead",
+    "messagesImport",
+    "messagesUpdate",
+    "messagesMove",
+    "messagesDelete",
+    "compose",
+    "compose.save"
+  ],
+  "optional_permissions": ["https://*/*"],
+  "background": {
+    "scripts": ["background.mjs"],
+    "type": "module"
+  },
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
+  },
+  "browser_action": {
+    "default_title": "Synchroniser",
+    "default_icon": "icons/sync-dark.svg",
+    "theme_icons": [
+      { "light": "icons/sync-light.svg", "dark": "icons/sync-dark.svg", "size": 16 },
+      { "light": "icons/sync-light.svg", "dark": "icons/sync-dark.svg", "size": 32 }
+    ]
+  },
+  "icons": {
+    "16": "icons/sync443.svg",
+    "32": "icons/sync443.svg",
+    "48": "icons/sync443.svg",
+    "64": "icons/sync443.svg",
+    "96": "icons/sync443.svg",
+    "128": "icons/sync443.svg"
+  },
+  "experiment_apis": {
+    "sync443Net": {
+      "schema": "experiments/sync443Net/schema.json",
+      "parent": {
+        "scopes": ["addon_parent"],
+        "paths": [["sync443Net"]],
+        "script": "experiments/sync443Net/implementation.js"
+      }
+    },
+    "sync443Account": {
+      "schema": "experiments/sync443Account/schema.json",
+      "parent": {
+        "scopes": ["addon_parent"],
+        "paths": [["sync443Account"]],
+        "script": "experiments/sync443Account/implementation.js"
+      }
+    }
+  }
+}

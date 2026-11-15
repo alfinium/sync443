@@ -27,12 +27,26 @@ import "./client.test.mjs";
 // ── TO ADD: further test files go here (store, health, net-watch) ─────────
 import "./store.test.mjs";
 import "./health.test.mjs";
+import "./sha256.test.mjs";
+import "./mime.test.mjs";
+import "./mail-codec.test.mjs";
+import "./folder-tree.test.mjs";
+import "./log.test.mjs";
+import "./send.test.mjs";
+import "./options-form.test.mjs";
+import "./echo.test.mjs";
+import "./journal.test.mjs";
+import "./mail-sync.test.mjs";
+import "./push.test.mjs";
+import "./mail-store.test.mjs";
+import "./mailbox.test.mjs";
 import "./audit-core.test.mjs";
 import "./audit-transport.test.mjs";
 import "./audit-http.test.mjs";
 
 // ── Fuzzing (slowest, last) ───────────────────────────────────────────────
 import "./wbxml-fuzz.test.mjs";
+import "./mail-core-fuzz.test.mjs";
 import "./http1-fuzz.test.mjs";
 
 // A test that never settles would end the JavaScriptCore shell quietly, with

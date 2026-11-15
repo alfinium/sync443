@@ -1,0 +1,116 @@
+<!-- SPDX-License-Identifier: MIT -->
+<!-- Copyright (c) 2026 alfinium -->
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Sync443 – Réglages</title>
+  <link rel="stylesheet" href="options.css">
+  <script type="module" src="options.mjs"></script>
+</head>
+<body>
+  <header class="page-header">
+    <img src="../icons/sync443.svg" alt="" width="40" height="40">
+    <div>
+      <h1>Sync443</h1>
+      <p class="subtitle">Exchange ActiveSync, uniquement par HTTPS</p>
+    </div>
+  </header>
+
+  <main>
+    <p id="notice" class="notice" role="status" aria-live="polite" hidden></p>
+
+    <section class="card" aria-labelledby="mailboxes-title">
+      <div class="section-head">
+        <h2 id="mailboxes-title">Boîtes</h2>
+        <button type="button" id="add" class="primary">Ajouter une boîte</button>
+      </div>
+      <p id="mailboxes-empty" class="empty" hidden>Aucune boîte pour l'instant. Cliquez sur « Ajouter une boîte ».</p>
+      <ul id="mailboxes" class="mailboxes" aria-labelledby="mailboxes-title"></ul>
+    </section>
+
+    <section id="editor" class="card" aria-labelledby="editor-title" hidden>
+      <h2 id="editor-title">Nouvelle boîte</h2>
+      <form id="form" novalidate>
+        <p id="form-error" class="form-error" role="alert" hidden></p>
+
+        <div class="field">
+          <label for="email">Adresse e-mail</label>
+          <input id="email" name="email" type="email" autocomplete="off" spellcheck="false" maxlength="254" required aria-describedby="email-error">
+          <p id="email-error" class="field-error" hidden></p>
+        </div>
+
+        <div class="field">
+          <label for="password">Mot de passe</label>
+          <input id="password" name="password" type="password" autocomplete="off" spellcheck="false" maxlength="1024" aria-describedby="password-hint password-error">
+          <p id="password-hint" class="hint">Si le serveur le permet, préférez un mot de passe d'application réservé à ActiveSync.</p>
+          <p id="password-error" class="field-error" hidden></p>
+        </div>
+
+        <div class="field">
+          <label for="name">Nom de la boîte</label>
+          <input id="name" name="name" type="text" autocomplete="off" maxlength="256" aria-describedby="name-hint name-error">
+          <p id="name-hint" class="hint">Affiché dans la liste des comptes de Thunderbird. Vide : l'adresse e-mail.</p>
+          <p id="name-error" class="field-error" hidden></p>
+        </div>
+
+        <div class="field">
+          <label for="server">Serveur</label>
+          <input id="server" name="server" type="text" inputmode="url" autocomplete="off" spellcheck="false" maxlength="300" required aria-describedby="server-hint server-error">
+          <p id="server-hint" class="hint">Par exemple mail.exemple.com, sans /Microsoft-Server-ActiveSync. Toujours en HTTPS.</p>
+          <p id="server-error" class="field-error" hidden></p>
+        </div>
+
+        <div class="field">
+          <label for="username">Identifiant de connexion (facultatif)</label>
+          <input id="username" name="username" type="text" autocomplete="off" spellcheck="false" maxlength="256" aria-describedby="username-hint username-error">
+          <p id="username-hint" class="hint">À remplir seulement s'il diffère de l'adresse e-mail, par exemple DOMAINE\nom.</p>
+          <p id="username-error" class="field-error" hidden></p>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label for="syncMinutes">Fréquence</label>
+            <select id="syncMinutes" name="syncMinutes" aria-describedby="syncMinutes-error"></select>
+            <p id="syncMinutes-error" class="field-error" hidden></p>
+          </div>
+          <div class="field">
+            <label for="filterType">Période de courrier</label>
+            <select id="filterType" name="filterType" aria-describedby="filterType-error"></select>
+            <p id="filterType-error" class="field-error" hidden></p>
+          </div>
+        </div>
+
+        <fieldset id="sync" class="field" aria-describedby="sync-hint sync-error">
+          <legend>Éléments à synchroniser</legend>
+          <div id="kinds" class="kinds"></div>
+          <p id="sync-hint" class="hint">Dans cette version, seul le courrier est synchronisé. Les autres choix sont enregistrés pour plus tard.</p>
+          <p id="sync-error" class="field-error" hidden></p>
+        </fieldset>
+
+        <div class="actions">
+          <button type="submit" id="save" class="primary">Enregistrer</button>
+          <button type="button" id="cancel">Annuler</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card" aria-labelledby="diag-title">
+      <h2 id="diag-title">Diagnostic</h2>
+      <p class="hint">Le journal ne contient ni contenu de message, ni objet, ni adresse. Le débogage y ajoute des valeurs techniques (statuts, clés) et s'arrête seul au bout d'une heure.</p>
+      <div class="debug-row">
+        <input type="checkbox" id="debug" aria-describedby="debug-status">
+        <label for="debug">Débogage pendant 1 heure</label>
+        <span id="debug-status" class="hint"></span>
+      </div>
+      <div class="actions">
+        <button type="button" id="log-refresh">Actualiser</button>
+        <button type="button" id="log-clear">Effacer le journal</button>
+      </div>
+      <pre id="log" class="log" tabindex="0" aria-label="Journal de l'extension"></pre>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,0 +1,138 @@
+[
+  {
+    "namespace": "sync443Account",
+    "description": "The mail accounts and the passwords of Sync443, and nothing else. An account of the extension is a local account (incoming server of type \"none\", user name = mailboxId, host name \"sync443.invalid\") whose server carries the preferences sync443.owner (the extension's id) and sync443.mailbox (the mailboxId); every operation but the creation in ensureAccount refuses an account without these marks, and always refuses the \"Local Folders\" account. Its identities send through a marked \"neutral\" outgoing server (sync443.invalid, TLS, no credentials) that cannot send. Passwords live in Thunderbird's login manager, realm \"Sync443\", under an origin written exactly https://host[:port]. Accepted from the background page only. This schema checks the argument types; the implementation checks them again with every value constraint, so that every refusal of a well-typed call is an ExtensionError whose message starts with a code: CONFIG, PERMISSION, NOT_FOUND, CONFLICT, LOCKED, UNSUPPORTED or INTERNAL.",
+    "functions": [
+      {
+        "name": "ensureAccount",
+        "type": "function",
+        "async": true,
+        "description": "ensureAccount({mailboxId, email, name, fullName}) resolves to {accountKey, identityId, created}. If an account of the extension is marked for mailboxId, it is updated: name (shown name of the account), address, full name only if the identity has none, and every identity of the account sent back to the neutral outgoing server; created is false. Otherwise a local account is created with its default folders (Inbox, Drafts, Templates, Sent, Archives, Trash, each with its special flag), an identity and, if needed, the neutral outgoing server; created is true. An existing server of the same name without the extension's marks is never adopted (CONFLICT). mailboxId: 12 lower-case hexadecimal digits; email: an address of at most 254 characters; name, fullName: 1-256 printable characters.",
+        "parameters": [
+          {
+            "name": "options",
+            "type": "object",
+            "properties": {
+              "mailboxId": {
+                "type": "string"
+              },
+              "email": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "fullName": {
+                "type": "string",
+                "optional": true
+              }
+            }
+          }
+        ]
+      },
+      {
+        "name": "listAccounts",
+        "type": "function",
+        "async": true,
+        "description": "listAccounts() resolves to [{accountKey, mailboxId}], the accounts marked for this extension only.",
+        "parameters": []
+      },
+      {
+        "name": "accountOfIdentity",
+        "type": "function",
+        "async": true,
+        "description": "accountOfIdentity(identityId) resolves to {accountKey, mailboxId} if the identity belongs to an account of the extension, null otherwise (unknown identity, or the identity of another account). identityId: \"id\" followed by digits.",
+        "parameters": [
+          {
+            "name": "identityId",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "name": "removeAccount",
+        "type": "function",
+        "async": true,
+        "description": "removeAccount(accountKey) removes an account of the extension and its files, then the neutral outgoing server once no identity uses it, and resolves to true; to false if no account has this key. Any other account is refused (PERMISSION), \"Local Folders\" always. accountKey: \"account\" followed by digits.",
+        "parameters": [
+          {
+            "name": "accountKey",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "name": "setSpecialUse",
+        "type": "function",
+        "async": true,
+        "description": "setSpecialUse(accountKey, folderPath, use) gives a folder of an account of the extension this special use and no other; no other folder of the account keeps it, and for drafts, sent, templates and archives the identities of the account use this folder. folderPath: absolute path in the account (\"/Inbox/Sub\"), resolved one folder name at a time, case included; a missing folder is NOT_FOUND. use: inbox, drafts, trash, sent, junk, archives, templates or outbox.",
+        "parameters": [
+          {
+            "name": "accountKey",
+            "type": "string"
+          },
+          {
+            "name": "folderPath",
+            "type": "string"
+          },
+          {
+            "name": "use",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "name": "getPassword",
+        "type": "function",
+        "async": true,
+        "description": "getPassword(origin, username) resolves to the password saved for this origin and user name in the realm \"Sync443\", or to null. origin: exactly \"https://host\" or \"https://host:port\" (lower-case name, canonical IPv4 or bracketed IPv6 address, no port 443); username: 1-256 characters, no control character.",
+        "parameters": [
+          {
+            "name": "origin",
+            "type": "string"
+          },
+          {
+            "name": "username",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "name": "setPassword",
+        "type": "function",
+        "async": true,
+        "description": "setPassword(origin, username, password) saves the password, replacing the one already saved for this origin and user name in the realm \"Sync443\". password: 1-1024 characters, no NUL.",
+        "parameters": [
+          {
+            "name": "origin",
+            "type": "string"
+          },
+          {
+            "name": "username",
+            "type": "string"
+          },
+          {
+            "name": "password",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "name": "removePassword",
+        "type": "function",
+        "async": true,
+        "description": "removePassword(origin, username) removes the password saved for this origin and user name in the realm \"Sync443\"; nothing saved: nothing to do. Any failure of the login manager is reported, never ignored.",
+        "parameters": [
+          {
+            "name": "origin",
+            "type": "string"
+          },
+          {
+            "name": "username",
+            "type": "string"
+          }
+        ]
+      }
+    ]
+  }
+]

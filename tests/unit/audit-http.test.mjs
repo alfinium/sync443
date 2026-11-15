@@ -181,3 +181,14 @@ test("audit module A1 : gros envoi découpé en morceaux d'1 Mio, un seul à la 
   const total = pieces.reduce((n, p) => n + p.length, 0);
   assert(total > mime.length, "toute la requête a été écrite");
 });
+
+test("UserInformation 14.1 : adresse principale sous EmailAddresses", async () => {
+  const { parseUserInformation } = await import("../../src/core/protocol.mjs");
+  const { decode } = await import("../../src/core/wbxml.mjs");
+  const doc = el("Settings:Settings", [el("Status", "1"), el("UserInformation", [el("Status", "1"), el("Get", [el("Accounts", [el("Account", [
+    el("UserDisplayName", "Alice Martin"),
+    el("EmailAddresses", [el("SMTPAddress", "alias@example.com"), el("PrimarySmtpAddress", "alice@example.com")]),
+  ])])])])]);
+  const r = parseUserInformation(decode(encode(doc)));
+  eq([r.displayName, r.primarySmtpAddress], ["Alice Martin", "alice@example.com"]);
+});

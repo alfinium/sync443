@@ -1,0 +1,81 @@
+[
+  {
+    "namespace": "sync443AccountTest",
+    "description": "TEST ONLY, never shipped: helpers for the sync443Account end-to-end test (create accounts the extension does not own, forge marks, inspect accounts, folders, outgoing servers and logins, write results, quit).",
+    "functions": [
+      { "name": "print", "type": "function", "async": true, "parameters": [{ "name": "line", "type": "string" }] },
+      { "name": "quit", "type": "function", "async": true, "parameters": [] },
+      { "name": "phase", "type": "function", "async": true, "parameters": [] },
+      { "name": "probe", "type": "function", "async": true, "parameters": [] },
+      { "name": "ensureLocalFolders", "type": "function", "async": true, "parameters": [] },
+      {
+        "name": "createForeignAccount",
+        "type": "function",
+        "async": true,
+        "parameters": [{ "name": "options", "type": "object", "additionalProperties": { "type": "any" } }]
+      },
+      {
+        "name": "setMarks",
+        "type": "function",
+        "async": true,
+        "parameters": [
+          { "name": "accountKey", "type": "string" },
+          { "name": "owner", "type": "any", "optional": true },
+          { "name": "mailbox", "type": "any", "optional": true }
+        ]
+      },
+      { "name": "inspect", "type": "function", "async": true, "parameters": [{ "name": "accountKey", "type": "string" }] },
+      { "name": "accountKeys", "type": "function", "async": true, "parameters": [] },
+      { "name": "identityKeys", "type": "function", "async": true, "parameters": [] },
+      { "name": "outgoing", "type": "function", "async": true, "parameters": [] },
+      { "name": "setDefaultSmtp", "type": "function", "async": true, "parameters": [{ "name": "key", "type": "string" }] },
+      { "name": "effectiveDefaultSmtp", "type": "function", "async": true, "parameters": [] },
+      { "name": "createUserSmtp", "type": "function", "async": true, "parameters": [{ "name": "hostname", "type": "string" }] },
+      {
+        "name": "setIdentity",
+        "type": "function",
+        "async": true,
+        "parameters": [
+          { "name": "identityId", "type": "string" },
+          { "name": "changes", "type": "object", "additionalProperties": { "type": "any" } }
+        ]
+      },
+      {
+        "name": "createFolder",
+        "type": "function",
+        "async": true,
+        "parameters": [
+          { "name": "accountKey", "type": "string" },
+          { "name": "parentPath", "type": "string" },
+          { "name": "name", "type": "string" }
+        ]
+      },
+      { "name": "rawLogins", "type": "function", "async": true, "parameters": [{ "name": "origin", "type": "string" }] },
+      {
+        "name": "addForeignLogin",
+        "type": "function",
+        "async": true,
+        "parameters": [
+          { "name": "origin", "type": "string" },
+          { "name": "username", "type": "string" },
+          { "name": "password", "type": "string" },
+          { "name": "realm", "type": "any", "optional": true },
+          { "name": "formActionOrigin", "type": "any", "optional": true }
+        ]
+      },
+      { "name": "exists", "type": "function", "async": true, "parameters": [{ "name": "path", "type": "string" }] },
+      { "name": "mailDirEntries", "type": "function", "async": true, "parameters": [] },
+      {
+        "name": "serverExists",
+        "type": "function",
+        "async": true,
+        "parameters": [
+          { "name": "username", "type": "string" },
+          { "name": "hostname", "type": "string" }
+        ]
+      },
+      { "name": "stubOutgoing", "type": "function", "async": true, "parameters": [{ "name": "mode", "type": "string" }] },
+      { "name": "breakLogins", "type": "function", "async": true, "parameters": [{ "name": "mode", "type": "string" }] }
+    ]
+  }
+]

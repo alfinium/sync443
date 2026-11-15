@@ -1,0 +1,35 @@
+{
+  "manifest_version": 2,
+  "name": "Sync443 sync443Account end-to-end test",
+  "description": "Throw-away test extension: never shipped.",
+  "version": "1.0",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "sync443-account-e2e@sync443.test",
+      "strict_min_version": "140.0"
+    }
+  },
+  "permissions": ["storage"],
+  "background": {
+    "scripts": ["background.mjs"],
+    "type": "module"
+  },
+  "experiment_apis": {
+    "sync443Account": {
+      "schema": "experiments/sync443Account/schema.json",
+      "parent": {
+        "scopes": ["addon_parent"],
+        "paths": [["sync443Account"]],
+        "script": "experiments/sync443Account/implementation.js"
+      }
+    },
+    "sync443AccountTest": {
+      "schema": "experiments/sync443AccountTest/schema.json",
+      "parent": {
+        "scopes": ["addon_parent"],
+        "paths": [["sync443AccountTest"]],
+        "script": "experiments/sync443AccountTest/implementation.js"
+      }
+    }
+  }
+}
