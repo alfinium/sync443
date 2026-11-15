@@ -38,6 +38,13 @@ export function recordName(kind, id) {
   return `${kind}:${encodeURIComponent(id)}`;
 }
 
+/**
+ * What a mailbox synchronises: any combination of the four, at least one.
+ * Nothing that is not chosen is ever downloaded.
+ */
+export const SYNC_KINDS = Object.freeze(["mail", "calendar", "contacts", "tasks"]);
+export const SYNC_ALL = Object.freeze({ mail: true, calendar: true, contacts: true, tasks: true });
+
 /** Fields of a mailbox, checked on every write. */
 export function checkMailbox(mb) {
   const fail = (what) => {
@@ -57,6 +64,9 @@ export function checkMailbox(mb) {
   if (!/^[0-8]$/.test(String(mb.filterType ?? ""))) fail("période");
   if (mb.accountKey !== null && (typeof mb.accountKey !== "string" || !/^account\d{1,6}$/.test(mb.accountKey))) fail("compte");
   if (!Array.isArray(mb.tlsPins) || mb.tlsPins.some((p) => typeof p !== "string" || !/^[0-9A-F]{64}$/.test(p))) fail("certificats");
+  const sync = mb.sync ?? SYNC_ALL; // a mailbox saved without the choice synchronises everything
+  if (!sync || typeof sync !== "object" || SYNC_KINDS.some((k) => typeof sync[k] !== "boolean")) fail("éléments à synchroniser");
+  if (!SYNC_KINDS.some((k) => sync[k])) fail("au moins un élément à synchroniser");
   return {
     id: mb.id,
     email: mb.email,
@@ -68,6 +78,7 @@ export function checkMailbox(mb) {
     filterType: String(mb.filterType),
     accountKey: mb.accountKey,
     tlsPins: [...mb.tlsPins],
+    sync: Object.fromEntries(SYNC_KINDS.map((k) => [k, sync[k]])),
   };
 }
 

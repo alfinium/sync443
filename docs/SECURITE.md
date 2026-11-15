@@ -87,6 +87,7 @@ règle écrite ici et non respectée par le code est un bug de sécurité.
     - En mode débogage, seules les valeurs techniques (statuts, clés, identifiants) apparaissent.
     - Le débogage s'éteint seul.
 14. **Aucune télémétrie.** Le seul serveur contacté est le serveur ActiveSync configuré.
+15. **Minimisation.** Seuls les éléments que l'utilisateur a choisis pour la boîte (courrier, agenda, contacts, tâches) sont demandés au serveur et stockés dans Thunderbird.
 
 ## Limite connue, risque accepté
 

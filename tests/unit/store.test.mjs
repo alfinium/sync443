@@ -2,7 +2,7 @@
 // Copyright (c) 2026 alfinium
 
 import { test, eq, assert, rejects, throws } from "./harness.mjs";
-import { Store, StoreError, SCHEMA, checkMailbox, toMap, fromMap, newIds, recordName } from "../../src/sync/store.mjs";
+import { Store, StoreError, SCHEMA, checkMailbox, toMap, fromMap, newIds, recordName, SYNC_KINDS } from "../../src/sync/store.mjs";
 
 /** storage.local double: values go through a JSON round trip, like a real store would serialise them. */
 function memoryArea() {
@@ -70,7 +70,7 @@ test("boîtes : champs invalides refusés à l'écriture", () => {
 
 test("boîtes : champs inconnus non conservés (pas d'injection de propriétés)", () => {
   const clean = checkMailbox({ ...mailbox(), __proto__: { evil: 1 }, extra: "x" });
-  eq(Object.keys(clean).sort(), ["accountKey", "deviceId", "email", "filterType", "id", "name", "origin", "syncMinutes", "tlsPins", "username"]);
+  eq(Object.keys(clean).sort(), ["accountKey", "deviceId", "email", "filterType", "id", "name", "origin", "sync", "syncMinutes", "tlsPins", "username"]);
 });
 
 test("boîtes : une entrée endommagée est ignorée à la lecture", async () => {
@@ -149,4 +149,18 @@ test("identifiants : formats attendus", () => {
   const { mailboxId, deviceId } = newIds(random);
   assert(/^[a-f0-9]{12}$/.test(mailboxId), mailboxId);
   assert(/^S443[0-9A-F]{28}$/.test(deviceId), deviceId);
+});
+
+test("éléments à synchroniser : un, plusieurs ou les quatre, jamais aucun", () => {
+  eq(checkMailbox(mailbox()).sync, { mail: true, calendar: true, contacts: true, tasks: true }, "les quatre par défaut");
+  // Every non-empty combination of the four is accepted, exactly as chosen.
+  for (let mask = 1; mask < 16; mask++) {
+    const sync = Object.fromEntries(SYNC_KINDS.map((k, i) => [k, Boolean(mask & (1 << i))]));
+    eq(checkMailbox(mailbox({ sync })).sync, sync, JSON.stringify(sync));
+  }
+  throws(() => checkMailbox(mailbox({ sync: { mail: false, calendar: false, contacts: false, tasks: false } })), StoreError, "aucun");
+  throws(() => checkMailbox(mailbox({ sync: { mail: true, calendar: "oui", contacts: true, tasks: true } })), StoreError, "valeur non booléenne");
+  throws(() => checkMailbox(mailbox({ sync: { mail: true } })), StoreError, "choix incomplet");
+  throws(() => checkMailbox(mailbox({ sync: "tout" })), StoreError, "pas un objet");
+  eq(Object.keys(checkMailbox(mailbox({ sync: { mail: true, calendar: false, contacts: false, tasks: false, notes: true } })).sync), SYNC_KINDS.slice(), "clés inconnues écartées");
 });

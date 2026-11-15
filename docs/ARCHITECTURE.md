@@ -50,16 +50,33 @@ tests/unit/               tests unitaires et aléatoires (JavaScriptCore)
 tools/                    lanceur de tests (tout système), contrôles du code source et de provenance
 ```
 
+## Choix des éléments synchronisés
+
+Pour chaque boîte, l'utilisateur choisit ce qui est synchronisé : **courrier, agenda, contacts,
+tâches**. Un seul, plusieurs ou les quatre ; il en faut au moins un.
+
+| Comportement | Détail |
+|---|---|
+| Par défaut | les quatre |
+| Ce qui n'est pas choisi | jamais demandé au serveur, ni stocké dans Thunderbird ; les dossiers correspondants sont ignorés à la liste des dossiers, et absents de la surveillance « dès réception » (Ping) |
+| Ajouter un élément | création de ce qu'il faut dans Thunderbird, puis première synchro de cet élément |
+| Retirer un élément | après confirmation, les copies locales de cet élément sont supprimées (agendas, carnets, ou compte de courrier) ; rien n'est touché sur le serveur |
+| Agenda sans courrier | à trancher à l'étape 4. Pour envoyer des invitations, Thunderbird a besoin d'une identité de messagerie, donc d'un compte : soit un compte minimal sans dossier synchronisé, soit agenda sans envoi d'invitations |
+
+Le modèle est en place depuis l'étape 1 (`sync` dans `src/sync/store.mjs`, validé et testé pour
+les 15 combinaisons). La page de réglages le présente sous forme de cases à cocher (étape 6), et
+chaque étape de synchro le respecte.
+
 ## Étapes
 
 | Étape | Contenu | État |
 |---|---|---|
 | **1. Fondations** | WBXML, validation, protocole, connexion vérifiée, HTTP/1.1, client ActiveSync, stockage, espacement des essais | **terminée** : 321 tests unitaires, 191 vérifications de bout en bout dans Thunderbird, [audit](audits/etape-1.md) fait et corrigé |
-| **2. Code privilégié** | comptes marqués, mots de passe, identité ; API agenda minimale | à faire |
+| **2. Code privilégié** | comptes marqués, mots de passe, identité ; API agenda minimale ; création selon les éléments choisis | à faire |
 | **3. Courrier** | identité des messages par Message-ID, suppressions avec filet, seuil de suppression en masse, verrou par boîte, journal des modifications acquittées, envoi fermé ; noms de dossiers valables sur Windows, macOS et Linux | à faire |
 | **4. Agenda et tâches** | iCalendar écrit par l'extension, récurrence bornée, fuseaux, invitations confirmées | à faire |
 | **5. Contacts** | vCard écrit par l'extension, carnets marqués | à faire |
-| **6. Finition** | page de réglages, journal, documentation, validation sur serveurs réels | à faire |
+| **6. Finition** | page de réglages (dont les cases courrier, agenda, contacts, tâches), journal, documentation, validation sur serveurs réels | à faire |
 
 ## Méthode, à chaque étape
 

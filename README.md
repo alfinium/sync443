@@ -35,6 +35,7 @@ que nécessaire. Windows, macOS et Linux.
 | Protocole ActiveSync 12.1 à 14.1, négociation des règles du serveur, effacement à distance toujours refusé | fait (étape 1) |
 | Comptes Thunderbird dédiés, mots de passe dans le gestionnaire de Thunderbird | étape 2 |
 | Plusieurs boîtes, configuration en quelques champs | étapes 2 et 6 |
+| Choix, pour chaque boîte, des éléments à synchroniser : courrier, agenda, contacts, tâches (un, plusieurs ou les quatre) | modèle prêt (étape 1), réglage à l'étape 6 |
 | Courrier : dossiers, messages, lu / drapeau / déplacement / suppression dans les deux sens | étape 3 |
 | Arrivée immédiate des messages (« push »), ou actualisation périodique | étape 3 |
 | Envoi par ActiveSync, sans SMTP, copie dans les Envoyés du serveur | étape 3 |
@@ -74,6 +75,9 @@ Pour chaque boîte, il suffira de renseigner :
 - l'adresse e-mail et le mot de passe ;
 - le nom de la boîte ;
 - le serveur (par exemple `mail.exemple.com`, sans `/Microsoft-Server-ActiveSync`) ;
+- **les éléments à synchroniser :** courrier, agenda, contacts, tâches. Un seul, plusieurs ou les
+  quatre ; les quatre sont cochés par défaut. Ce qui n'est pas coché n'est jamais téléchargé, et le
+  décocher plus tard retire les copies locales correspondantes, sans rien toucher sur le serveur ;
 - la fréquence de synchronisation (dès réception, ou toutes les N minutes) ;
 - la période de courrier à synchroniser.
 
@@ -123,6 +127,7 @@ en réduisent le risque, et un mot de passe d'application le limite encore.
 
 - Aucune télémétrie, aucune statistique.
 - Le seul serveur contacté est le serveur ActiveSync configuré.
+- Seuls les éléments choisis (courrier, agenda, contacts, tâches) sont téléchargés.
 - Les mots de passe sont rangés dans le gestionnaire de mots de passe de Thunderbird. Pensez à
   activer son mot de passe principal.
 - Le journal de l'extension ne contient pas de contenu personnel (ni objet, ni adresse, ni texte).
