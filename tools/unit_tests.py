@@ -45,6 +45,9 @@ def command(exe):
 
 
 def main():
+    # Windows consoles are not UTF-8 by default: the messages are in French.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     check = subprocess.run([sys.executable, "-I", os.path.join(ROOT, "tools", "check_source_chars.py")])
     if check.returncode:
         return check.returncode

@@ -20,6 +20,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def main():
+    # Windows consoles are not UTF-8 by default: the messages are in French.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     fix = "--fix" in sys.argv[1:]
     found = 0
     for base, dirs, files in os.walk(ROOT):
