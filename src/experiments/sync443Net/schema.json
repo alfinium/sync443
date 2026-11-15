@@ -1,0 +1,70 @@
+[
+  {
+    "namespace": "sync443Net",
+    "description": "TLS connections the extension inspects before writing anything on them. Only towards hosts for which the extension holds the https:// host permission (checked again on every write and read; once it is gone the connection is closed). Accepted from the background page only, as defence in depth: any page of the extension can reach the background page, so the extension as a whole is the trust boundary. Arguments are checked by the implementation (not by this schema) so that every refusal is an ExtensionError whose message starts with a code: CONFIG, PERMISSION, PROXY_AUTH, PROXY, TLS, NETWORK, TIMEOUT or CLOSED.",
+    "functions": [
+      {
+        "name": "open",
+        "type": "function",
+        "async": true,
+        "description": "open({host, port, timeoutMs}) connects to host:port, directly or through the proxy Thunderbird would use for https://host:port/ (SOCKS, or an HTTP proxy tunnel), completes the TLS handshake and resolves to {id, route, securityInfo}. route is \"direct\", \"socks\" or \"http-proxy\"; securityInfo has the shape of webRequest.getSecurityInfo(requestId, {certificateChain: true}), with the chain Gecko verified. Not one application byte has been written. Only a connection Gecko judges secure with a verified chain is returned: a refused chain, a certificate exception, a broken or weak connection are TLS rejections. Connections are anonymous: no client certificate. host: lower-case ASCII host name, IPv4 address or bracketed IPv6 address, exactly as in the origin; port: 1-65535, not one Gecko bans for https; timeoutMs: 1000-120000 (default 30000), deadline for the whole opening.",
+        "parameters": [
+          {
+            "name": "options",
+            "type": "any",
+            "optional": true
+          }
+        ]
+      },
+      {
+        "name": "write",
+        "type": "function",
+        "async": true,
+        "description": "write(id, bytes) writes all the bytes (a Uint8Array or an ArrayBuffer of at most 1 MiB) on an open connection. One write at a time per connection: a second write() while one is pending is a CONFIG error; larger bodies are written in sequence. Resolves once every byte has been handed to the connection: at most 256 KiB are then still waiting to go out.",
+        "parameters": [
+          {
+            "name": "id",
+            "type": "any",
+            "optional": true
+          },
+          {
+            "name": "bytes",
+            "type": "any",
+            "optional": true
+          }
+        ]
+      },
+      {
+        "name": "read",
+        "type": "function",
+        "async": true,
+        "description": "read(id, {maxBytes, timeoutMs}) resolves to the next bytes received, a Uint8Array of 1 to maxBytes (1-1048576, default 1048576) bytes, or to null once the peer has closed the connection. null is NOT an authenticated end of message (the peer may close without TLS close_notify): the caller must frame what it reads. One read at a time. timeoutMs: 1-600000, default 60000.",
+        "parameters": [
+          {
+            "name": "id",
+            "type": "any",
+            "optional": true
+          },
+          {
+            "name": "options",
+            "type": "any",
+            "optional": true
+          }
+        ]
+      },
+      {
+        "name": "close",
+        "type": "function",
+        "async": true,
+        "description": "close(id) closes the connection. Closing an unknown or already closed connection does nothing.",
+        "parameters": [
+          {
+            "name": "id",
+            "type": "any",
+            "optional": true
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -1,0 +1,36 @@
+{
+  "manifest_version": 2,
+  "name": "Sync443 sync443Net end-to-end test",
+  "description": "Throw-away test extension: never shipped.",
+  "version": "1.0",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "sync443-net-e2e@sync443.test",
+      "strict_min_version": "140.0"
+    }
+  },
+  "permissions": ["https://localhost/*", "https://[::1]/*"],
+  "optional_permissions": ["https://127.0.0.1/*"],
+  "background": {
+    "scripts": ["background.mjs"],
+    "type": "module"
+  },
+  "experiment_apis": {
+    "sync443Net": {
+      "schema": "experiments/sync443Net/schema.json",
+      "parent": {
+        "scopes": ["addon_parent"],
+        "paths": [["sync443Net"]],
+        "script": "experiments/sync443Net/implementation.js"
+      }
+    },
+    "sync443NetTest": {
+      "schema": "experiments/sync443NetTest/schema.json",
+      "parent": {
+        "scopes": ["addon_parent"],
+        "paths": [["sync443NetTest"]],
+        "script": "experiments/sync443NetTest/implementation.js"
+      }
+    }
+  }
+}

@@ -1,0 +1,128 @@
+[
+  {
+    "namespace": "sync443NetTest",
+    "description": "TEST ONLY, never shipped: helpers for the sync443Net end-to-end test (trust the throw-away test authority, grant a host permission, import a client certificate, set preferences, add a certificate exception, switch Thunderbird's proxy settings, write results, disable the extension, quit).",
+    "functions": [
+      {
+        "name": "trustAuthority",
+        "type": "function",
+        "async": true,
+        "parameters": [
+          {
+            "name": "base64Der",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "name": "grantOrigin",
+        "type": "function",
+        "async": true,
+        "parameters": [
+          {
+            "name": "origin",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "name": "importPkcs12",
+        "type": "function",
+        "async": true,
+        "parameters": [
+          {
+            "name": "path",
+            "type": "string"
+          },
+          {
+            "name": "password",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "name": "setPrefs",
+        "type": "function",
+        "async": true,
+        "parameters": [
+          {
+            "name": "prefs",
+            "type": "object",
+            "additionalProperties": {
+              "type": "any"
+            }
+          }
+        ]
+      },
+      {
+        "name": "probe",
+        "type": "function",
+        "async": true,
+        "parameters": []
+      },
+      {
+        "name": "addException",
+        "type": "function",
+        "async": true,
+        "parameters": [
+          {
+            "name": "host",
+            "type": "string"
+          },
+          {
+            "name": "port",
+            "type": "integer"
+          },
+          {
+            "name": "base64Der",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "name": "setProxy",
+        "type": "function",
+        "async": true,
+        "parameters": [
+          {
+            "name": "mode",
+            "type": "string",
+            "enum": [
+              "direct",
+              "http",
+              "socks"
+            ]
+          },
+          {
+            "name": "port",
+            "type": "integer",
+            "optional": true
+          }
+        ]
+      },
+      {
+        "name": "print",
+        "type": "function",
+        "async": true,
+        "parameters": [
+          {
+            "name": "line",
+            "type": "string"
+          }
+        ]
+      },
+      {
+        "name": "shutdownSoon",
+        "type": "function",
+        "async": true,
+        "parameters": []
+      },
+      {
+        "name": "quit",
+        "type": "function",
+        "async": true,
+        "parameters": []
+      }
+    ]
+  }
+]
