@@ -1,0 +1,849 @@
+{
+  "extensionName": {
+    "message": "Sync443 – EAS Client for Thunderbird"
+  },
+  "extensionDescription": {
+    "message": "Exchange ActiveSync natif dans Thunderbird : courrier, dossiers et envoi, avec tout serveur compatible."
+  },
+  "languageTag": {
+    "message": "fr"
+  },
+  "actionSync": {
+    "message": "Synchroniser"
+  },
+  "actionSyncLast": {
+    "message": "Synchroniser (dernière synchro à $TIME$)",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "actionCheckSettings": {
+    "message": "Sync443 : $NAMES$ à vérifier dans les réglages",
+    "placeholders": {
+      "names": {
+        "content": "$1"
+      }
+    }
+  },
+  "syncRunning": {
+    "message": "Synchronisation en cours…"
+  },
+  "menuSyncAll": {
+    "message": "Synchroniser Sync443 maintenant"
+  },
+  "menuSettings": {
+    "message": "Réglages de Sync443…"
+  },
+  "menuSyncOne": {
+    "message": "Synchroniser maintenant (Sync443)"
+  },
+  "optionsTitle": {
+    "message": "Sync443 – Réglages"
+  },
+  "optionsSubtitle": {
+    "message": "Exchange ActiveSync, uniquement par HTTPS"
+  },
+  "pageOutsideThunderbird": {
+    "message": "Cette page ne fonctionne qu'ouverte depuis Thunderbird, dans les réglages de l'extension."
+  },
+  "mailboxesTitle": {
+    "message": "Boîtes"
+  },
+  "addMailbox": {
+    "message": "Ajouter une boîte"
+  },
+  "mailboxesEmpty": {
+    "message": "Aucune boîte pour l'instant. Cliquez sur « Ajouter une boîte »."
+  },
+  "unnamed": {
+    "message": "sans nom"
+  },
+  "metaMailPeriod": {
+    "message": "courrier : $PERIOD$",
+    "placeholders": {
+      "period": {
+        "content": "$1"
+      }
+    }
+  },
+  "confirmDeletes": {
+    "message": "Confirmer les suppressions"
+  },
+  "keepLocalCopies": {
+    "message": "Garder les copies locales"
+  },
+  "syncButton": {
+    "message": "Synchroniser"
+  },
+  "editButton": {
+    "message": "Modifier"
+  },
+  "removeButton": {
+    "message": "Supprimer"
+  },
+  "removeConfirmButton": {
+    "message": "Supprimer la boîte"
+  },
+  "cancel": {
+    "message": "Annuler"
+  },
+  "removeQuestion": {
+    "message": "Supprimer la boîte « $NAME$ » ? Son compte, ses dossiers locaux et son mot de passe seront retirés de Thunderbird. Rien n'est supprimé sur le serveur.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "discardConfirm": {
+    "message": "Les suppressions faites sur le serveur ne seront pas appliquées : les messages restent dans Thunderbird, et les dossiers concernés sont resynchronisés avec le serveur. Un dossier supprimé sur le serveur reste ici, sans synchronisation."
+  },
+  "noAnswer": {
+    "message": "L'extension ne répond pas. Rechargez cette page."
+  },
+  "badAnswer": {
+    "message": "Réponse inattendue de l'extension."
+  },
+  "listFailed": {
+    "message": "La liste des boîtes n'a pas pu être lue."
+  },
+  "editedRemoved": {
+    "message": "La boîte en cours de modification a été supprimée."
+  },
+  "deletesConfirmed": {
+    "message": "Suppressions confirmées, synchronisation lancée."
+  },
+  "syncStarted": {
+    "message": "Synchronisation lancée."
+  },
+  "syncNotStarted": {
+    "message": "La synchronisation n'a pas pu être lancée."
+  },
+  "localCopiesKept": {
+    "message": "Copies locales gardées, synchronisation lancée."
+  },
+  "deletesNotDiscarded": {
+    "message": "Les suppressions n'ont pas pu être écartées."
+  },
+  "mailboxRemoved": {
+    "message": "Boîte « $NAME$ » supprimée.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "mailboxNotRemoved": {
+    "message": "La boîte n'a pas pu être supprimée."
+  },
+  "mailboxSaved": {
+    "message": "Boîte « $NAME$ » enregistrée.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "mailboxAdded": {
+    "message": "Boîte « $NAME$ » ajoutée. Première synchronisation en cours.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "mailboxNotSaved": {
+    "message": "La boîte n'a pas pu être enregistrée."
+  },
+  "logUnavailable": {
+    "message": "Journal indisponible."
+  },
+  "debugNotChanged": {
+    "message": "Le débogage n'a pas pu être changé."
+  },
+  "logNotCleared": {
+    "message": "Le journal n'a pas pu être effacé."
+  },
+  "newMailbox": {
+    "message": "Nouvelle boîte"
+  },
+  "editMailbox": {
+    "message": "Modifier « $NAME$ »",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "fieldEmail": {
+    "message": "Adresse e-mail"
+  },
+  "fieldPassword": {
+    "message": "Mot de passe"
+  },
+  "passwordHintNew": {
+    "message": "Si le serveur le permet, préférez un mot de passe d'application réservé à ActiveSync."
+  },
+  "passwordHintEdit": {
+    "message": "Laissez vide pour garder le mot de passe enregistré. Il faut le retaper si le serveur ou l'identifiant change."
+  },
+  "fieldName": {
+    "message": "Nom de la boîte"
+  },
+  "nameHint": {
+    "message": "Affiché dans la liste des comptes de Thunderbird. Vide : l'adresse e-mail."
+  },
+  "fieldServer": {
+    "message": "Serveur"
+  },
+  "serverHint": {
+    "message": "Par exemple mail.exemple.com, sans /Microsoft-Server-ActiveSync. Toujours en HTTPS."
+  },
+  "fieldUsername": {
+    "message": "Identifiant de connexion (facultatif)"
+  },
+  "usernameHint": {
+    "message": "À remplir seulement s'il diffère de l'adresse e-mail, par exemple DOMAINE\\nom."
+  },
+  "fieldFrequency": {
+    "message": "Fréquence"
+  },
+  "fieldPeriod": {
+    "message": "Période de courrier"
+  },
+  "fieldKinds": {
+    "message": "Éléments à synchroniser"
+  },
+  "kindsHint": {
+    "message": "Dans cette version, seul le courrier est synchronisé. Les autres choix sont enregistrés pour plus tard."
+  },
+  "soon": {
+    "message": "bientôt"
+  },
+  "save": {
+    "message": "Enregistrer"
+  },
+  "saving": {
+    "message": "Enregistrement…"
+  },
+  "permissionMissing": {
+    "message": "Sans l'autorisation d'accéder à $SERVER$, la boîte ne peut pas être synchronisée. Enregistrez de nouveau et acceptez la demande de Thunderbird.",
+    "placeholders": {
+      "server": {
+        "content": "$1"
+      }
+    }
+  },
+  "freqPush": {
+    "message": "Dès réception"
+  },
+  "freqEveryMinute": {
+    "message": "Toutes les minutes"
+  },
+  "freqEveryMinutes": {
+    "message": "Toutes les $COUNT$ minutes",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "freqEveryHour": {
+    "message": "Toutes les heures"
+  },
+  "period1Day": {
+    "message": "1 jour"
+  },
+  "period3Days": {
+    "message": "3 jours"
+  },
+  "period1Week": {
+    "message": "1 semaine"
+  },
+  "period2Weeks": {
+    "message": "2 semaines"
+  },
+  "period1Month": {
+    "message": "1 mois"
+  },
+  "periodAll": {
+    "message": "Tout"
+  },
+  "periodUnknown": {
+    "message": "Inconnue"
+  },
+  "kindMail": {
+    "message": "Courrier"
+  },
+  "kindCalendar": {
+    "message": "Agenda"
+  },
+  "kindContacts": {
+    "message": "Contacts"
+  },
+  "kindTasks": {
+    "message": "Tâches"
+  },
+  "kindSoon": {
+    "message": "$KIND$ (bientôt)",
+    "placeholders": {
+      "kind": {
+        "content": "$1"
+      }
+    }
+  },
+  "kindsNone": {
+    "message": "Rien"
+  },
+  "emailMissing": {
+    "message": "Indiquez l'adresse e-mail."
+  },
+  "emailTooLong": {
+    "message": "Adresse e-mail trop longue."
+  },
+  "emailInvalid": {
+    "message": "Adresse e-mail invalide, par exemple : prenom.nom@exemple.com."
+  },
+  "usernameTooLong": {
+    "message": "Identifiant trop long (256 caractères au plus)."
+  },
+  "usernameColon": {
+    "message": "L'identifiant ne doit pas contenir de deux-points ( : )."
+  },
+  "usernameBadChar": {
+    "message": "L'identifiant contient un caractère non autorisé."
+  },
+  "passwordMissing": {
+    "message": "Indiquez le mot de passe."
+  },
+  "passwordRetype": {
+    "message": "Le serveur ou l'identifiant a changé : retapez le mot de passe."
+  },
+  "passwordTooLong": {
+    "message": "Mot de passe trop long."
+  },
+  "passwordBadChar": {
+    "message": "Le mot de passe contient un caractère non autorisé."
+  },
+  "nameTooLong": {
+    "message": "Nom trop long (256 caractères au plus)."
+  },
+  "chooseFrequency": {
+    "message": "Choisissez une fréquence de synchronisation."
+  },
+  "choosePeriod": {
+    "message": "Choisissez la période de courrier à synchroniser."
+  },
+  "chooseKind": {
+    "message": "Choisissez au moins un élément à synchroniser."
+  },
+  "serverInvalid": {
+    "message": "Serveur invalide."
+  },
+  "serverEmpty": {
+    "message": "Indiquez le serveur, par exemple mail.exemple.com."
+  },
+  "serverSpace": {
+    "message": "L'adresse du serveur ne doit pas contenir d'espace."
+  },
+  "serverNotHttps": {
+    "message": "Le serveur doit être joignable en HTTPS."
+  },
+  "serverCredentials": {
+    "message": "L'adresse du serveur ne doit pas contenir d'identifiant ni de mot de passe."
+  },
+  "serverInvalidValue": {
+    "message": "Serveur invalide : $VALUE$",
+    "placeholders": {
+      "value": {
+        "content": "$1"
+      }
+    }
+  },
+  "serverPortInvalid": {
+    "message": "Port invalide : $VALUE$",
+    "placeholders": {
+      "value": {
+        "content": "$1"
+      }
+    }
+  },
+  "dateAtTime": {
+    "message": "$DAY$ à $TIME$",
+    "placeholders": {
+      "day": {
+        "content": "$1"
+      },
+      "time": {
+        "content": "$2"
+      }
+    }
+  },
+  "statusMassDelete": {
+    "message": "Synchronisation suspendue : le serveur a supprimé $COUNT$ messages d'un coup. Ces suppressions ne seront appliquées qu'après votre confirmation ; vous pouvez aussi garder les copies locales.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusMassDeleteMany": {
+    "message": "Synchronisation suspendue : le serveur a supprimé beaucoup de messages d'un coup. Ces suppressions ne seront appliquées qu'après votre confirmation ; vous pouvez aussi garder les copies locales."
+  },
+  "statusBlocked": {
+    "message": "Arrêtée : $REASON$ Rien ne sera tenté automatiquement : cliquez sur « Synchroniser » pour reprendre.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusSeriousError": {
+    "message": "erreur grave."
+  },
+  "statusError": {
+    "message": "Erreur : $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusErrorUnknown": {
+    "message": "erreur"
+  },
+  "statusRetryAt": {
+    "message": "Nouvel essai à $TIME$.",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusSyncedAt": {
+    "message": "Synchronisée à $TIME$.",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusSyncedOn": {
+    "message": "Synchronisée le $DATE$.",
+    "placeholders": {
+      "date": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusNever": {
+    "message": "Pas encore synchronisée."
+  },
+  "failedOne": {
+    "message": "1 message n'a pas pu être importé : nouvel essai automatique."
+  },
+  "failedMany": {
+    "message": "$COUNT$ messages n'ont pas pu être importés : nouvel essai automatique.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorDetail": {
+    "message": "Détail : $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "diagnosticTitle": {
+    "message": "Diagnostic"
+  },
+  "diagnosticHint": {
+    "message": "Le journal ne contient ni contenu de message, ni objet, ni adresse. Le débogage y ajoute des valeurs techniques (statuts, clés) et s'arrête seul au bout d'une heure."
+  },
+  "debugLabel": {
+    "message": "Débogage pendant 1 heure"
+  },
+  "debugActiveUntil": {
+    "message": "Actif jusqu'à $TIME$.",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "logRefresh": {
+    "message": "Actualiser"
+  },
+  "logClear": {
+    "message": "Effacer le journal"
+  },
+  "logLabel": {
+    "message": "Journal de l'extension"
+  },
+  "logEmpty": {
+    "message": "Le journal est vide."
+  },
+  "levelError": {
+    "message": "erreur"
+  },
+  "levelWarn": {
+    "message": "alerte"
+  },
+  "levelInfo": {
+    "message": "info"
+  },
+  "levelDebug": {
+    "message": "débogage"
+  },
+  "unexpectedError": {
+    "message": "Erreur inattendue."
+  },
+  "invalidRequest": {
+    "message": "Demande invalide."
+  },
+  "invalidEmail": {
+    "message": "Adresse e-mail invalide."
+  },
+  "invalidUsername": {
+    "message": "Identifiant de connexion invalide."
+  },
+  "invalidFrequency": {
+    "message": "Fréquence invalide."
+  },
+  "invalidPeriod": {
+    "message": "Période invalide."
+  },
+  "invalidPassword": {
+    "message": "Mot de passe invalide."
+  },
+  "passwordType": {
+    "message": "Saisissez le mot de passe."
+  },
+  "mailboxGone": {
+    "message": "Cette boîte n'existe plus."
+  },
+  "emailTaken": {
+    "message": "Cette adresse est déjà configurée."
+  },
+  "emailFixed": {
+    "message": "L'adresse d'une boîte ne se change pas : supprimez-la et ajoutez-en une nouvelle."
+  },
+  "loginTaken": {
+    "message": "Une autre boîte utilise déjà ce serveur avec cet identifiant."
+  },
+  "permissionRefused": {
+    "message": "Accès au serveur non autorisé : acceptez la demande de Thunderbird."
+  },
+  "cannotConnect": {
+    "message": "Connexion au serveur impossible."
+  },
+  "accountNotPrepared": {
+    "message": "Le compte Thunderbird n'a pas pu être préparé ($CODE$).",
+    "placeholders": {
+      "code": {
+        "content": "$1"
+      }
+    }
+  },
+  "passwordNotSaved": {
+    "message": "Le mot de passe n'a pas pu être enregistré (mot de passe principal verrouillé ?)."
+  },
+  "errorUnknownMailbox": {
+    "message": "Boîte inconnue."
+  },
+  "errorPasswordLocked": {
+    "message": "Mot de passe inaccessible pour le moment."
+  },
+  "errorPasswordAbsent": {
+    "message": "Mot de passe absent : modifiez la boîte pour le saisir."
+  },
+  "errorAuth": {
+    "message": "$REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorDenied": {
+    "message": "$REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorWipe": {
+    "message": "$REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorConfig": {
+    "message": "$REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorTls": {
+    "message": "$REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorProxyAuth": {
+    "message": "$REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorProvision": {
+    "message": "$REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorHttp": {
+    "message": "$REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorBusy": {
+    "message": "$REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorNetwork": {
+    "message": "$REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorTimeout": {
+    "message": "$REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorTooLarge": {
+    "message": "$REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorBadResponse": {
+    "message": "$REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorCancelled": {
+    "message": "$REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorServer": {
+    "message": "$REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorLocal": {
+    "message": "$REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorClosed": {
+    "message": "$REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorOther": {
+    "message": "$REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendBusy": {
+    "message": "Ce message est déjà en cours d'envoi."
+  },
+  "sendProtected": {
+    "message": "Message non envoyé : la signature et le chiffrement (OpenPGP, S/MIME) ne sont pas encore pris en charge par Sync443, ou leur état n'a pas pu être vérifié. Désactivez-les pour ce message. Il reste dans la fenêtre de rédaction."
+  },
+  "sendAccountUnchecked": {
+    "message": "Message non envoyé : Sync443 n'a pas pu vérifier le compte d'envoi, donc rien n'est parti. Le message reste dans la fenêtre de rédaction."
+  },
+  "sendRouteUnchecked": {
+    "message": "Message non envoyé : Sync443 n'a pas pu vérifier le serveur d'envoi de ce compte, donc rien n'est parti. Le message reste dans la fenêtre de rédaction."
+  },
+  "sendUnexpected": {
+    "message": "Message non envoyé : erreur inattendue. Il reste dans la fenêtre de rédaction."
+  },
+  "sendFailed": {
+    "message": "Message non envoyé : $REASON$ Il reste dans la fenêtre de rédaction.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendFailedDraft": {
+    "message": "Message non envoyé : $REASON$ Il reste dans la fenêtre de rédaction et dans les brouillons.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendUncertain": {
+    "message": "Envoi incertain : $REASON$ Vérifiez le dossier Envoyés avant de renvoyer le message, resté dans la fenêtre de rédaction.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendReasonDraft": {
+    "message": "le brouillon n'a pas pu être enregistré."
+  },
+  "sendReasonDetails": {
+    "message": "la fenêtre de rédaction n'a pas pu être relue."
+  },
+  "sendReasonIdentity": {
+    "message": "l'expéditeur a changé pendant l'envoi. Cliquez de nouveau sur Envoyer."
+  },
+  "sendReasonProtection": {
+    "message": "la signature ou le chiffrement (OpenPGP, S/MIME) a été demandé, ce que Sync443 ne prend pas encore en charge."
+  },
+  "sendReasonFolder": {
+    "message": "le brouillon n'a pas été enregistré dans le compte Sync443 de cet expéditeur. Vérifiez le dossier des brouillons de l'identité."
+  },
+  "sendReasonEncrypted": {
+    "message": "les messages chiffrés (OpenPGP, S/MIME) ne peuvent pas être envoyés par Sync443."
+  },
+  "sendReasonMime": {
+    "message": "le message n'a pas pu être préparé."
+  },
+  "sendReasonTooLarge": {
+    "message": "message trop volumineux (plus de $SIZE$ Mo).",
+    "placeholders": {
+      "size": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendReasonRead": {
+    "message": "le brouillon n'a pas pu être lu."
+  },
+  "sendReasonEmpty": {
+    "message": "le brouillon est vide."
+  },
+  "sendReasonStatus": {
+    "message": "réponse inattendue du serveur, le message est peut-être parti."
+  },
+  "sendReasonInterrupted": {
+    "message": "la connexion s'est interrompue après l'envoi de la requête, le message est peut-être parti."
+  },
+  "sendReasonUnexpected": {
+    "message": "erreur inattendue."
+  },
+  "sendReasonRefused": {
+    "message": "$REASON$ (Status $STATUS$).",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      },
+      "status": {
+        "content": "$2"
+      }
+    }
+  },
+  "sendStatus107": {
+    "message": "le serveur refuse le format du message"
+  },
+  "sendStatus110": {
+    "message": "erreur du serveur"
+  },
+  "sendStatus111": {
+    "message": "erreur temporaire du serveur, réessayez plus tard"
+  },
+  "sendStatus113": {
+    "message": "la boîte est pleine sur le serveur"
+  },
+  "sendStatus114": {
+    "message": "la boîte est momentanément indisponible sur le serveur"
+  },
+  "sendStatus115": {
+    "message": "quota d'envoi du serveur dépassé"
+  },
+  "sendStatus116": {
+    "message": "un destinataire n'a pas été reconnu par le serveur"
+  },
+  "sendStatus118": {
+    "message": "le serveur indique que ce message a déjà été envoyé"
+  },
+  "sendStatus119": {
+    "message": "le message n'a aucun destinataire"
+  },
+  "sendStatus120": {
+    "message": "le serveur n'a pas pu remettre le message"
+  },
+  "sendStatus122": {
+    "message": "pièce jointe trop volumineuse pour le serveur"
+  },
+  "sendStatusOther": {
+    "message": "refus du serveur"
+  },
+  "sentLeftoverDraft": {
+    "message": "Message envoyé, mais son brouillon n'a pas pu être supprimé : ne le renvoyez pas."
+  },
+  "sentLeftoverWindow": {
+    "message": "Message envoyé, mais la fenêtre de rédaction n'a pas pu être fermée : ne le renvoyez pas."
+  },
+  "sentLeftoverBoth": {
+    "message": "Message envoyé, mais son brouillon n'a pas pu être supprimé et la fenêtre de rédaction n'a pas pu être fermée : ne le renvoyez pas."
+  }
+}

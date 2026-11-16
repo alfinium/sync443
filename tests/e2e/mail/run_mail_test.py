@@ -27,6 +27,13 @@ the strict mock ActiveSync server (mock_eas.py).
   --src=DIR  test another source tree instead of src/ (e.g. a copy with a
              proposed patch applied); the release-package check still looks
              at src/
+  --locale=LANG
+             Thunderbird's interface language for the run (intl.locale.requested,
+             e.g. en-US or fr; the build must ship that language): the
+             scenario checks that the extension's texts (settings page,
+             toolbar button, manifest) are in it. Without it, Thunderbird
+             keeps the language of its build, and the texts must match that
+             language (French or English)
 
 Windows, macOS, Linux; Python 3.8+ standard library only.
   THUNDERBIRD   path of the Thunderbird executable (otherwise looked for in
@@ -472,6 +479,16 @@ def build_test_package(work, config, src):
     return xpi
 
 
+def catalogues(src):
+    """{language: {key: message}} of the extension's translations (src/_locales), for the language checks."""
+    out = {}
+    base = Path(src) / "_locales"
+    for path in sorted(base.glob("*/messages.json")):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        out[path.parent.name] = {key: entry["message"] for key, entry in data.items()}
+    return out
+
+
 def release_package_files():
     """What tools/build_xpi.py would package (without building anything)."""
     spec = importlib.util.spec_from_file_location("build_xpi", ROOT / "tools" / "build_xpi.py")
@@ -585,8 +602,13 @@ def main():
     trace = "--trace" in sys.argv
     phase_marks = {}  # phase -> (first seq, launch time)
     src = ROOT / "src"
+    ui_locale = None
     for arg in sys.argv[1:]:
-        if arg.startswith("--src="):
+        if arg.startswith("--locale="):
+            ui_locale = arg.split("=", 1)[1]
+            if not re.fullmatch(r"[a-z]{2,3}(?:-[A-Z]{2})?", ui_locale):
+                sys.exit(f"--locale : langue invalide : {ui_locale!r} (par exemple en-US ou fr)")
+        elif arg.startswith("--src="):
             src = Path(arg.split("=", 1)[1]).resolve()
             if not (src / "manifest.json").is_file():
                 sys.exit(f"--src : pas de manifest.json dans {src}")
@@ -628,7 +650,9 @@ def main():
                         serverArchives=server_archives,
                         debugLog=debug_log,
                         alice={"login": ALICE[0], "password": ALICE[1]},
-                        bob={"login": BOB[0], "password": BOB[1]}),
+                        bob={"login": BOB[0], "password": BOB[1]},
+                        uiLocale=ui_locale,
+                        catalogues=catalogues(src)),
         }
 
         # 2. Test package, throw-away profile.
@@ -636,7 +660,7 @@ def main():
         (profile / "extensions").mkdir(parents=True)
         xpi = build_test_package(work, config, src)
         shutil.copy2(xpi, profile / "extensions" / xpi.name)
-        net.write_text(profile / "user.js", USER_JS)
+        net.write_text(profile / "user.js", USER_JS + (f'user_pref("intl.locale.requested", "{ui_locale}");\n' if ui_locale else ""))
         log_path = work / "thunderbird.log"
         release = release_package_files()
         leaked = [n for n in release if any(t in n for t in TEST_FILES)]
@@ -762,7 +786,8 @@ def main():
 
     width = min(max((len(r[1]) for r in results), default=0), 110)
     print(f"\nRésultats courrier : {thunderbird} (sans interface), {sys.platform}"
-          + (f", sources {src}" if src != ROOT / "src" else "") + (", « Dossiers locaux » créés d'avance" if local_folders else "")
+          + (f", sources {src}" if src != ROOT / "src" else "") + (f", langue {ui_locale}" if ui_locale else "")
+          + (", « Dossiers locaux » créés d'avance" if local_folders else "")
           + ("" if server_archives else ", sans dossier « Archives » sur le serveur"))
     for status, label, detail in results:
         shown = str(detail).replace("\r", "\\r").replace("\n", "\\n") if detail not in (None, "") else ""

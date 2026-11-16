@@ -15,6 +15,7 @@ import { test, assert, eq, rejects, prng } from "./harness.mjs";
 import { memoryArea } from "./journal.test.mjs";
 import { fakeConnector, fakeClock, server, http, wbxmlHttp, PIN } from "./client.test.mjs";
 import { el } from "../../src/core/wbxml.mjs";
+import { fakeI18n } from "./i18n-fake.mjs";
 
 const HOST = "mail.example.com";
 const OTHER = "mail2.example.com";
@@ -80,6 +81,7 @@ function world() {
       lastError: undefined,
     }),
     storage: ns({ local: w.area }),
+    i18n: fakeI18n("fr"),
     notifications: ns({ create: async () => "n" }),
     alarms: ns({
       getAll: async () => [...w.alarms.values()],

@@ -1,0 +1,1051 @@
+{
+  "extensionName": {
+    "message": "Sync443 – EAS Client for Thunderbird",
+    "description": "Name of the extension (manifest). A product name: not translated."
+  },
+  "extensionDescription": {
+    "message": "Native Exchange ActiveSync in Thunderbird: mail, folders and sending, with any compatible server.",
+    "description": "Description of the extension (manifest, add-ons manager)."
+  },
+  "languageTag": {
+    "message": "en",
+    "description": "Language of this catalogue as a BCP 47 tag (lang attribute of the settings page)."
+  },
+  "actionSync": {
+    "message": "Synchronize",
+    "description": "Toolbar button title, nothing synchronized yet."
+  },
+  "actionSyncLast": {
+    "message": "Synchronize (last synchronized at $TIME$)",
+    "description": "Toolbar button title; $TIME$: time of the last successful synchronization.",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "actionCheckSettings": {
+    "message": "Sync443: check $NAMES$ in the settings",
+    "description": "Toolbar button title when mailboxes have a problem; $NAMES$: their names, comma-separated.",
+    "placeholders": {
+      "names": {
+        "content": "$1"
+      }
+    }
+  },
+  "syncRunning": {
+    "message": "Synchronizing…",
+    "description": "Toolbar button title, and status of a mailbox, while a synchronization runs."
+  },
+  "menuSyncAll": {
+    "message": "Synchronize Sync443 now",
+    "description": "Tools menu item."
+  },
+  "menuSettings": {
+    "message": "Sync443 settings…",
+    "description": "Tools menu item."
+  },
+  "menuSyncOne": {
+    "message": "Synchronize now (Sync443)",
+    "description": "Context menu item of a Sync443 account in the folder pane."
+  },
+  "optionsTitle": {
+    "message": "Sync443 – Settings",
+    "description": "Title of the settings page."
+  },
+  "optionsSubtitle": {
+    "message": "Exchange ActiveSync, over HTTPS only",
+    "description": "Subtitle of the settings page."
+  },
+  "pageOutsideThunderbird": {
+    "message": "This page only works when opened from Thunderbird, in the extension's settings.",
+    "description": "Shown when the settings page is opened outside Thunderbird."
+  },
+  "mailboxesTitle": {
+    "message": "Mailboxes",
+    "description": "Heading of the list of mailboxes."
+  },
+  "addMailbox": {
+    "message": "Add a mailbox",
+    "description": "Button."
+  },
+  "mailboxesEmpty": {
+    "message": "No mailbox yet. Click “Add a mailbox”.",
+    "description": "Shown when there is no mailbox; quotes the addMailbox button."
+  },
+  "unnamed": {
+    "message": "unnamed",
+    "description": "Name shown for a mailbox that has neither name nor address."
+  },
+  "metaMailPeriod": {
+    "message": "mail: $PERIOD$",
+    "description": "Part of a mailbox's summary line; $PERIOD$: a period such as “1 month”.",
+    "placeholders": {
+      "period": {
+        "content": "$1"
+      }
+    }
+  },
+  "confirmDeletes": {
+    "message": "Confirm the deletions",
+    "description": "Button: apply the deletions held back by the mass-deletion safeguard."
+  },
+  "keepLocalCopies": {
+    "message": "Keep the local copies",
+    "description": "Button: drop the deletions held back, keep the local messages."
+  },
+  "syncButton": {
+    "message": "Synchronize",
+    "description": "Button of a mailbox: synchronize it now."
+  },
+  "editButton": {
+    "message": "Edit",
+    "description": "Button of a mailbox."
+  },
+  "removeButton": {
+    "message": "Remove",
+    "description": "Button of a mailbox: remove it from Thunderbird (nothing is deleted on the server)."
+  },
+  "removeConfirmButton": {
+    "message": "Remove the mailbox",
+    "description": "Button confirming the removal of a mailbox."
+  },
+  "cancel": {
+    "message": "Cancel",
+    "description": "Button."
+  },
+  "removeQuestion": {
+    "message": "Remove the mailbox “$NAME$”? Its account, its local folders and its password will be removed from Thunderbird. Nothing is deleted on the server.",
+    "description": "Asked before a mailbox is removed; $NAME$: its name.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "discardConfirm": {
+    "message": "The deletions made on the server will not be applied: the messages stay in Thunderbird, and the folders concerned are synchronized again with the server. A folder deleted on the server stays here, without synchronization.",
+    "description": "Asked before the deletions held back are dropped (keepLocalCopies)."
+  },
+  "noAnswer": {
+    "message": "The extension is not responding. Reload this page.",
+    "description": "The background page did not answer."
+  },
+  "badAnswer": {
+    "message": "Unexpected response from the extension.",
+    "description": "The background page gave an answer of an unexpected shape."
+  },
+  "listFailed": {
+    "message": "The list of mailboxes could not be read.",
+    "description": "Notice."
+  },
+  "editedRemoved": {
+    "message": "The mailbox being edited has been removed.",
+    "description": "Notice."
+  },
+  "deletesConfirmed": {
+    "message": "Deletions confirmed; synchronization started.",
+    "description": "Notice."
+  },
+  "syncStarted": {
+    "message": "Synchronization started.",
+    "description": "Notice."
+  },
+  "syncNotStarted": {
+    "message": "The synchronization could not be started.",
+    "description": "Notice."
+  },
+  "localCopiesKept": {
+    "message": "Local copies kept; synchronization started.",
+    "description": "Notice."
+  },
+  "deletesNotDiscarded": {
+    "message": "The deletions could not be set aside.",
+    "description": "Notice."
+  },
+  "mailboxRemoved": {
+    "message": "Mailbox “$NAME$” removed.",
+    "description": "Notice; $NAME$: name of the mailbox.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "mailboxNotRemoved": {
+    "message": "The mailbox could not be removed.",
+    "description": "Notice."
+  },
+  "mailboxSaved": {
+    "message": "Mailbox “$NAME$” saved.",
+    "description": "Notice; $NAME$: name of the mailbox.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "mailboxAdded": {
+    "message": "Mailbox “$NAME$” added. First synchronization in progress.",
+    "description": "Notice; $NAME$: name of the mailbox.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "mailboxNotSaved": {
+    "message": "The mailbox could not be saved.",
+    "description": "Error."
+  },
+  "logUnavailable": {
+    "message": "Log unavailable.",
+    "description": "Shown instead of the log."
+  },
+  "debugNotChanged": {
+    "message": "Debugging could not be changed.",
+    "description": "Notice."
+  },
+  "logNotCleared": {
+    "message": "The log could not be cleared.",
+    "description": "Notice."
+  },
+  "newMailbox": {
+    "message": "New mailbox",
+    "description": "Title of the form, new mailbox."
+  },
+  "editMailbox": {
+    "message": "Edit “$NAME$”",
+    "description": "Title of the form; $NAME$: name of the mailbox.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "fieldEmail": {
+    "message": "Email address",
+    "description": "Label."
+  },
+  "fieldPassword": {
+    "message": "Password",
+    "description": "Label."
+  },
+  "passwordHintNew": {
+    "message": "If the server allows it, prefer an app password reserved for ActiveSync.",
+    "description": "Hint under the password, new mailbox."
+  },
+  "passwordHintEdit": {
+    "message": "Leave empty to keep the saved password. It must be typed again if the server or the sign-in name changes.",
+    "description": "Hint under the password, existing mailbox."
+  },
+  "fieldName": {
+    "message": "Mailbox name",
+    "description": "Label."
+  },
+  "nameHint": {
+    "message": "Shown in Thunderbird's account list. If left empty, the email address is used.",
+    "description": "Hint."
+  },
+  "fieldServer": {
+    "message": "Server",
+    "description": "Label."
+  },
+  "serverHint": {
+    "message": "For example mail.example.com, without /Microsoft-Server-ActiveSync. Always over HTTPS.",
+    "description": "Hint."
+  },
+  "fieldUsername": {
+    "message": "Sign-in name (optional)",
+    "description": "Label."
+  },
+  "usernameHint": {
+    "message": "Fill in only if it differs from the email address, for example DOMAIN\\name.",
+    "description": "Hint."
+  },
+  "fieldFrequency": {
+    "message": "Frequency",
+    "description": "Label."
+  },
+  "fieldPeriod": {
+    "message": "Mail period",
+    "description": "Label: how far back mail is synchronized."
+  },
+  "fieldKinds": {
+    "message": "Items to synchronize",
+    "description": "Label of the group of check boxes."
+  },
+  "kindsHint": {
+    "message": "In this version, only mail is synchronized. The other choices are saved for later.",
+    "description": "Hint."
+  },
+  "soon": {
+    "message": "coming soon",
+    "description": "Badge next to an item not synchronized yet in this version."
+  },
+  "save": {
+    "message": "Save",
+    "description": "Button."
+  },
+  "saving": {
+    "message": "Saving…",
+    "description": "Button, while saving."
+  },
+  "permissionMissing": {
+    "message": "Without permission to access $SERVER$, the mailbox cannot be synchronized. Save again and accept Thunderbird's request.",
+    "description": "Error on the server field; $SERVER$: the server.",
+    "placeholders": {
+      "server": {
+        "content": "$1"
+      }
+    }
+  },
+  "freqPush": {
+    "message": "As soon as mail arrives",
+    "description": "Frequency choice: as soon as mail arrives (push)."
+  },
+  "freqEveryMinute": {
+    "message": "Every minute",
+    "description": "Frequency choice."
+  },
+  "freqEveryMinutes": {
+    "message": "Every $COUNT$ minutes",
+    "description": "Frequency choice; $COUNT$: a number of minutes (5 or more).",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "freqEveryHour": {
+    "message": "Every hour",
+    "description": "Frequency choice."
+  },
+  "period1Day": {
+    "message": "1 day",
+    "description": "Mail period choice."
+  },
+  "period3Days": {
+    "message": "3 days",
+    "description": "Mail period choice."
+  },
+  "period1Week": {
+    "message": "1 week",
+    "description": "Mail period choice."
+  },
+  "period2Weeks": {
+    "message": "2 weeks",
+    "description": "Mail period choice."
+  },
+  "period1Month": {
+    "message": "1 month",
+    "description": "Mail period choice."
+  },
+  "periodAll": {
+    "message": "All",
+    "description": "Mail period choice: all mail."
+  },
+  "periodUnknown": {
+    "message": "Unknown",
+    "description": "Mail period that is not one of the choices."
+  },
+  "kindMail": {
+    "message": "Mail",
+    "description": "Item to synchronize."
+  },
+  "kindCalendar": {
+    "message": "Calendar",
+    "description": "Item to synchronize."
+  },
+  "kindContacts": {
+    "message": "Contacts",
+    "description": "Item to synchronize."
+  },
+  "kindTasks": {
+    "message": "Tasks",
+    "description": "Item to synchronize."
+  },
+  "kindSoon": {
+    "message": "$KIND$ (coming soon)",
+    "description": "Item in a mailbox's summary; $KIND$: the item, not synchronized yet in this version.",
+    "placeholders": {
+      "kind": {
+        "content": "$1"
+      }
+    }
+  },
+  "kindsNone": {
+    "message": "Nothing",
+    "description": "Summary of a mailbox that synchronizes nothing."
+  },
+  "emailMissing": {
+    "message": "Enter the email address.",
+    "description": "Field error."
+  },
+  "emailTooLong": {
+    "message": "Email address too long.",
+    "description": "Field error."
+  },
+  "emailInvalid": {
+    "message": "Invalid email address (for example: firstname.lastname@example.com).",
+    "description": "Field error."
+  },
+  "usernameTooLong": {
+    "message": "Sign-in name too long (256 characters at most).",
+    "description": "Field error."
+  },
+  "usernameColon": {
+    "message": "The sign-in name must not contain a colon ( : ).",
+    "description": "Field error."
+  },
+  "usernameBadChar": {
+    "message": "The sign-in name contains a character that is not allowed.",
+    "description": "Field error."
+  },
+  "passwordMissing": {
+    "message": "Enter the password.",
+    "description": "Field error."
+  },
+  "passwordRetype": {
+    "message": "The server or the sign-in name has changed: type the password again.",
+    "description": "Field error."
+  },
+  "passwordTooLong": {
+    "message": "Password too long.",
+    "description": "Field error."
+  },
+  "passwordBadChar": {
+    "message": "The password contains a character that is not allowed.",
+    "description": "Field error."
+  },
+  "nameTooLong": {
+    "message": "Name too long (256 characters at most).",
+    "description": "Field error."
+  },
+  "chooseFrequency": {
+    "message": "Choose a synchronization frequency.",
+    "description": "Field error."
+  },
+  "choosePeriod": {
+    "message": "Choose the period of mail to synchronize.",
+    "description": "Field error."
+  },
+  "chooseKind": {
+    "message": "Choose at least one item to synchronize.",
+    "description": "Field error."
+  },
+  "serverInvalid": {
+    "message": "Invalid server.",
+    "description": "Field error."
+  },
+  "serverEmpty": {
+    "message": "Enter the server, for example mail.example.com.",
+    "description": "Field error."
+  },
+  "serverSpace": {
+    "message": "The server address must not contain spaces.",
+    "description": "Field error."
+  },
+  "serverNotHttps": {
+    "message": "The server must be reachable over HTTPS.",
+    "description": "Field error."
+  },
+  "serverCredentials": {
+    "message": "The server address must not contain a sign-in name or a password.",
+    "description": "Field error."
+  },
+  "serverInvalidValue": {
+    "message": "Invalid server: $VALUE$",
+    "description": "Field error; $VALUE$: what was typed.",
+    "placeholders": {
+      "value": {
+        "content": "$1"
+      }
+    }
+  },
+  "serverPortInvalid": {
+    "message": "Invalid port: $VALUE$",
+    "description": "Field error; $VALUE$: the port that was typed.",
+    "placeholders": {
+      "value": {
+        "content": "$1"
+      }
+    }
+  },
+  "dateAtTime": {
+    "message": "$DAY$ at $TIME$",
+    "description": "A date and a time; $DAY$: the date (e.g. 12/11), $TIME$: the time (e.g. 14:05).",
+    "placeholders": {
+      "day": {
+        "content": "$1"
+      },
+      "time": {
+        "content": "$2"
+      }
+    }
+  },
+  "statusMassDelete": {
+    "message": "Synchronization paused: the server deleted $COUNT$ messages at once. These deletions will only be applied after your confirmation; you can also keep the local copies.",
+    "description": "Status; $COUNT$: number of messages the server deleted at once.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusMassDeleteMany": {
+    "message": "Synchronization paused: the server deleted many messages at once. These deletions will only be applied after your confirmation; you can also keep the local copies.",
+    "description": "Status, when the number of deletions is not known."
+  },
+  "statusBlocked": {
+    "message": "Stopped: $REASON$ Nothing will be attempted automatically: click “Synchronize” to resume.",
+    "description": "Status after a serious error; $REASON$: what happened, ending with a full stop. Quotes the syncButton button.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusSeriousError": {
+    "message": "serious error.",
+    "description": "Reason of statusBlocked when none is known."
+  },
+  "statusError": {
+    "message": "Error: $REASON$",
+    "description": "Status after an error; $REASON$: what happened, ending with a full stop.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusErrorUnknown": {
+    "message": "unknown error",
+    "description": "Reason of statusError when none is known."
+  },
+  "statusRetryAt": {
+    "message": "Next attempt at $TIME$.",
+    "description": "Follows statusError; $TIME$: when the next automatic attempt takes place.",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusSyncedAt": {
+    "message": "Synchronized at $TIME$.",
+    "description": "Status; $TIME$: a time today.",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusSyncedOn": {
+    "message": "Synchronized on $DATE$.",
+    "description": "Status; $DATE$: an earlier day and its time (dateAtTime).",
+    "placeholders": {
+      "date": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusNever": {
+    "message": "Not synchronized yet.",
+    "description": "Status."
+  },
+  "failedOne": {
+    "message": "1 message could not be imported: it will be tried again automatically.",
+    "description": "Follows the status."
+  },
+  "failedMany": {
+    "message": "$COUNT$ messages could not be imported: they will be tried again automatically.",
+    "description": "Follows the status; $COUNT$: number of messages (2 or more).",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorDetail": {
+    "message": "Details (in French): $REASON$",
+    "description": "Tooltip of a status or an error: the engine's own reason, which is written in French.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "diagnosticTitle": {
+    "message": "Diagnostics",
+    "description": "Heading."
+  },
+  "diagnosticHint": {
+    "message": "The log contains no message content, subject or address. Debugging adds technical values (statuses, keys) to it and stops by itself after one hour. Log entries are written in French.",
+    "description": "Hint above the log."
+  },
+  "debugLabel": {
+    "message": "Debugging for 1 hour",
+    "description": "Check box."
+  },
+  "debugActiveUntil": {
+    "message": "Active until $TIME$.",
+    "description": "Next to the check box; $TIME$: when debugging switches itself off.",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "logRefresh": {
+    "message": "Refresh",
+    "description": "Button."
+  },
+  "logClear": {
+    "message": "Clear the log",
+    "description": "Button."
+  },
+  "logLabel": {
+    "message": "Extension log",
+    "description": "Accessible name of the log."
+  },
+  "logEmpty": {
+    "message": "The log is empty.",
+    "description": "Shown instead of the log."
+  },
+  "levelError": {
+    "message": "error",
+    "description": "Level of a log entry (8 characters at most)."
+  },
+  "levelWarn": {
+    "message": "warning",
+    "description": "Level of a log entry (8 characters at most)."
+  },
+  "levelInfo": {
+    "message": "info",
+    "description": "Level of a log entry (8 characters at most)."
+  },
+  "levelDebug": {
+    "message": "debug",
+    "description": "Level of a log entry (8 characters at most)."
+  },
+  "unexpectedError": {
+    "message": "Unexpected error.",
+    "description": "Error."
+  },
+  "invalidRequest": {
+    "message": "Invalid request.",
+    "description": "Error."
+  },
+  "invalidEmail": {
+    "message": "Invalid email address.",
+    "description": "Field error."
+  },
+  "invalidUsername": {
+    "message": "Invalid sign-in name.",
+    "description": "Field error."
+  },
+  "invalidFrequency": {
+    "message": "Invalid frequency.",
+    "description": "Field error."
+  },
+  "invalidPeriod": {
+    "message": "Invalid period.",
+    "description": "Field error."
+  },
+  "invalidPassword": {
+    "message": "Invalid password.",
+    "description": "Field error."
+  },
+  "passwordType": {
+    "message": "Type the password.",
+    "description": "Field error."
+  },
+  "mailboxGone": {
+    "message": "This mailbox no longer exists.",
+    "description": "Error."
+  },
+  "emailTaken": {
+    "message": "This address is already configured.",
+    "description": "Field error."
+  },
+  "emailFixed": {
+    "message": "The address of a mailbox cannot be changed: remove the mailbox and add a new one.",
+    "description": "Field error."
+  },
+  "loginTaken": {
+    "message": "Another mailbox already uses this server with this sign-in name.",
+    "description": "Field error."
+  },
+  "permissionRefused": {
+    "message": "Access to the server is not allowed: accept Thunderbird's request.",
+    "description": "Field error."
+  },
+  "cannotConnect": {
+    "message": "Cannot connect to the server.",
+    "description": "Field error."
+  },
+  "accountNotPrepared": {
+    "message": "The Thunderbird account could not be prepared ($CODE$).",
+    "description": "Error; $CODE$: technical error code.",
+    "placeholders": {
+      "code": {
+        "content": "$1"
+      }
+    }
+  },
+  "passwordNotSaved": {
+    "message": "The password could not be saved (is the Primary Password locked?).",
+    "description": "Field error. “Primary Password” is Thunderbird's name for the password protecting saved passwords."
+  },
+  "errorUnknownMailbox": {
+    "message": "Unknown mailbox.",
+    "description": "Error."
+  },
+  "errorPasswordLocked": {
+    "message": "The password cannot be accessed at the moment.",
+    "description": "Error: the password manager cannot be read for now (Primary Password not entered)."
+  },
+  "errorPasswordAbsent": {
+    "message": "No password saved: edit the mailbox to enter it.",
+    "description": "Error."
+  },
+  "errorAuth": {
+    "message": "The server refused the sign-in name or the password.",
+    "description": "Engine error AUTH. $REASON$: the engine's own reason, written in French (the French catalogue shows it as it is; other languages may leave it out).",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorDenied": {
+    "message": "The server does not allow this account or this device to synchronize.",
+    "description": "Engine error DENIED. $REASON$: the engine's own reason, written in French (the French catalogue shows it as it is; other languages may leave it out).",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorWipe": {
+    "message": "The server asked to wipe this device remotely. The request was refused: nothing was erased, and synchronization is stopped.",
+    "description": "Engine error WIPE_REQUESTED. $REASON$: the engine's own reason, written in French (the French catalogue shows it as it is; other languages may leave it out).",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorConfig": {
+    "message": "The mailbox cannot be synchronized with its current settings: check them, then save the mailbox again.",
+    "description": "Engine error CONFIG. $REASON$: the engine's own reason, written in French (the French catalogue shows it as it is; other languages may leave it out).",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorTls": {
+    "message": "Connection refused before the password was sent: the server's certificate was not accepted.",
+    "description": "Engine error TLS. $REASON$: the engine's own reason, written in French (the French catalogue shows it as it is; other languages may leave it out).",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorProxyAuth": {
+    "message": "This network's proxy requires its own authentication, which is not supported yet.",
+    "description": "Engine error PROXY_AUTH. $REASON$: the engine's own reason, written in French (the French catalogue shows it as it is; other languages may leave it out).",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorProvision": {
+    "message": "The exchange of security policies with the server failed.",
+    "description": "Engine error PROVISION. $REASON$: the engine's own reason, written in French (the French catalogue shows it as it is; other languages may leave it out).",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorHttp": {
+    "message": "The server responded with an HTTP error.",
+    "description": "Engine error HTTP. $REASON$: the engine's own reason, written in French (the French catalogue shows it as it is; other languages may leave it out).",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorBusy": {
+    "message": "The server is busy, or too many connections are open. A new attempt will be made later.",
+    "description": "Engine error BUSY. $REASON$: the engine's own reason, written in French (the French catalogue shows it as it is; other languages may leave it out).",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorNetwork": {
+    "message": "The server cannot be reached.",
+    "description": "Engine error NETWORK. $REASON$: the engine's own reason, written in French (the French catalogue shows it as it is; other languages may leave it out).",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorTimeout": {
+    "message": "The server did not respond in time.",
+    "description": "Engine error TIMEOUT. $REASON$: the engine's own reason, written in French (the French catalogue shows it as it is; other languages may leave it out).",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorTooLarge": {
+    "message": "The server's response is too large.",
+    "description": "Engine error TOO_LARGE. $REASON$: the engine's own reason, written in French (the French catalogue shows it as it is; other languages may leave it out).",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorBadResponse": {
+    "message": "The server sent an unexpected or invalid response.",
+    "description": "Engine error BAD_RESPONSE. $REASON$: the engine's own reason, written in French (the French catalogue shows it as it is; other languages may leave it out).",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorCancelled": {
+    "message": "The operation was cancelled.",
+    "description": "Engine error CANCELLED. $REASON$: the engine's own reason, written in French (the French catalogue shows it as it is; other languages may leave it out).",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorServer": {
+    "message": "The server refused the request.",
+    "description": "Engine error SERVER. $REASON$: the engine's own reason, written in French (the French catalogue shows it as it is; other languages may leave it out).",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorLocal": {
+    "message": "The changes could not be written into Thunderbird.",
+    "description": "Engine error LOCAL. $REASON$: the engine's own reason, written in French (the French catalogue shows it as it is; other languages may leave it out).",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorClosed": {
+    "message": "The synchronization of this mailbox has stopped.",
+    "description": "Engine error CLOSED. $REASON$: the engine's own reason, written in French (the French catalogue shows it as it is; other languages may leave it out).",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorOther": {
+    "message": "Unexpected error.",
+    "description": "Engine error of another kind. $REASON$: the engine's own reason, written in French (the French catalogue shows it as it is; other languages may leave it out).",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendBusy": {
+    "message": "This message is already being sent.",
+    "description": "Notification."
+  },
+  "sendProtected": {
+    "message": "Message not sent: signing and encryption (OpenPGP, S/MIME) are not supported by Sync443 yet, or their state could not be checked. Turn them off for this message. It remains in the compose window.",
+    "description": "Notification."
+  },
+  "sendAccountUnchecked": {
+    "message": "Message not sent: Sync443 could not check the sending account, so nothing was sent. The message remains in the compose window.",
+    "description": "Notification."
+  },
+  "sendRouteUnchecked": {
+    "message": "Message not sent: Sync443 could not check this account's outgoing server, so nothing was sent. The message remains in the compose window.",
+    "description": "Notification."
+  },
+  "sendUnexpected": {
+    "message": "Message not sent: unexpected error. It remains in the compose window.",
+    "description": "Notification."
+  },
+  "sendFailed": {
+    "message": "Message not sent: $REASON$ It remains in the compose window.",
+    "description": "Notification; $REASON$: why (one of the sendReason… messages, or an error), ending with a full stop.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendFailedDraft": {
+    "message": "Message not sent: $REASON$ It remains in the compose window and in the drafts.",
+    "description": "Notification, the message also saved as a draft; $REASON$: as in sendFailed.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendUncertain": {
+    "message": "Sending uncertain: $REASON$ Check the Sent folder before sending the message again; it remains in the compose window.",
+    "description": "Notification; $REASON$: as in sendFailed.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendReasonDraft": {
+    "message": "the draft could not be saved.",
+    "description": "Reason (in sendFailed)."
+  },
+  "sendReasonDetails": {
+    "message": "the compose window could not be read again.",
+    "description": "Reason (in sendFailed)."
+  },
+  "sendReasonIdentity": {
+    "message": "the sender changed while the message was being sent. Click Send again.",
+    "description": "Reason (in sendFailed)."
+  },
+  "sendReasonProtection": {
+    "message": "signing or encryption (OpenPGP, S/MIME) was asked for, which Sync443 does not support yet.",
+    "description": "Reason (in sendFailed)."
+  },
+  "sendReasonFolder": {
+    "message": "the draft was not saved in this sender's Sync443 account. Check the identity's drafts folder.",
+    "description": "Reason (in sendFailed)."
+  },
+  "sendReasonEncrypted": {
+    "message": "encrypted messages (OpenPGP, S/MIME) cannot be sent by Sync443.",
+    "description": "Reason (in sendFailed)."
+  },
+  "sendReasonMime": {
+    "message": "the message could not be prepared.",
+    "description": "Reason (in sendFailed)."
+  },
+  "sendReasonTooLarge": {
+    "message": "message too large (more than $SIZE$ MB).",
+    "description": "Reason (in sendFailed); $SIZE$: a size in megabytes.",
+    "placeholders": {
+      "size": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendReasonRead": {
+    "message": "the draft could not be read.",
+    "description": "Reason (in sendFailed)."
+  },
+  "sendReasonEmpty": {
+    "message": "the draft is empty.",
+    "description": "Reason (in sendFailed)."
+  },
+  "sendReasonStatus": {
+    "message": "unexpected response from the server; the message may already have left.",
+    "description": "Reason (in sendUncertain)."
+  },
+  "sendReasonInterrupted": {
+    "message": "the connection was interrupted after the request was sent; the message may already have left.",
+    "description": "Reason (in sendUncertain)."
+  },
+  "sendReasonUnexpected": {
+    "message": "unexpected error.",
+    "description": "Reason (in sendFailed)."
+  },
+  "sendReasonRefused": {
+    "message": "$REASON$ (Status $STATUS$).",
+    "description": "Reason (in sendFailed); $REASON$: one of the sendStatus… messages; $STATUS$: the server's status code.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      },
+      "status": {
+        "content": "$2"
+      }
+    }
+  },
+  "sendStatus107": {
+    "message": "the server refuses the format of the message",
+    "description": "SendMail status 107 (in sendReasonRefused)."
+  },
+  "sendStatus110": {
+    "message": "server error",
+    "description": "SendMail status 110 (in sendReasonRefused)."
+  },
+  "sendStatus111": {
+    "message": "temporary server error, try again later",
+    "description": "SendMail status 111 (in sendReasonRefused)."
+  },
+  "sendStatus113": {
+    "message": "the mailbox is full on the server",
+    "description": "SendMail status 113 (in sendReasonRefused)."
+  },
+  "sendStatus114": {
+    "message": "the mailbox is temporarily unavailable on the server",
+    "description": "SendMail status 114 (in sendReasonRefused)."
+  },
+  "sendStatus115": {
+    "message": "the server's sending quota is exceeded",
+    "description": "SendMail status 115 (in sendReasonRefused)."
+  },
+  "sendStatus116": {
+    "message": "a recipient was not recognized by the server",
+    "description": "SendMail status 116 (in sendReasonRefused)."
+  },
+  "sendStatus118": {
+    "message": "the server indicates that this message has already been sent",
+    "description": "SendMail status 118 (in sendReasonRefused)."
+  },
+  "sendStatus119": {
+    "message": "the message has no recipient",
+    "description": "SendMail status 119 (in sendReasonRefused)."
+  },
+  "sendStatus120": {
+    "message": "the server could not deliver the message",
+    "description": "SendMail status 120 (in sendReasonRefused)."
+  },
+  "sendStatus122": {
+    "message": "attachment too large for the server",
+    "description": "SendMail status 122 (in sendReasonRefused)."
+  },
+  "sendStatusOther": {
+    "message": "refused by the server",
+    "description": "Any other SendMail status (in sendReasonRefused)."
+  },
+  "sentLeftoverDraft": {
+    "message": "Message sent, but its draft could not be deleted: do not send it again.",
+    "description": "Notification."
+  },
+  "sentLeftoverWindow": {
+    "message": "Message sent, but the compose window could not be closed: do not send it again.",
+    "description": "Notification."
+  },
+  "sentLeftoverBoth": {
+    "message": "Message sent, but its draft could not be deleted and the compose window could not be closed: do not send it again.",
+    "description": "Notification."
+  }
+}

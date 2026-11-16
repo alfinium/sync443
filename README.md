@@ -29,6 +29,7 @@ L'agenda, les tâches et les contacts sont prévus dans les versions suivantes
 |---|---|
 | Thunderbird | 140 ESR et versions ultérieures (vérifiée sur 140.17 ESR et 160) |
 | Systèmes | Windows, macOS, Linux |
+| Langues | Interface en anglais et en français, selon la langue de l'application (anglais par défaut). Le journal de diagnostic reste en français. |
 | Serveurs | Exchange Server sur site, et tout serveur Exchange ActiveSync 12.1 à 14.1 acceptant l'authentification par identifiant et mot de passe |
 | Non pris en charge | Microsoft 365 / Exchange Online (OAuth2) ; proxy exigeant sa propre authentification ; certificat émis par une autorité privée |
 
@@ -111,7 +112,8 @@ remplacer `python3` par `py -3`.
 | `python3 -I tools/provenance_check.py --ref <dossier>` | contrôle de l'absence de code repris d'un autre projet |
 
 Les tests de bout en bout utilisent un profil jetable. Le chemin de Thunderbird peut être indiqué
-par la variable `THUNDERBIRD`.
+par la variable `THUNDERBIRD` ; la langue de l'interface, pour le test du courrier, par l'option
+`--locale=en-US` (ou `fr`).
 
 Le code est écrit à partir des spécifications publiques (Microsoft MS-ASCMD, MS-ASWBXML,
 MS-ASPROV, MS-ASHTTP, MS-ASDTYPE ; IETF RFC 9110, 9112, 5322, 5545 et 6350), sans reprise de code

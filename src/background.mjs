@@ -12,13 +12,15 @@
  *  - fail-closed sending (send.mjs), installed before anything else;
  *  - the settings page talks to us through runtime.sendMessage (protocol in
  *    options/options.mjs) and follows our records through storage.onChanged;
- *  - timers (alarms), the "Synchroniser" button and menus.
+ *  - timers (alarms), the "Synchronize" button and menus.
  *
- * Nothing here holds a password longer than the client that uses it.
+ * What the user sees is in the language of Thunderbird (i18n.mjs); the log
+ * stays in French. Nothing here holds a password longer than the client
+ * that uses it.
  */
 
 import { Store, checkMailbox, newIds, SYNC_KINDS } from "./sync/store.mjs";
-import { parseServer, ServerAddressError } from "./core/server.mjs";
+import { parseServer } from "./core/server.mjs";
 import { EasClient, EasError, ERR } from "./transport/client.mjs";
 import { emailAddress, cleanText, personName } from "./core/sanitize.mjs";
 import { userInformationRequest, parseUserInformation } from "./core/protocol.mjs";
@@ -29,6 +31,7 @@ import { MailboxSync } from "./sync/mailbox.mjs";
 import { MailStore } from "./tb/mail-store.mjs";
 import { LocalEvents } from "./tb/events.mjs";
 import { EchoRegistry } from "./sync/echo.mjs";
+import { t, uiLanguage, errorText, errorDetail, serverErrorText } from "./i18n.mjs";
 
 const api = globalThis.browser;
 const ALARM = "sync443:";
@@ -69,7 +72,7 @@ const notify = (message) =>
 installSendHandler({
   clientFor: async (mailboxId) => {
     const mb = await store.getMailbox(mailboxId);
-    if (!mb) throw new EasError(ERR.CONFIG, "Boîte inconnue.");
+    if (!mb) throw new EasError(ERR.CONFIG, "Boîte inconnue.", { key: "errorUnknownMailbox" });
     return clientFor(mb);
   },
   accountOfIdentity: (identityId) => api.sync443Account.accountOfIdentity(identityId),
@@ -90,13 +93,15 @@ async function passwordOf(mb) {
     return await api.sync443Account.getPassword(mb.origin, loginOf(mb));
   } catch (e) {
     // LOCKED: the primary password was not entered; temporary, retried later.
-    throw new EasError(/^LOCKED:/.test(e?.message ?? "") ? ERR.NETWORK : ERR.CONFIG, "Mot de passe inaccessible pour le moment.");
+    throw new EasError(/^LOCKED:/.test(e?.message ?? "") ? ERR.NETWORK : ERR.CONFIG, "Mot de passe inaccessible pour le moment.", {
+      key: "errorPasswordLocked",
+    });
   }
 }
 
 async function clientFor(mb, password = null) {
   const pw = password ?? (await passwordOf(mb));
-  if (!pw) throw new EasError(ERR.CONFIG, "Mot de passe absent : modifiez la boîte pour le saisir.");
+  if (!pw) throw new EasError(ERR.CONFIG, "Mot de passe absent : modifiez la boîte pour le saisir.", { key: "errorPasswordAbsent" });
   const records = store.mailbox(mb.id);
   return new EasClient({
     server: serverOf(mb.origin),
@@ -284,35 +289,37 @@ api.alarms.onAlarm.addListener((alarm) => {
 
 // ── Mailboxes (settings page) ────────────────────────────────────────────
 
+/** A refusal for the settings page: `message` in the interface's language; `detail`: the engine's French reason, if any. */
 class FieldError extends Error {
-  constructor(field, message) {
+  constructor(field, message, detail = "") {
     super(message);
     this.field = field;
+    this.detail = detail;
   }
 }
 
 function checkInput(input) {
-  if (!input || typeof input !== "object") throw new FieldError(null, "Demande invalide.");
+  if (!input || typeof input !== "object") throw new FieldError(null, t("invalidRequest"));
   const email = emailAddress(String(input.email ?? ""));
-  if (!email) throw new FieldError("email", "Adresse e-mail invalide.");
+  if (!email) throw new FieldError("email", t("invalidEmail"));
   const username = String(input.username ?? "").trim();
   // Basic authentication cannot carry a colon in the user name (RFC 7617).
   if (username.length > 256 || username.includes(":") || LOGIN_REFUSED.test(username) || !username.isWellFormed()) {
-    throw new FieldError("username", "Identifiant de connexion invalide.");
+    throw new FieldError("username", t("invalidUsername"));
   }
   const name = personName(String(input.name ?? "")) ?? email;
   let server;
   try {
     server = serverOf(String(input.server ?? ""));
   } catch (e) {
-    throw new FieldError("server", e instanceof ServerAddressError ? e.message : "Serveur invalide.");
+    throw new FieldError("server", serverErrorText(e));
   }
   const syncMinutes = Number(input.syncMinutes);
-  if (!FREQUENCIES.has(syncMinutes)) throw new FieldError("syncMinutes", "Fréquence invalide.");
+  if (!FREQUENCIES.has(syncMinutes)) throw new FieldError("syncMinutes", t("invalidFrequency"));
   const filterType = String(input.filterType);
-  if (!PERIODS.has(filterType)) throw new FieldError("filterType", "Période invalide.");
+  if (!PERIODS.has(filterType)) throw new FieldError("filterType", t("invalidPeriod"));
   const sync = Object.fromEntries(SYNC_KINDS.map((k) => [k, input.sync?.[k] === true]));
-  if (!SYNC_KINDS.some((k) => sync[k])) throw new FieldError("sync", "Choisissez au moins un élément à synchroniser.");
+  if (!SYNC_KINDS.some((k) => sync[k])) throw new FieldError("sync", t("chooseKind"));
   return { email, username, name, server, syncMinutes, filterType, sync };
 }
 
@@ -352,29 +359,29 @@ async function saveMailboxChecked(input, password) {
   const v = checkInput(input);
   const id = input.id ? String(input.id) : null;
   const existing = id ? await store.getMailbox(id) : null;
-  if (id && !existing) throw new FieldError(null, "Cette boîte n'existe plus.");
+  if (id && !existing) throw new FieldError(null, t("mailboxGone"));
   const all = await store.listMailboxes();
   if (all.some((m) => m.id !== id && m.email.toLowerCase() === v.email.toLowerCase())) {
-    throw new FieldError("email", "Cette adresse est déjà configurée.");
+    throw new FieldError("email", t("emailTaken"));
   }
   if (existing && existing.email.toLowerCase() !== v.email.toLowerCase()) {
-    throw new FieldError("email", "L'adresse d'une boîte ne se change pas : supprimez-la et ajoutez-en une nouvelle.");
+    throw new FieldError("email", t("emailFixed"));
   }
   const login = v.username || v.email;
   if (all.some((m) => m.id !== id && m.origin === v.server.origin && loginOf(m).toLowerCase() === login.toLowerCase())) {
-    throw new FieldError("username", "Une autre boîte utilise déjà ce serveur avec cet identifiant.");
+    throw new FieldError("username", t("loginTaken"));
   }
   const newPassword = typeof password === "string" && password.length ? password : null;
   // The password only ever goes to the origin and sign-in name it was typed for.
   const moved = Boolean(existing) && (existing.origin !== v.server.origin || loginOf(existing) !== login);
   if (newPassword) {
-    if (newPassword.length > 1024 || newPassword.includes("\u0000")) throw new FieldError("password", "Mot de passe invalide.");
+    if (newPassword.length > 1024 || newPassword.includes("\u0000")) throw new FieldError("password", t("invalidPassword"));
   } else if (!existing || moved) {
-    throw new FieldError("password", existing ? "Le serveur ou l'identifiant a changé : retapez le mot de passe." : "Saisissez le mot de passe.");
+    throw new FieldError("password", existing ? t("passwordRetype") : t("passwordType"));
   }
   const pattern = `https://${v.server.host}/*`;
   if (!(await api.permissions.contains({ origins: [pattern] }))) {
-    throw new FieldError("server", "Accès au serveur non autorisé : acceptez la demande de Thunderbird.");
+    throw new FieldError("server", t("permissionRefused"));
   }
 
   const ids = existing ? { mailboxId: existing.id, deviceId: existing.deviceId } : newIds();
@@ -404,7 +411,9 @@ async function saveMailboxChecked(input, password) {
     displayName = doc ? parseUserInformation(doc).displayName : null;
     proto = { ...client.proto };
   } catch (e) {
-    throw new FieldError(fieldOf(e), e instanceof EasError ? e.message : "Connexion au serveur impossible.");
+    if (!(e instanceof EasError)) throw new FieldError("server", t("cannotConnect"));
+    const message = errorText(e, "cannotConnect");
+    throw new FieldError(fieldOf(e), message, errorDetail(e, message));
   }
 
   // 1. The Thunderbird account: the step most likely to be refused, done
@@ -415,7 +424,7 @@ async function saveMailboxChecked(input, password) {
     account = await api.sync443Account.ensureAccount({ mailboxId: draft.id, email: draft.email, name: draft.name, ...(fullName ? { fullName } : {}) });
   } catch (e) {
     log.warn(`Compte Thunderbird non créé (${label(draft)}) : ${errorCode(e)}.`);
-    throw new FieldError(null, `Le compte Thunderbird n'a pas pu être préparé (${errorCode(e)}).`);
+    throw new FieldError(null, t("accountNotPrepared", errorCode(e)));
   }
   // Only an account made for a new mailbox is taken back.
   const undoAccount = async () => {
@@ -429,7 +438,7 @@ async function saveMailboxChecked(input, password) {
     } catch (e) {
       await undoAccount();
       log.warn(`Mot de passe non enregistré (${label(draft)}) : ${errorCode(e)}.`);
-      throw new FieldError("password", "Le mot de passe n'a pas pu être enregistré (mot de passe principal verrouillé ?).");
+      throw new FieldError("password", t("passwordNotSaved"));
     }
   }
 
@@ -456,7 +465,7 @@ async function saveMailboxChecked(input, password) {
       await attach(existing).catch(() => {});
     }
     log.error(`Boîte non enregistrée (${label(draft)}) : ${errorCode(e)}.`);
-    throw new FieldError(null, "La boîte n'a pas pu être enregistrée.");
+    throw new FieldError(null, t("mailboxNotSaved"));
   }
   if (moved) {
     await api.sync443Account.removePassword(existing.origin, loginOf(existing)).catch(() => log.warn(`Ancien mot de passe non supprimé (${label(existing)}).`));
@@ -538,10 +547,16 @@ async function mailboxView(mb) {
   };
 }
 
+/** The page's answer; a failure in the interface's language (FieldError), or chosen by its code (EasError). */
 const answer = (promise) =>
   promise.then(
     (value) => ({ ok: true, ...(value ?? {}) }),
-    (e) => ({ ok: false, error: e instanceof FieldError || e instanceof EasError ? e.message : "Erreur inattendue.", field: e?.field ?? undefined }),
+    (e) => {
+      if (e instanceof FieldError) return { ok: false, error: e.message, field: e.field ?? undefined, ...(e.detail ? { detail: e.detail } : {}) };
+      const error = e instanceof EasError ? errorText(e) : t("unexpectedError");
+      const detail = e instanceof EasError ? errorDetail(e, error) : "";
+      return { ok: false, error, ...(detail ? { detail } : {}) };
+    },
   );
 
 api.runtime.onMessage.addListener((msg, sender) => {
@@ -557,7 +572,7 @@ api.runtime.onMessage.addListener((msg, sender) => {
     case "syncMailbox":
       return answer(
         ready.then(() => {
-          if (!entries.has(String(msg.id))) throw new FieldError(null, "Boîte inconnue.");
+          if (!entries.has(String(msg.id))) throw new FieldError(null, t("errorUnknownMailbox"));
           runSync(String(msg.id), { reason: "user", confirmDeletes: msg.confirmDeletes === true });
         }),
       );
@@ -566,7 +581,7 @@ api.runtime.onMessage.addListener((msg, sender) => {
       return answer(
         ready.then(async () => {
           const entry = entries.get(String(msg.id));
-          if (!entry?.sync) throw new FieldError(null, "Boîte inconnue.");
+          if (!entry?.sync) throw new FieldError(null, t("errorUnknownMailbox"));
           await entry.sync.discardPendingDeletes();
           log.info(`Suppressions retenues abandonnées, copies locales gardées (${label(entry.mailbox)}).`);
           runSync(entry.mailbox.id, { reason: "user" });
@@ -597,7 +612,7 @@ async function applyBadge() {
   if ([...entries.values()].some((e) => e.inFlight)) {
     await action.setBadgeBackgroundColor({ color: "#0060df" });
     await action.setBadgeText({ text: "…" });
-    await action.setTitle({ title: "Synchronisation en cours…" });
+    await action.setTitle({ title: t("syncRunning") });
     return;
   }
   const views = await Promise.all((await store.listMailboxes()).map(mailboxView));
@@ -605,13 +620,13 @@ async function applyBadge() {
   if (failing.length) {
     await action.setBadgeBackgroundColor({ color: "#c50042" });
     await action.setBadgeText({ text: "!" });
-    await action.setTitle({ title: `Sync443 : ${failing.map((v) => v.name).join(", ")} à vérifier dans les réglages` });
+    await action.setTitle({ title: t("actionCheckSettings", failing.map((v) => v.name).join(", ")) });
     return;
   }
   await action.setBadgeText({ text: "" });
   const last = Math.max(0, ...views.map((v) => v.status.lastSuccessAt ?? 0));
-  const when = last ? new Date(last).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : null;
-  await action.setTitle({ title: `Synchroniser${when ? ` (dernière synchro à ${when})` : ""}` });
+  const when = last ? new Date(last).toLocaleTimeString(uiLanguage(), { hour: "2-digit", minute: "2-digit" }) : null;
+  await action.setTitle({ title: when ? t("actionSyncLast", when) : t("actionSync") });
 }
 
 api.browserAction.onClicked.addListener(() => {
@@ -623,9 +638,9 @@ const MENU_SETTINGS = "sync443-settings";
 const MENU_SYNC_ALL = "sync443-sync-all";
 const MENU_SYNC_ONE = "sync443-sync-one";
 const ignore = () => void api.runtime.lastError;
-api.menus.create({ id: MENU_SYNC_ALL, title: "Synchroniser Sync443 maintenant", contexts: ["tools_menu"] }, ignore);
-api.menus.create({ id: MENU_SETTINGS, title: "Réglages de Sync443…", contexts: ["tools_menu"] }, ignore);
-api.menus.create({ id: MENU_SYNC_ONE, title: "Synchroniser maintenant (Sync443)", contexts: ["folder_pane"], visible: false }, ignore);
+api.menus.create({ id: MENU_SYNC_ALL, title: t("menuSyncAll"), contexts: ["tools_menu"] }, ignore);
+api.menus.create({ id: MENU_SETTINGS, title: t("menuSettings"), contexts: ["tools_menu"] }, ignore);
+api.menus.create({ id: MENU_SYNC_ONE, title: t("menuSyncOne"), contexts: ["folder_pane"], visible: false }, ignore);
 
 const mailboxOfMenu = (info) => {
   const accountKey = info.selectedAccount?.id ?? info.selectedFolders?.[0]?.accountId ?? info.selectedFolder?.accountId ?? null;

@@ -16,10 +16,18 @@
 
 export const EAS_PATH = "/Microsoft-Server-ActiveSync";
 
+/**
+ * A refused address. `code` says why (EMPTY, SPACE, SCHEME, CREDENTIALS,
+ * INVALID, PORT) and chooses the message the interface shows (i18n.mjs);
+ * `value` is what the message quotes (the address, or the port), if anything.
+ * The French `message` is the diagnostic text.
+ */
 export class ServerAddressError extends Error {
-  constructor(message) {
+  constructor(message, code = "INVALID", value = "") {
     super(message);
     this.name = "ServerAddressError";
+    this.code = code;
+    this.value = value;
   }
 }
 
@@ -111,18 +119,18 @@ function toAsciiHost(host) {
  */
 export function parseServer(input, { allowLocal = false } = {}) {
   const raw = String(input ?? "").trim();
-  if (!raw) throw new ServerAddressError("Indiquez le serveur, par exemple mail.exemple.com.");
-  if (/\s/.test(raw)) throw new ServerAddressError("L'adresse du serveur ne doit pas contenir d'espace.");
+  if (!raw) throw new ServerAddressError("Indiquez le serveur, par exemple mail.exemple.com.", "EMPTY");
+  if (/\s/.test(raw)) throw new ServerAddressError("L'adresse du serveur ne doit pas contenir d'espace.", "SPACE");
 
   let rest = raw;
   const scheme = /^([a-z][a-z0-9+.-]*):\/\//i.exec(rest);
   if (scheme) {
-    if (scheme[1].toLowerCase() !== "https") throw new ServerAddressError("Le serveur doit être joignable en HTTPS.");
+    if (scheme[1].toLowerCase() !== "https") throw new ServerAddressError("Le serveur doit être joignable en HTTPS.", "SCHEME");
     rest = rest.slice(scheme[0].length);
   }
   const authority = rest.split(/[/?#]/, 1)[0];
   if (authority.includes("@")) {
-    throw new ServerAddressError("L'adresse du serveur ne doit pas contenir d'identifiant ni de mot de passe.");
+    throw new ServerAddressError("L'adresse du serveur ne doit pas contenir d'identifiant ni de mot de passe.", "CREDENTIALS");
   }
 
   let host;
@@ -133,26 +141,26 @@ export function parseServer(input, { allowLocal = false } = {}) {
     host = v6[1].toLowerCase();
     portText = v6[2] ?? null;
     groups = ipv6Groups(host);
-    if (!groups) throw new ServerAddressError(`Serveur invalide : ${raw}`);
+    if (!groups) throw new ServerAddressError(`Serveur invalide : ${raw}`, "INVALID", raw);
     host = `[${ipv6Text(groups)}]`;
   } else {
     const m = /^([^:]+)(?::(\d+))?$/.exec(authority);
-    if (!m) throw new ServerAddressError(`Serveur invalide : ${raw}`);
+    if (!m) throw new ServerAddressError(`Serveur invalide : ${raw}`, "INVALID", raw);
     host = toAsciiHost(m[1]);
     portText = m[2] ?? null;
-    if (!host) throw new ServerAddressError(`Serveur invalide : ${raw}`);
+    if (!host) throw new ServerAddressError(`Serveur invalide : ${raw}`, "INVALID", raw);
     host = host.replace(/\.$/, "");
     const labels = host.split(".");
     const valid =
       isIPv4(host) ||
       (!endsInNumber(host) && host.length <= 253 && labels.every((l) => LABEL.test(l)) && (labels.length >= 2 || host === "localhost"));
-    if (!valid) throw new ServerAddressError(`Serveur invalide : ${raw}`);
+    if (!valid) throw new ServerAddressError(`Serveur invalide : ${raw}`, "INVALID", raw);
   }
 
   let port = null;
   if (portText !== null) {
     port = Number(portText);
-    if (!Number.isInteger(port) || port < 1 || port > 65535) throw new ServerAddressError(`Port invalide : ${portText}`);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) throw new ServerAddressError(`Port invalide : ${portText}`, "PORT", portText);
   }
   // This machine itself is never a mail server outside tests: a local
   // program listening there would receive the password.
@@ -163,7 +171,7 @@ export function parseServer(input, { allowLocal = false } = {}) {
     LOCAL_ALIASES.test(host) ||
     (isIPv4(host) && (host.startsWith("127.") || host.startsWith("0."))) ||
     (groups !== null && isLocalIPv6(groups));
-  if (loopback && !allowLocal) throw new ServerAddressError(`Serveur invalide : ${raw}`);
+  if (loopback && !allowLocal) throw new ServerAddressError(`Serveur invalide : ${raw}`, "INVALID", raw);
 
   const hostPort = port && port !== 443 ? `${host}:${port}` : host;
   const origin = `https://${hostPort}`;
@@ -176,7 +184,7 @@ export function parseServer(input, { allowLocal = false } = {}) {
     } catch {
       parsed = null;
     }
-    if (parsed !== origin) throw new ServerAddressError(`Serveur invalide : ${raw}`);
+    if (parsed !== origin) throw new ServerAddressError(`Serveur invalide : ${raw}`, "INVALID", raw);
   }
   return { host, port, origin, url: origin + EAS_PATH, display: hostPort };
 }

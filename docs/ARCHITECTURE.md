@@ -25,7 +25,9 @@ Thunderbird 140 ESR minimum.
 src/
   background.mjs          orchestration : boîtes, moteurs, minuteries, menus, bouton
   send.mjs                envoi fermé : un message d'un compte Sync443 part par ActiveSync ou pas du tout
-  log.mjs                 journal de diagnostic (sans contenu personnel), débogage limité à une heure
+  log.mjs                 journal de diagnostic (sans contenu personnel), débogage limité à une heure ; en français
+  i18n.mjs                textes de l'interface (browser.i18n) ; échecs du moteur affichés selon leur code
+  _locales/               traductions : en (par défaut), fr
   core/                   sans Thunderbird : testable seul
     utf8.mjs, base64.mjs  encodages, sans dépendance
     codepages.mjs         tables WBXML d'ActiveSync [MS-ASWBXML]

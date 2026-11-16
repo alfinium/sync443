@@ -7,6 +7,30 @@ Une section par version publiée, la plus récente en tête. La section d'une ve
 de publication à son fichier `.xpi` dans les
 [Releases](https://github.com/alfinium/sync443/releases).
 
+## Non publié
+
+### Nouveautés
+
+- **Interface en anglais et en français,** selon la langue de Thunderbird ; l'anglais est la
+  langue par défaut. Sont traduits : la page de réglages, les notifications d'envoi, le bouton
+  « Synchroniser », les menus, ainsi que le nom et la description de l'extension. Les textes
+  français sont inchangés.
+- Les erreurs du moteur sont affichées selon leur code. En français, la raison détaillée reste
+  affichée telle quelle ; dans une autre langue, elle figure en info-bulle.
+
+### Inchangé
+
+- Le journal de diagnostic reste en français.
+
+### Développement
+
+- `tools/build_xpi.py` vérifie les traductions (`src/_locales`) : catalogue de la langue par
+  défaut présent, messages non vides, clés `__MSG_…__` du manifeste existantes.
+- Nouveau test unitaire `tests/unit/i18n.test.mjs` : mêmes clés et mêmes paramètres dans chaque
+  langue, toute clé employée existe, tout message est employé.
+- `tests/e2e/mail/run_mail_test.py --locale=en-US` : le scénario vérifie la langue de la page de
+  réglages, du bouton et du manifeste.
+
 ## 0.1.0
 
 Première version utilisable : le **courrier** d'une boîte Exchange ActiveSync, dans les deux sens.

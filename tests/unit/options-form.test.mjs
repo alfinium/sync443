@@ -24,7 +24,7 @@ import {
   PERIODS,
   KINDS,
   DEFAULTS,
-  DISCARD_CONFIRM,
+  discardConfirm,
   FIELD_ORDER,
   failedText,
   shown,
@@ -299,8 +299,8 @@ test("suppressions en masse : garder les copies locales est proposé et expliqu�
   eq(v.massDelete, 3, "boutons « Confirmer les suppressions » et « Garder les copies locales » montrés");
   assert(v.text.endsWith("vous pouvez aussi garder les copies locales."), v.text);
   eq(statusView({ blocked: { code: "AUTH", message: "x" } }, 0).massDelete, null, "pas pour un autre blocage");
-  assert(DISCARD_CONFIRM.startsWith("Les suppressions faites sur le serveur ne seront pas appliquées"), DISCARD_CONFIRM);
-  assert(DISCARD_CONFIRM.includes("resynchronisés") && DISCARD_CONFIRM.includes("sans synchronisation"), DISCARD_CONFIRM);
+  assert(discardConfirm().startsWith("Les suppressions faites sur le serveur ne seront pas appliquées"), discardConfirm());
+  assert(discardConfirm().includes("resynchronisés") && discardConfirm().includes("sans synchronisation"), discardConfirm());
 });
 
 test("messages impossibles à importer : signalés après l'état, s'il y en a", () => {
