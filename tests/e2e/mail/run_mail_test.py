@@ -247,7 +247,7 @@ def setup_fixture(srv, server_archives=True):
 
 # ── Requests from the scenario ─────────────────────────────────────────────
 
-CALLABLE = {"add_message", "set_read", "set_flag", "delete_message", "move_message", "mass_delete", "add_folder",
+CALLABLE = {"add_message", "set_read", "set_flag", "delete_message", "move_message", "mass_delete", "add_folder", "set_option",
             "rename_folder", "delete_folder", "last_seq", "pings_waiting", "wake_ping", "folders", "devices",
             "folder_id", "users"}
 
@@ -328,6 +328,21 @@ def request_view(r):
         out["ping_changed"] = texts(resp, "Folder", "Ping") if resp is not None else []
     elif r.get("cmd") == "Sync":
         out["collections"] = list(zip(texts(doc, "CollectionId"), texts(doc, "SyncKey")))
+        out["filters"] = collection_filters(doc)
+    return out
+
+
+def collection_filters(doc):
+    """[[CollectionId, FilterType or None]] of a Sync request, collection by collection."""
+    out = []
+    stack = [doc] if doc is not None else []
+    while stack:
+        node = stack.pop()
+        if node.tag == "Collection" and node.ns == "AirSync":
+            ids, filters = texts(node, "CollectionId"), texts(node, "FilterType")
+            out.append([ids[0] if ids else None, filters[0] if filters else None])
+            continue
+        stack.extend(reversed(node.children))
     return out
 
 
@@ -416,6 +431,9 @@ class Rpc:
             if method not in ("last_seq", "pings_waiting", "folders", "devices", "folder_id", "users"):
                 self.calls.append((time.time(), f"{method} {data.get('args', [])[1:]} {data.get('kwargs', {})}"))
             return getattr(srv, method)(*data.get("args", []), **data.get("kwargs", {}))
+        if op == "add_dated":  # a message received `days` days ago (JSON has no dates)
+            when = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=float(data["days"]))
+            return srv.add_message(login, data.get("folder", "Inbox"), subject=data["subject"], date=when)
         if op == "summary":
             return [message_view(m) for m in srv.messages(login, data["folder"])]
         if op == "find":

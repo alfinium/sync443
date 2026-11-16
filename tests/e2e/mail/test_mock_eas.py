@@ -614,6 +614,29 @@ class SyncTests(ServerTestCase):
         key, cmds = self.drain(self.inbox, key)
         self.assertEqual([(op, sid) for op, sid, _ in cmds], [("SoftDelete", a)])
 
+    def test_filter_type_change(self):
+        old = self.srv.add_message(ALICE, self.inbox, subject="Ancien",
+                                   date=datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=60))
+        recent = self.srv.add_message(ALICE, self.inbox, subject="Récent")
+        self.ready()
+        rest = [el("AirSyncBase:BodyPreference", [el("Type", "4")]), el("AirSync:MIMESupport", "2")]
+        month, everything = [el("AirSync:FilterType", "5")] + rest, [el("AirSync:FilterType", "0")] + rest
+        key, cmds = self.drain(self.inbox, self.prime(self.inbox, options=month))
+        self.assertEqual([sid for _, sid, _ in cmds], [recent])
+        # By default the wider period applies to the same key: the older item comes as an Add.
+        r = self.c.sync(self.inbox, key, options=everything)
+        self.assertEqual((r["status"], [(op, sid) for op, sid, _ in r["commands"]]), ("1", [("Add", old)]))
+        # Narrower again: SoftDelete. Then a server that starts over when the period changes.
+        r = self.c.sync(self.inbox, r["key"], options=month)
+        self.assertEqual((r["status"], [(op, sid) for op, sid, _ in r["commands"]]), ("1", [("SoftDelete", old)]))
+        self.srv.set_option("status3_on_filter_change", True)
+        self.assertIsNone(self.c.sync(self.inbox, r["key"], options=month)["doc"])  # same period: nothing new, no reset
+        self.assertEqual(self.c.sync(self.inbox, r["key"], options=everything)["status"], "3")
+        key, cmds = self.drain(self.inbox, self.prime(self.inbox, options=everything))
+        self.assertEqual(sorted(sid for _, sid, _ in cmds), sorted([old, recent]))
+        with self.assertRaises(ValueError):
+            self.srv.set_option("inconnue", True)
+
     def test_body_preferences(self):
         mime = make_mime("Corps", "x@example.test", ALICE, "Texte brut é\r\n" * 50, html_body="<p>Riche</p>")
         a = self.srv.add_message(ALICE, self.inbox, mime)

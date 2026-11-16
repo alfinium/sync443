@@ -22,7 +22,8 @@
  *      server changes (push), sending, mass deletion;
  *   2. after a restart: mappings kept, a local deletion and a local move
  *      made right away hit the right server items, push resumes;
- *   3. removal of B, A still synchronised, mail unchecked for A.
+ *   3. removal of B, A still synchronised, mail period changed (1 month,
+ *      all, 1 month, all on a server that starts over), mail unchecked for A.
  *
  * Output lines, in <profile>/sync443mail-e2e.txt:
  *   SYNC443MAIL-CHECK {label, ok, detail}    one check
@@ -77,6 +78,9 @@ const S = Object.freeze({
   pushAfterRestart: "E2E push apres redemarrage",
   afterRemoval: "E2E apres suppression de B",
   mailOff: "E2E courrier decoche",
+  periodRecent: "E2E periode recent",
+  period60: "E2E periode 60 jours",
+  period400: "E2E periode 400 jours",
 });
 
 // ── Output ────────────────────────────────────────────────────────────────
@@ -938,6 +942,8 @@ async function phase3() {
     await idle(A.id, 0, 60_000);
   });
 
+  await guard("Période de courrier", () => periodChange(A));
+
   await guard("Courrier décoché pour A", async () => {
     await step("Courrier décoché pour A (agenda gardé)");
     const view = { ...A, server: `127.0.0.1:${E.port}` };
@@ -973,6 +979,152 @@ async function phase3() {
       }
     }
   });
+}
+
+/**
+ * The mail period (FilterType) of A changed as the settings page does it:
+ * 1 month, all, 1 month again, then all on a server that starts over when
+ * the period changes (Status 3 for every collection). Nothing is lost,
+ * nothing is imported twice, nothing changes on the server.
+ */
+async function periodChange(A) {
+  await step("Période de courrier : 1 mois, tout, 1 mois, puis tout avec un serveur qui repart de zéro");
+  const login = E.alice.login;
+  const view = { ...A, server: `127.0.0.1:${E.port}` };
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const byPath = (a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
+  const subjects = [S.periodRecent, S.period60, S.period400];
+  const counts = async () => {
+    const list = await localMessages(A.accountKey, "/Inbox");
+    return Object.fromEntries(subjects.map((subject) => [subject, withSubject(list, subject).length]));
+  };
+  /** Every local folder of A: [path, messages, messages whose Message-ID is already in the folder, subjects]. */
+  const localState = async () => {
+    const out = [];
+    for (const { path } of await localFolders(A.accountKey)) {
+      const list = (await localMessages(A.accountKey, path)) ?? [];
+      out.push([path, list.length, list.length - new Set(list.map((m) => m.mid)).size, list.map((m) => m.subject).sort()]);
+    }
+    return out.sort(byPath);
+  };
+  const serverState = async () => (await serverFolders(login)).map((f) => [f.path, f.count]).sort(byPath);
+  const minus = (xs, ys) => {
+    const left = [...ys];
+    return xs.filter((x) => {
+      const i = left.indexOf(x);
+      if (i < 0) return true;
+      left.splice(i, 1);
+      return false;
+    });
+  };
+  /** What differs between two states: [{path, before, after, added, removed}] (counts, then subjects). */
+  const changes = (before, after) => {
+    const b = new Map(before.map(([path, ...rest]) => [path, rest]));
+    const a = new Map(after.map(([path, ...rest]) => [path, rest]));
+    const out = [];
+    for (const path of new Set([...b.keys(), ...a.keys()])) {
+      const x = b.get(path) ?? null;
+      const y = a.get(path) ?? null;
+      if (same(x, y)) continue;
+      out.push({ path, before: x?.slice(0, 2) ?? null, after: y?.slice(0, 2) ?? null, added: minus(y?.[2] ?? [], x?.[2] ?? []), removed: minus(x?.[2] ?? [], y?.[2] ?? []) });
+    }
+    return out;
+  };
+  const diff = (local, server, after) => ({ local: changes(local, after[0]), server: changes(server, after[1]) });
+  const syncsSince = async (seq) => (await rpc("requests", { since: seq, login, device_id: A.deviceId })).filter((r) => r.cmd === "Sync");
+  const periodsSent = (syncs) => syncs.flatMap((r) => (r.filters ?? []).map(([, ft]) => ft)).filter((ft) => ft !== null);
+  const healthy = (h) => Boolean(h) && !h.blocked && (h.failures ?? 0) === 0;
+  /** What the settings page does when the period is changed (password not typed again). */
+  const setPeriod = async (filterType) => {
+    const seq = await mock("last_seq");
+    const since = Date.now();
+    const err = await errorOf(() => ctx.saveMailbox(input(view, { filterType }), null));
+    const saved = (await mailboxById(A.id))?.filterType ?? null;
+    const h = await idle(A.id, since, 180_000);
+    const journal = Boolean(await journalDone(A.id));
+    return { seq, err, saved, h, journal, ok: !err && saved === filterType && healthy(h) && journal };
+  };
+  const outcome = (r) => ({ err: r.err, saved: r.saved, health: r.h, journalEmpty: r.journal });
+
+  // 1. One month: the messages already there are recent; nothing changes.
+  let local = await localState();
+  let server = await serverState();
+  let r = await setPeriod("5");
+  await check("période passée à « 1 mois » : enregistrée sans erreur, synchro réussie, journal vide", r.ok, outcome(r));
+  let sent = periodsSent(await syncsSince(r.seq));
+  await check("… les synchros envoient la période « 1 mois » (FilterType 5)", sent.length > 0 && sent.every((ft) => ft === "5"), sent);
+  let after = [await localState(), await serverState()];
+  await check("… rien ne change, ni dans Thunderbird ni sur le serveur", same(after, [local, server]), diff(local, server, after));
+
+  // Messages received now, 60 and 400 days ago.
+  for (const [subject, days] of [[S.periodRecent, 0], [S.period60, 60], [S.period400, 400]]) {
+    await rpc("add_dated", { login, folder: "Inbox", subject, days });
+  }
+  const recent = await waitFor(async () => (await counts())[S.periodRecent] === 1, { timeout: 120_000, interval: 300 });
+  await idle(A.id, 0, 60_000);
+  let c = await counts();
+  await check("« 1 mois » : le message récent arrive (push), ceux de 60 et 400 jours ne sont pas téléchargés", recent && c[S.period60] === 0 && c[S.period400] === 0, c);
+
+  // 2. All: the older messages arrive, once.
+  local = await localState();
+  server = await serverState();
+  r = await setPeriod("0");
+  await check("période passée à « tout » : enregistrée sans erreur, synchro réussie, journal vide", r.ok, outcome(r));
+  sent = periodsSent(await syncsSince(r.seq));
+  await check("… les synchros envoient la période « tout » (FilterType 0)", sent.length > 0 && sent.every((ft) => ft === "0"), sent);
+  await waitFor(async () => {
+    const k = await counts();
+    return k[S.period60] > 0 && k[S.period400] > 0;
+  }, { timeout: 60_000, interval: 300 });
+  c = await counts();
+  await check("« tout » : les messages de 60 et 400 jours arrivent, chacun une seule fois", subjects.every((subject) => c[subject] === 1), c);
+  const expected = local.map(([path, n, twice, list]) => (path === "/Inbox" ? [path, n + 2, twice, [...list, S.period60, S.period400].sort()] : [path, n, twice, list]));
+  after = [await localState(), await serverState()];
+  await check("… aucun doublon ni autre changement dans Thunderbird, rien ne change sur le serveur", same(after, [expected, server]), diff(expected, server, after));
+
+  // 3. One month again: the older messages leave the period (SoftDelete), their local copies stay.
+  local = await localState();
+  server = await serverState();
+  r = await setPeriod("5");
+  await check("retour à « 1 mois » : sans erreur, boîte non bloquée (sorties de période hors seuil de suppression), journal vide", r.ok, outcome(r));
+  after = [await localState(), await serverState()];
+  await check("… les copies locales des messages de 60 et 400 jours restent ; rien n'est supprimé ni déplacé sur le serveur", same(after, [local, server]), diff(local, server, after));
+
+  // 4. All, on a server that starts over when the period changes.
+  local = await localState();
+  server = await serverState();
+  await mock("set_option", ["status3_on_filter_change", true]);
+  try {
+    r = await setPeriod("0");
+  } finally {
+    await mock("set_option", ["status3_on_filter_change", false]);
+  }
+  const syncs = await syncsSince(r.seq);
+  const restarted = syncs.some((x) => (x.collections ?? []).some(([cid, key]) => cid && key === "0"));
+  await check("serveur qui repart de zéro quand la période change (statut 3) : resynchronisation complète, sans erreur, journal vide", restarted && r.ok, { restarted, ...outcome(r) });
+  // The message moved to a local-only folder (phase 1, step 7) kept its server copy: a full resync
+  // brings it back to the Inbox (accepted, docs/audits/etape-2-3.md). Nothing else may change.
+  const keptOnServer = withSubject(await localMessages(A.accountKey, "/Templates"), S.toLocalOnly).length > 0;
+  const withKept = local.map(([path, n, twice, list]) =>
+    path === "/Inbox" && keptOnServer ? [path, n + 1, twice, [...list, S.toLocalOnly].sort()] : [path, n, twice, list]);
+  await waitFor(async () => {
+    const now = await localState();
+    return same(now, local) || same(now, withKept);
+  }, { timeout: 60_000, interval: 500 });
+  after = [await localState(), await serverState()];
+  c = await counts();
+  const back = keptOnServer && !same(withKept, local) && same(after[0], withKept);
+  await check(
+    "… chaque message une seule fois, rien de réimporté ni de perdu dans aucun dossier, rien ne change sur le serveur",
+    (same(after[0], local) || back) && same(after[1], server) && subjects.every((subject) => c[subject] === 1),
+    { counts: c, ...diff(back ? withKept : local, server, after) },
+  );
+  if (back) {
+    await gap(
+      "resynchronisation complète : le message déplacé vers un dossier purement local (/Templates) revient aussi dans la boîte de réception, sa copie étant restée sur le serveur (écart accepté, docs/audits/etape-2-3.md)",
+      { subject: S.toLocalOnly },
+    );
+  }
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────

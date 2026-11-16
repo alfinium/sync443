@@ -198,6 +198,7 @@ class ServerOptions:
     move_deletes_from_source: bool = False  # MoveItems: the source also reports a Delete for the old id
     foldersync_zero_resets_collections: bool = True  # FolderSync SyncKey 0 invalidates every Sync state
     status12_on_hierarchy_change: bool = False  # Sync: Status 12 for every collection while the hierarchy is stale
+    status3_on_filter_change: bool = False  # Sync: a known collection whose FilterType changes starts over (Status 3)
     ping_status7_on_hierarchy_change: bool = True  # Ping: Status 7 when the device's hierarchy is stale
     body_data_opaque: bool = False  # AirSyncBase:Data as OPAQUE instead of an inline string
     max_request_bytes: int = 64 * 1024 * 1024
@@ -898,6 +899,13 @@ class MockEasServer:
         """flagged: True/False, or a FlagStatus (0 none, 1 complete, 2 flagged)."""
         status = 2 if flagged is True else 0 if flagged is False else int(flagged)
         self._modify(login, folder, server_id, lambda i: setattr(i, "flag", status))
+
+    def set_option(self, name, value):
+        """Change a server option while running (the scenario plays another kind of server)."""
+        with self._cond:
+            if not hasattr(self.options, name):
+                raise ValueError(f"option inconnue : {name}")
+            setattr(self.options, name, value)
 
     def set_message_date(self, login, folder, server_id, when):
         """Change the received date (an older date can take a message out of a device's FilterType: SoftDelete)."""
@@ -2193,6 +2201,11 @@ class MockEasServer:
         if key == state.prev_key:
             state.rollback()
             ctx.record.setdefault("notes", []).append(f"SyncKey précédente pour {cid} : réponse rejouée")
+        if (options is not None and self.options.status3_on_filter_change
+                and options.get("filter_type", 0) != state.options.get("filter_type", 0)):
+            dev.collections.pop(cid, None)
+            ctx.record.setdefault("notes", []).append(f"FilterType changé pour {cid} : état effacé")
+            return reply("3", "0"), False
         if options is not None:
             state.options = options
         working = dict(state.known)
