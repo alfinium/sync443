@@ -30,10 +30,7 @@ function info({ state = "secure", builtInRoot = true, certificates, ...flags } =
 test("tls : chaîne valide finissant par une racine intégrée → public-root", () => {
   const r = evaluateTls(info());
   eq([r.ok, r.reason], [true, "public-root"]);
-  eq(r.issuer, "CN=Example CA", "émetteur du certificat du serveur");
-  eq(r.chain.length, 3);
-  eq(r.chain[0].sha256, FP_LEAF.replace(/:/g, ""), "empreinte normalisée");
-  eq(r.chain[0].subject, "CN=mail.example.com");
+  eq(r, { ok: true, reason: "public-root", issuer: "CN=Example CA" }, "émetteur du certificat du serveur, rien d'autre");
 });
 
 test("tls : connexion non sécurisée → insecure", () => {
@@ -105,9 +102,8 @@ test("tls : empreinte inconnue, vide ou partielle → refus", () => {
 
 test("tls : champs absents ou de type inattendu dans la chaîne", () => {
   const r = evaluateTls({ state: "secure", certificates: [null, { fingerprint: null }, { subject: 42 }] });
-  eq([r.ok, r.reason], [false, "not-public-root"]);
-  eq(r.chain[0], { subject: "", issuer: "", sha256: "", builtInRoot: false });
-  eq(r.chain[2].subject, "42");
+  eq([r.ok, r.reason, r.issuer], [false, "not-public-root", ""]);
+  eq(evaluateTls({ state: "secure", certificates: [{ issuer: 42 }] }).issuer, "42", "émetteur converti en texte");
   // Only a real `true` counts as a built-in root.
   eq(evaluateTls({ state: "secure", certificates: [{ isBuiltInRoot: 1 }] }).reason, "not-public-root");
   eq(evaluateTls({ state: "secure", certificates: [{ isBuiltInRoot: true }] }).reason, "public-root");
@@ -115,7 +111,9 @@ test("tls : champs absents ou de type inattendu dans la chaîne", () => {
 
 test("tls : messages en français pour chaque motif", () => {
   const m = tlsMessage("not-public-root", "CN=Proxy d'entreprise");
-  assert(m.includes("autorité publique") && m.includes("CN=Proxy d'entreprise"), m);
+  assert(m.includes("autorité que Thunderbird reconnaît") && m.includes("CN=Proxy d'entreprise"), m);
+  assert(m.includes("autorités privées ne sont pas prises en charge"), m);
+  assert(!m.includes("réglages"), "aucun réglage promis");
   assert(!tlsMessage("not-public-root").includes("émetteur"), "pas d'émetteur vide");
   for (const reason of ["untrusted", "domain-mismatch", "expired", "insecure", "no-certificate", "inconnu"]) {
     const msg = tlsMessage(reason);

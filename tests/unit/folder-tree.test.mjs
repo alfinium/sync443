@@ -18,10 +18,6 @@ import {
   specialUse,
   kindOf,
   compareIds,
-  MAIL_TYPES,
-  CALENDAR_TYPES,
-  CONTACT_TYPES,
-  TASK_TYPES,
   SPECIAL_PATHS,
   RESERVED_ROOT_NAMES,
   ROOT_ID,
@@ -61,12 +57,9 @@ const EXCHANGE = [
 // ── Types ─────────────────────────────────────────────────────────────────
 
 test("types de dossiers : courrier, agenda, contacts, tâches", () => {
-  eq([...MAIL_TYPES], [1, 2, 3, 4, 5, 6, 12]);
-  eq([...CALENDAR_TYPES], [8, 13]);
-  eq([...CONTACT_TYPES], [9, 14]);
-  eq([...TASK_TYPES], [7, 15]);
+  const kinds = { mail: [1, 2, 3, 4, 5, 6, 12], calendar: [8, 13], contacts: [9, 14], tasks: [7, 15] };
   for (let t = 1; t <= 19; t++) {
-    const expected = MAIL_TYPES.has(t) ? "mail" : CALENDAR_TYPES.has(t) ? "calendar" : CONTACT_TYPES.has(t) ? "contacts" : TASK_TYPES.has(t) ? "tasks" : null;
+    const expected = Object.keys(kinds).find((k) => kinds[k].includes(t)) ?? null;
     eq(kindOf(t), expected, `type ${t}`);
   }
   eq(kindOf("2"), null, "texte");
@@ -321,7 +314,7 @@ test("localFolderName : caractères interdits sous Windows → _", () => {
 test("localFolderName : points et espaces finaux retirés", () => {
   eq(localFolderName("Archive. . ."), "Archive");
   eq(localFolderName("Notes  "), "Notes");
-  eq(localFolderName("...x"), "...x", "points en tête conservés");
+  eq(localFolderName("...x"), "_..x", "point en tête remplacé (fichier caché, nom haché par Thunderbird)");
   eq(localFolderName("..."), "_", "rien ne reste");
   eq(localFolderName(""), "_");
   eq(localFolderName(null), "_");
@@ -350,14 +343,29 @@ test("localFolderName : noms de périphériques de Windows suffixés de _", () =
     ["CON ", "CON_"],
   ];
   for (const [name, expected] of cases) eq(localFolderName(name), expected, name);
-  for (const fine of ["CONSOLE", "COM10", "LPT", "COM", "xCON", "CON_", "Aux-Comptes", ".con", "con-txt"]) eq(localFolderName(fine), fine, fine);
+  for (const fine of ["CONSOLE", "COM10", "LPT", "COM", "xCON", "CON_", "Aux-Comptes", "con-txt"]) eq(localFolderName(fine), fine, fine);
+  eq(localFolderName(".con"), "_con");
 });
 
-test("localFolderName : 100 caractères au plus", () => {
-  eq(localFolderName("x".repeat(150)), "x".repeat(100));
-  eq(localFolderName("😀".repeat(150)), "😀".repeat(100), "caractères, pas unités UTF-16");
-  eq(localFolderName(`${"x".repeat(99)}. y`), "x".repeat(99), "point final après la coupe retiré");
-  eq(localFolderName(`CON.${"x".repeat(150)}`), `CON_.${"x".repeat(95)}`);
+test("localFolderName : 55 unités UTF-16 au plus (au-delà, Thunderbird hache le nom du fichier)", () => {
+  eq(localFolderName("x".repeat(150)), "x".repeat(55));
+  eq(localFolderName("😀".repeat(150)), "😀".repeat(27), "jamais une demi-paire");
+  eq(localFolderName(`${"x".repeat(54)}. y`), "x".repeat(54), "point final après la coupe retiré");
+  eq(localFolderName(`CON.${"x".repeat(150)}`), `CON_.${"x".repeat(50)}`);
+});
+
+test("localFolderName : noms que Thunderbird hacherait ou confondrait avec ses fichiers", () => {
+  eq(localFolderName("C#"), "C_");
+  eq(localFolderName("a;b"), "a_b");
+  eq(localFolderName(".cache"), "_cache");
+  eq(localFolderName("brouillon~"), "brouillon_");
+  eq(localFolderName("Projets.msf"), "Projets.msf_");
+  eq(localFolderName("Projets.SBD"), "Projets.SBD_");
+  eq(localFolderName(`${"y".repeat(51)}.msf`), `${"y".repeat(51)}.ms_`, "coupé pour garder la place du _");
+  for (const n of ["C#", "a;b", ".cache", "x~", "P.msf", `${"z".repeat(80)}`]) {
+    const out = localFolderName(n);
+    assert(out.length <= 55 && !/[;#]/.test(out) && !out.startsWith(".") && !out.endsWith("~") && !/\.(msf|sbd)$/i.test(out), out);
+  }
 });
 
 // ── localPaths ────────────────────────────────────────────────────────────
@@ -440,15 +448,40 @@ test("localPaths : collisions entre frères, casse ignorée, dans l'ordre des Se
   eq(paths.get("16"), "/X (2)");
 });
 
-test("localPaths : suffixe sous 100 caractères", () => {
+test("localPaths : suffixe sous 55 unités", () => {
   const long = "L".repeat(120);
   const rows = [];
   for (let i = 1; i <= 12; i++) rows.push([String(i), "0", long, 12]);
   const paths = localPaths(buildTree(table(rows), { kinds: MAIL }));
-  eq(paths.get("1"), `/${"L".repeat(100)}`);
-  eq(paths.get("2"), `/${"L".repeat(96)} (2)`);
-  eq(paths.get("12"), `/${"L".repeat(95)} (12)`);
-  for (const p of paths.values()) assert(p.length - 1 <= 100, p);
+  eq(paths.get("1"), `/${"L".repeat(55)}`);
+  eq(paths.get("2"), `/${"L".repeat(51)} (2)`);
+  eq(paths.get("12"), `/${"L".repeat(50)} (12)`);
+  for (const p of paths.values()) assert(p.length - 1 <= 55, p);
+});
+
+test("localPaths : à la racine, un nom qui ressemble à un nom réservé est suffixé", () => {
+  const cyrillicI = String.fromCharCode(0x406);
+  const greekO = String.fromCharCode(0x3bf);
+  const cyrillicA = String.fromCharCode(0x430);
+  const names = [`${cyrillicI}nbox`, `Inb${greekO}x`, `Tr${cyrillicA}sh`, "lnbox", "INBOX", "Ｔｒａｓｈ", "Arch1ves"];
+  const rows = names.map((n, i) => [String(i + 1), "0", n, 12]);
+  rows.push(["30", "0", "Inbox", 2], ["31", "0", "Trash", 4], ["40", "1", `${cyrillicI}nbox`, 12]);
+  const paths = localPaths(buildTree(table(rows), { kinds: MAIL }));
+  names.forEach((n, i) => assert(/ \(\d+\)$/.test(paths.get(String(i + 1))), `${n} → ${paths.get(String(i + 1))}`));
+  eq(paths.get("40"), `/${localFolderName(`${cyrillicI}nbox`)} (2)/${cyrillicI}nbox`, "réservé à la racine seulement");
+  eq(paths.get("30"), "/Inbox");
+});
+
+test("localPaths : dossier d'archives lié par son ServerId, jamais par son nom", () => {
+  const rows = [["1", "0", "Inbox", 2], ["2", "0", "Archives", 12], ["3", "0", "Classement", 12], ["4", "3", "2026", 12]];
+  const tree = buildTree(table(rows), { kinds: MAIL });
+  eq(localPaths(tree).get("2"), "/Archives (2)", "sans lien : nom réservé");
+  const bound = localPaths(tree, { archives: "3" });
+  eq(bound.get("3"), "/Archives");
+  eq(bound.get("4"), "/Archives/2026", "ses sous-dossiers le suivent");
+  eq(bound.get("2"), "/Archives (2)");
+  eq(localPaths(tree, { archives: "1" }).get("1"), "/Inbox", "un dossier spécial garde sa place");
+  eq(localPaths(tree, { archives: "99" }).get("2"), "/Archives (2)", "lien vers un dossier absent : ignoré");
 });
 
 test("localPaths : un pour un sur une grande fratrie de noms qui se ressemblent", () => {

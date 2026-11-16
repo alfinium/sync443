@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Sync443 – EAS Client for Thunderbird",
-  "description": "Synchronise une boîte Exchange ActiveSync (courrier, dossiers, envoi) en passant uniquement par HTTPS, pour les réseaux où IMAP et SMTP sont bloqués.",
+  "description": "Exchange ActiveSync natif dans Thunderbird : courrier, dossiers et envoi, avec tout serveur compatible (SOGo, mailcow, Exchange, grommunio, Z-Push…).",
   "version": "0.1.0",
   "author": "alfinium",
   "homepage_url": "https://github.com/alfinium/sync443",
@@ -27,6 +27,7 @@
     "compose.save"
   ],
   "optional_permissions": ["https://*/*"],
+  "content_security_policy": "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
   "background": {
     "scripts": ["background.mjs"],
     "type": "module"

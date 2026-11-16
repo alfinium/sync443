@@ -4,10 +4,18 @@
 /** Code page tests: structure of the tables, and spot checks against [MS-ASWBXML] 2.1.2.1. */
 
 import { test, assert, eq } from "./harness.mjs";
-import { pageOf, namespaceOf, tokenOf, tagOf, allTags } from "../../src/core/codepages.mjs";
+import { pageOf, namespaceOf, tokenOf, tagOf } from "../../src/core/codepages.mjs";
 import { el, encode, decode } from "../../src/core/wbxml.mjs";
 
-const ALL = [...allTags()];
+// Every [page, namespace, tag, token] of the tables, read through the lookups:
+// a page number and a token are one byte each, so every byte pair is tried.
+const ALL = [];
+for (let page = 0; page < 256; page++) {
+  for (let token = 0; token < 256; token++) {
+    const tag = tagOf(page, token);
+    if (tag !== undefined) ALL.push([page, namespaceOf(page), tag, token]);
+  }
+}
 
 test("codepages : chaque (page, jeton) et chaque (espace, balise) est unique", () => {
   const byToken = new Set();

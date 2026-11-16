@@ -17,12 +17,12 @@
  * Nothing here holds a password longer than the client that uses it.
  */
 
-import { Store, checkMailbox, newIds } from "./sync/store.mjs";
+import { Store, checkMailbox, newIds, SYNC_KINDS } from "./sync/store.mjs";
 import { parseServer, ServerAddressError } from "./core/server.mjs";
 import { EasClient, EasError, ERR } from "./transport/client.mjs";
-import { emailAddress, cleanText } from "./core/sanitize.mjs";
+import { emailAddress, cleanText, personName } from "./core/sanitize.mjs";
 import { userInformationRequest, parseUserInformation } from "./core/protocol.mjs";
-import { log, setDebugFor, getLog, clearLog, loadLog } from "./log.mjs";
+import { log, setDebugFor, getLog, clearLog, loadLog, errorCode } from "./log.mjs";
 import { installSendHandler } from "./send.mjs";
 import { initialHealth } from "./sync/health.mjs";
 import { MailboxSync } from "./sync/mailbox.mjs";
@@ -36,17 +36,28 @@ const PUSH_FALLBACK_MINUTES = 30; // safety net when "dès réception" is on
 const LOCAL_DELAY_MS = 3000; // local actions are sent shortly after the last one
 const STARTUP_DELAY_MS = 10_000;
 const MAX_ROUNDS = 10; // passes in a row while the server has more to send
+const MAX_HANDOVER = 10_000; // local actions kept while an engine is being replaced
 const FREQUENCIES = new Set([0, 1, 5, 15, 30, 60]);
 const PERIODS = new Set(["0", "1", "2", "3", "4", "5"]);
-const KINDS = ["mail", "calendar", "contacts", "tasks"];
+// Refused in a sign-in name, as the account experiment refuses them (controls, invisible, bidirectional).
+const LOGIN_REFUSED = /[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u2064\u2066-\u206f\ufeff\ufff9-\ufffb]/;
 
 const store = new Store(api.storage.local);
 const echo = new EchoRegistry();
-const entries = new Map(); // mailbox id -> { mailbox, sync, inFlight, again, timer }
+const entries = new Map(); // mailbox id -> { mailbox, sync, inFlight, again, againUser, againConfirm, timer, closing, buffer, handover }
 const marked = new Set(); // account keys of our mailboxes
-const removing = new Set(); // mailbox ids being removed (our own account removal fires accounts.onDeleted)
-let testConfig = null; // only in test builds (test-config.json packaged)
+// Test builds only. The blocks between "// <test-hooks>" and "// </test-hooks>"
+// are removed by tools/build_xpi.py: in a published package this stays null.
+let testConfig = null;
 let ready = null;
+
+/** How a mailbox is named in the log: never its address or display name (rule 13). */
+const label = (mb) => `boîte ${mb.id}`;
+
+/** clearTimeout, where there is one (the unit tests' JavaScript shell has none). */
+const cancelTimer = (t) => {
+  if (t !== null && t !== undefined && typeof clearTimeout === "function") clearTimeout(t);
+};
 
 const notify = (message) =>
   api.notifications
@@ -62,6 +73,8 @@ installSendHandler({
     return clientFor(mb);
   },
   accountOfIdentity: (identityId) => api.sync443Account.accountOfIdentity(identityId),
+  // The identity must still send through our neutral server (repaired if the user relinked it).
+  checkSendRoute: (identityId) => api.sync443Account.checkSendRoute(identityId),
   afterSend: (mailboxId) => runSync(mailboxId, { reason: "envoi" }),
   log,
   notify,
@@ -100,14 +113,29 @@ async function clientFor(mb, password = null) {
 
 // ── One engine per mailbox ───────────────────────────────────────────────
 
-function attach(mb) {
+/**
+ * Stop an engine for good: no pass, no Ping, no storage write after this.
+ * Local actions recorded meanwhile wait in `entry.buffer` (handed to the
+ * next engine by attach()).
+ */
+async function retire(entry) {
+  entry.closing = true;
+  cancelTimer(entry.timer);
+  if (!entry.sync) return;
+  await entry.sync.close().catch((e) => log.warn(`Arrêt du moteur (${label(entry.mailbox)}) : ${errorCode(e)}.`));
+  await entry.inFlight?.catch(() => {});
+}
+
+/**
+ * (Re)start the engine of a mailbox. The previous engine, if any, is fully
+ * stopped first, so two engines never work on the same records; actions
+ * recorded in between are handed over in order.
+ */
+async function attach(mb) {
   const old = entries.get(mb.id);
-  if (old) {
-    old.sync.cancel();
-    old.sync.stopPush().catch(() => {});
-    clearTimeout(old.timer);
-  }
-  const entry = { mailbox: mb, inFlight: null, again: false, timer: null, sync: null };
+  if (old) await retire(old);
+  if (old?.mailbox.accountKey && old.mailbox.accountKey !== mb.accountKey) marked.delete(old.mailbox.accountKey);
+  const entry = { mailbox: mb, inFlight: null, again: false, timer: null, sync: null, closing: false, buffer: old?.buffer ?? [], handover: true };
   if (mb.accountKey) {
     marked.add(mb.accountKey);
     entry.sync = new MailboxSync({
@@ -120,19 +148,33 @@ function attach(mb) {
     });
   }
   entries.set(mb.id, entry);
+  // Actions that arrive while the buffer drains join its end: order is kept.
+  let handed = 0;
+  while (entry.buffer.length && entry.sync && !entry.closing) {
+    const intent = entry.buffer.shift();
+    await entry.sync.recordIntent(intent).then(
+      () => handed++,
+      (e) => log.warn(`Action locale non enregistrée (${label(mb)}) : ${errorCode(e)}.`),
+    );
+  }
+  if (entry.buffer.length && !entry.closing) {
+    log.warn(`${entry.buffer.length} action(s) locale(s) abandonnée(s) (${label(mb)} sans compte Thunderbird).`);
+    entry.buffer = [];
+  }
+  entry.handover = false;
+  if (handed && !entry.closing) scheduleLocal(entry);
   return entry;
 }
 
 async function detach(id) {
   const entry = entries.get(id);
-  entries.delete(id);
   if (!entry) return;
-  clearTimeout(entry.timer);
-  if (entry.sync) {
-    entry.sync.cancel();
-    await entry.sync.stopPush().catch(() => {});
+  entries.delete(id);
+  await retire(entry);
+  entry.buffer = [];
+  if (entry.mailbox.accountKey && ![...entries.values()].some((e) => e.mailbox.accountKey === entry.mailbox.accountKey)) {
+    marked.delete(entry.mailbox.accountKey);
   }
-  if (entry.mailbox.accountKey) marked.delete(entry.mailbox.accountKey);
 }
 
 async function setRunning(id, running) {
@@ -142,7 +184,7 @@ async function setRunning(id, running) {
 /** Run passes for a mailbox; concurrent requests are merged into one more pass. */
 function runSync(id, { reason = "auto", confirmDeletes = false } = {}) {
   const entry = entries.get(id);
-  if (!entry?.sync) return Promise.resolve();
+  if (!entry?.sync || entry.closing) return Promise.resolve();
   if (entry.inFlight) {
     entry.again = true;
     if (reason === "user") entry.againUser = true;
@@ -156,45 +198,63 @@ function runSync(id, { reason = "auto", confirmDeletes = false } = {}) {
       let why = reason;
       let confirm = confirmDeletes;
       for (let round = 0; round < MAX_ROUNDS; round++) {
-        const result = await entry.sync.run({ reason: why, confirmDeletes: confirm });
+        // `round`: passes of one run share its attempt count (journal entries are tried once per run).
+        const result = await entry.sync.run({ reason: why, confirmDeletes: confirm, round });
         if (!result?.moreAvailable) break;
         why = "suite";
         confirm = false;
       }
     } catch (e) {
       // The engine has already recorded the failure in the mailbox's health.
-      log.warn(`Synchro de « ${entry.mailbox.name} » : ${e?.code ?? "erreur"}.`);
+      log.warn(`Synchro (${label(entry.mailbox)}) : ${errorCode(e)}.`);
     } finally {
       await setRunning(id, false);
       entry.inFlight = null;
       updateBadge();
     }
-    if (entry.again && entries.get(id) === entry) {
+    const current = entries.get(id) === entry && !entry.closing;
+    if (entry.again && current) {
       const user = entry.againUser;
       const confirm = entry.againConfirm;
       entry.again = entry.againUser = entry.againConfirm = false;
       await runSync(id, { reason: user ? "user" : "suite", confirmDeletes: confirm });
       return;
     }
-    if (entry.mailbox.syncMinutes === 0 && entries.get(id) === entry) entry.sync.startPush();
+    if (entry.mailbox.syncMinutes === 0 && current) entry.sync.startPush();
   })();
   return entry.inFlight;
 }
 
 // ── Local actions ────────────────────────────────────────────────────────
 
-const events = new LocalEvents({
-  echo,
-  isMarked: (accountKey) => marked.has(accountKey),
-  onIntent: async (accountKey, intent) => {
-    const entry = [...entries.values()].find((e) => e.mailbox.accountKey === accountKey);
-    if (!entry?.sync) return;
+function scheduleLocal(entry) {
+  cancelTimer(entry.timer);
+  entry.timer = setTimeout(() => runSync(entry.mailbox.id, { reason: "local" }), LOCAL_DELAY_MS);
+}
+
+function keep(entry, intent) {
+  if (entry.buffer.length < MAX_HANDOVER) entry.buffer.push(intent);
+  else log.warn(`Action locale abandonnée (${label(entry.mailbox)} : trop d'actions en attente).`);
+}
+
+/** A local action on one of our accounts: into its journal, sent shortly after. */
+async function onLocalIntent(accountKey, intent) {
+  const entry = [...entries.values()].find((e) => e.mailbox.accountKey === accountKey);
+  if (!entry?.sync && !entry?.handover) return;
+  // Mail not synchronised (unchecked): nothing to send, nothing kept for later.
+  if (entry.mailbox.sync?.mail !== true) return;
+  // The engine is being replaced: the action waits for the next one.
+  if (entry.closing || entry.handover) return keep(entry, intent);
+  try {
     await entry.sync.recordIntent(intent);
-    clearTimeout(entry.timer);
-    entry.timer = setTimeout(() => runSync(entry.mailbox.id, { reason: "local" }), LOCAL_DELAY_MS);
-  },
-  log,
-});
+  } catch (e) {
+    if (e?.code !== "CLOSED") throw e;
+    return keep(entry, intent);
+  }
+  scheduleLocal(entry);
+}
+
+const events = new LocalEvents({ echo, isMarked: (accountKey) => marked.has(accountKey), onIntent: onLocalIntent, log });
 
 // The user removed one of our accounts in Thunderbird's account settings.
 api.accounts.onDeleted.addListener(async (accountKey) => {
@@ -236,8 +296,11 @@ function checkInput(input) {
   const email = emailAddress(String(input.email ?? ""));
   if (!email) throw new FieldError("email", "Adresse e-mail invalide.");
   const username = String(input.username ?? "").trim();
-  if (username.length > 256 || /[\u0000-\u001f\u007f]/.test(username)) throw new FieldError("username", "Identifiant de connexion invalide.");
-  const name = cleanText(String(input.name ?? ""), { max: 256, singleLine: true, stripBidi: true }).trim() || email;
+  // Basic authentication cannot carry a colon in the user name (RFC 7617).
+  if (username.length > 256 || username.includes(":") || LOGIN_REFUSED.test(username) || !username.isWellFormed()) {
+    throw new FieldError("username", "Identifiant de connexion invalide.");
+  }
+  const name = personName(String(input.name ?? "")) ?? email;
   let server;
   try {
     server = serverOf(String(input.server ?? ""));
@@ -248,8 +311,8 @@ function checkInput(input) {
   if (!FREQUENCIES.has(syncMinutes)) throw new FieldError("syncMinutes", "Fréquence invalide.");
   const filterType = String(input.filterType);
   if (!PERIODS.has(filterType)) throw new FieldError("filterType", "Période invalide.");
-  const sync = Object.fromEntries(KINDS.map((k) => [k, input.sync?.[k] === true]));
-  if (!KINDS.some((k) => sync[k])) throw new FieldError("sync", "Choisissez au moins un élément à synchroniser.");
+  const sync = Object.fromEntries(SYNC_KINDS.map((k) => [k, input.sync?.[k] === true]));
+  if (!SYNC_KINDS.some((k) => sync[k])) throw new FieldError("sync", "Choisissez au moins un élément à synchroniser.");
   return { email, username, name, server, syncMinutes, filterType, sync };
 }
 
@@ -265,7 +328,27 @@ function fieldOf(e) {
   }
 }
 
-async function saveMailbox(input, password) {
+// Saves and removals run one at a time: permissions, accounts, passwords and records are shared.
+let queue = Promise.resolve();
+function serial(fn) {
+  const run = queue.then(fn);
+  queue = run.catch(() => {});
+  return run;
+}
+
+const saveMailbox = (input, password) => serial(() => saveMailboxNow(input, password));
+
+async function saveMailboxNow(input, password) {
+  try {
+    return await saveMailboxChecked(input, password);
+  } catch (e) {
+    // A host permission accepted for a save that failed is given back.
+    await prunePermissions().catch(() => {});
+    throw e;
+  }
+}
+
+async function saveMailboxChecked(input, password) {
   const v = checkInput(input);
   const id = input.id ? String(input.id) : null;
   const existing = id ? await store.getMailbox(id) : null;
@@ -278,10 +361,14 @@ async function saveMailbox(input, password) {
     throw new FieldError("email", "L'adresse d'une boîte ne se change pas : supprimez-la et ajoutez-en une nouvelle.");
   }
   const login = v.username || v.email;
+  if (all.some((m) => m.id !== id && m.origin === v.server.origin && loginOf(m).toLowerCase() === login.toLowerCase())) {
+    throw new FieldError("username", "Une autre boîte utilise déjà ce serveur avec cet identifiant.");
+  }
+  const newPassword = typeof password === "string" && password.length ? password : null;
   // The password only ever goes to the origin and sign-in name it was typed for.
-  const moved = existing && (existing.origin !== v.server.origin || loginOf(existing) !== login);
-  if (typeof password === "string" && password.length) {
-    if (password.length > 1024 || password.includes("\u0000")) throw new FieldError("password", "Mot de passe invalide.");
+  const moved = Boolean(existing) && (existing.origin !== v.server.origin || loginOf(existing) !== login);
+  if (newPassword) {
+    if (newPassword.length > 1024 || newPassword.includes("\u0000")) throw new FieldError("password", "Mot de passe invalide.");
   } else if (!existing || moved) {
     throw new FieldError("password", existing ? "Le serveur ou l'identifiant a changé : retapez le mot de passe." : "Saisissez le mot de passe.");
   }
@@ -291,6 +378,7 @@ async function saveMailbox(input, password) {
   }
 
   const ids = existing ? { mailboxId: existing.id, deviceId: existing.deviceId } : newIds();
+  const originChanged = Boolean(existing) && existing.origin !== v.server.origin;
   const draft = checkMailbox({
     id: ids.mailboxId,
     email: v.email,
@@ -301,19 +389,17 @@ async function saveMailbox(input, password) {
     syncMinutes: v.syncMinutes,
     filterType: v.filterType,
     accountKey: existing?.accountKey ?? null,
-    tlsPins: existing?.tlsPins ?? (testConfig?.pins ?? []),
+    // Pins hold for one server only (rule 3).
+    tlsPins: existing && !originChanged ? existing.tlsPins : testConfig?.pins ?? [],
     sync: v.sync,
   });
 
-  // Prove the settings with an authenticated command before saving anything.
+  // Prove the settings with an authenticated command before changing anything.
   // (For another server, the stored protocol state must not be reused.)
   let displayName = null;
   let proto = null;
   try {
-    const client = await clientFor(
-      moved ? { ...draft, id: newIds().mailboxId } : draft, // a fresh, empty record set for the check
-      typeof password === "string" && password.length ? password : null,
-    );
+    const client = await clientFor(moved ? { ...draft, id: newIds().mailboxId } : draft, newPassword);
     const doc = await client.command("Settings", userInformationRequest(), { timeoutMs: 60_000 });
     displayName = doc ? parseUserInformation(doc).displayName : null;
     proto = { ...client.proto };
@@ -321,51 +407,95 @@ async function saveMailbox(input, password) {
     throw new FieldError(fieldOf(e), e instanceof EasError ? e.message : "Connexion au serveur impossible.");
   }
 
-  if (moved) {
-    await api.sync443Account.removePassword(existing.origin, loginOf(existing)).catch(() => {});
-    await detach(existing.id);
-    await store.mailbox(existing.id).clear(); // another server: what we learned no longer holds
+  // 1. The Thunderbird account: the step most likely to be refused, done
+  //    before anything is stored or erased.
+  const fullName = displayName ? personName(displayName) : null;
+  let account;
+  try {
+    account = await api.sync443Account.ensureAccount({ mailboxId: draft.id, email: draft.email, name: draft.name, ...(fullName ? { fullName } : {}) });
+  } catch (e) {
+    log.warn(`Compte Thunderbird non créé (${label(draft)}) : ${errorCode(e)}.`);
+    throw new FieldError(null, `Le compte Thunderbird n'a pas pu être préparé (${errorCode(e)}).`);
   }
-  if (!existing || moved) await store.mailbox(draft.id).set("proto", proto);
-  if (typeof password === "string" && password.length) await api.sync443Account.setPassword(draft.origin, login, password);
+  // Only an account made for a new mailbox is taken back.
+  const undoAccount = async () => {
+    if (!existing) await api.sync443Account.removeAccount(account.accountKey).catch(() => {});
+  };
 
-  const account = await api.sync443Account.ensureAccount({
-    mailboxId: draft.id,
-    email: draft.email,
-    name: draft.name,
-    ...(displayName ? { fullName: cleanText(displayName, { max: 256, singleLine: true, stripBidi: true }) } : {}),
-  });
-  const saved = await store.putMailbox({ ...draft, accountKey: account.accountKey });
-  attach(saved);
+  // 2. The new password.
+  if (newPassword) {
+    try {
+      await api.sync443Account.setPassword(draft.origin, login, newPassword);
+    } catch (e) {
+      await undoAccount();
+      log.warn(`Mot de passe non enregistré (${label(draft)}) : ${errorCode(e)}.`);
+      throw new FieldError("password", "Le mot de passe n'a pas pu être enregistré (mot de passe principal verrouillé ?).");
+    }
+  }
+
+  // 3. Another server or sign-in name: what we learned no longer holds (the
+  //    old engine stops first, so it cannot write any more).
+  if (moved) {
+    await detach(existing.id);
+    await store.mailbox(existing.id).clear();
+  }
+
+  // 4. The records.
+  let saved;
+  try {
+    if (!existing || moved) await store.mailbox(draft.id).set("proto", proto);
+    saved = await store.putMailbox({ ...draft, accountKey: account.accountKey });
+  } catch (e) {
+    if (!existing) {
+      await store.mailbox(draft.id).clear().catch(() => {});
+      if (newPassword) await api.sync443Account.removePassword(draft.origin, login).catch(() => {});
+      await undoAccount();
+    } else if (moved) {
+      // The record still names the old server, whose password is untouched: that mailbox starts again.
+      await api.sync443Account.removePassword(draft.origin, login).catch(() => {});
+      await attach(existing).catch(() => {});
+    }
+    log.error(`Boîte non enregistrée (${label(draft)}) : ${errorCode(e)}.`);
+    throw new FieldError(null, "La boîte n'a pas pu être enregistrée.");
+  }
+  if (moved) {
+    await api.sync443Account.removePassword(existing.origin, loginOf(existing)).catch(() => log.warn(`Ancien mot de passe non supprimé (${label(existing)}).`));
+  }
+
+  await attach(saved);
   await scheduleAlarms();
   await prunePermissions();
-  log.info(`Boîte « ${saved.name} » ${existing ? "modifiée" : "ajoutée"}.`);
+  log.info(`${existing ? "Boîte modifiée" : "Boîte ajoutée"} (${label(saved)}).`);
   runSync(saved.id, { reason: "user" });
   return { id: saved.id };
 }
 
-async function removeMailbox(id, { accountGone = false } = {}) {
+const removeMailbox = (id, options) => serial(() => removeMailboxChecked(id, options));
+
+async function removeMailboxChecked(id, { accountGone = false } = {}) {
   const mb = await store.getMailbox(String(id));
-  if (!mb || removing.has(mb.id)) return;
-  removing.add(mb.id);
-  try {
-    await removeMailboxNow(mb, accountGone);
-  } finally {
-    removing.delete(mb.id);
-  }
+  // Our own account removal fires accounts.onDeleted: that second call waits in
+  // the queue and then finds nothing left to remove.
+  if (!mb) return;
+  await removeMailboxNow(mb, accountGone);
 }
 
 async function removeMailboxNow(mb, accountGone) {
   await detach(mb.id);
   if (mb.accountKey && !accountGone) {
-    await api.sync443Account.removeAccount(mb.accountKey).catch((e) => log.warn(`Compte Thunderbird non supprimé : ${String(e?.message ?? "").split(":")[0]}.`));
+    await api.sync443Account.removeAccount(mb.accountKey).catch((e) =>
+      // FILES: the account is gone, but its folder was not where Thunderbird keeps mail, so its files were left alone.
+      errorCode(e) === "FILES"
+        ? log.warn(`Compte Thunderbird retiré, fichiers laissés en place hors du dossier Mail du profil (${label(mb)}).`)
+        : log.warn(`Compte Thunderbird non supprimé (${label(mb)}) : ${errorCode(e)}.`),
+    );
   }
-  await api.sync443Account.removePassword(mb.origin, loginOf(mb)).catch(() => log.warn("Mot de passe non supprimé du gestionnaire."));
+  await api.sync443Account.removePassword(mb.origin, loginOf(mb)).catch(() => log.warn(`Mot de passe non supprimé du gestionnaire (${label(mb)}).`));
   await store.deleteMailbox(mb.id);
   await api.alarms.clear(ALARM + mb.id);
   await prunePermissions();
   updateBadge();
-  log.info(`Boîte « ${mb.name} » retirée de Thunderbird (rien n'est supprimé sur le serveur).`);
+  log.info(`Boîte retirée de Thunderbird, rien n'est supprimé sur le serveur (${label(mb)}).`);
 }
 
 /** Host permissions no mailbox uses any more are given back. */
@@ -403,6 +533,7 @@ async function mailboxView(mb) {
       lastError: health.lastError,
       blocked: health.blocked,
       pendingDeletes: pending,
+      failedItems: health.failedItems ?? 0,
     },
   };
 }
@@ -430,6 +561,17 @@ api.runtime.onMessage.addListener((msg, sender) => {
           runSync(String(msg.id), { reason: "user", confirmDeletes: msg.confirmDeletes === true });
         }),
       );
+    case "discardDeletes":
+      // The user keeps the local copies instead of applying the retained deletions.
+      return answer(
+        ready.then(async () => {
+          const entry = entries.get(String(msg.id));
+          if (!entry?.sync) throw new FieldError(null, "Boîte inconnue.");
+          await entry.sync.discardPendingDeletes();
+          log.info(`Suppressions retenues abandonnées, copies locales gardées (${label(entry.mailbox)}).`);
+          runSync(entry.mailbox.id, { reason: "user" });
+        }),
+      );
     case "getLog":
       return answer(Promise.resolve({ entries: getLog(), debugUntil: log.debugUntil }));
     case "clearLog":
@@ -452,7 +594,6 @@ function updateBadge() {
 
 async function applyBadge() {
   const action = api.browserAction;
-  if (!action) return;
   if ([...entries.values()].some((e) => e.inFlight)) {
     await action.setBadgeBackgroundColor({ color: "#0060df" });
     await action.setBadgeText({ text: "…" });
@@ -473,7 +614,7 @@ async function applyBadge() {
   await action.setTitle({ title: `Synchroniser${when ? ` (dernière synchro à ${when})` : ""}` });
 }
 
-api.browserAction?.onClicked.addListener(() => {
+api.browserAction.onClicked.addListener(() => {
   if (!entries.size) api.runtime.openOptionsPage();
   else syncAll();
 });
@@ -506,8 +647,9 @@ api.menus.onClicked.addListener((info) => {
 
 // ── Start-up ─────────────────────────────────────────────────────────────
 
+// <test-hooks>
 async function loadTestConfig() {
-  // Test builds only: the end-to-end runner packages this file; release builds never contain it.
+  // Packaged by the end-to-end runner only.
   try {
     const resp = await fetch(api.runtime.getURL("test-config.json"));
     if (resp.ok) testConfig = await resp.json();
@@ -515,16 +657,26 @@ async function loadTestConfig() {
     testConfig = null;
   }
 }
+// </test-hooks>
 
 async function startup() {
   await loadLog();
+  // <test-hooks>
   await loadTestConfig();
+  // </test-hooks>
   await store.init();
   const swept = await store.sweepOrphans();
   if (swept) log.info(`${swept} enregistrement(s) orphelin(s) retiré(s).`);
   // Our accounts as Thunderbird knows them: a mailbox whose account vanished gets a new one at its next save.
   const accounts = new Set((await api.sync443Account.listAccounts()).map((a) => a.accountKey));
-  for (const mb of await store.listMailboxes()) attach(accounts.has(mb.accountKey) ? mb : { ...mb, accountKey: null });
+  for (const mb of await store.listMailboxes()) await attach(accounts.has(mb.accountKey) ? mb : { ...mb, accountKey: null });
+  // Our identities must send through the neutral server (repaired here if the user relinked them).
+  if (accounts.size) {
+    await api.sync443Account
+      .checkSendRoute()
+      .then((repaired) => repaired && log.warn("Serveur d'envoi des comptes Sync443 rétabli."))
+      .catch((e) => log.error(`Serveur d'envoi des comptes Sync443 non vérifié : ${errorCode(e)}.`));
+  }
   events.start();
   await scheduleAlarms();
   updateBadge();
@@ -535,12 +687,14 @@ ready = startup().catch((e) => {
 });
 
 ready.then(async () => {
+  // <test-hooks>
   if (testConfig?.scenario) {
     // Packaged by the end-to-end runner only (never in a release build).
     const { runScenario } = await import(api.runtime.getURL("test-scenario.mjs"));
-    await runScenario({ api, store, saveMailbox, removeMailbox, runSync, entries, echo, log, testConfig });
+    await runScenario({ api, store, saveMailbox, removeMailbox, runSync, entries, echo, log, testConfig, attach, detach, onLocalIntent });
     return;
   }
+  // </test-hooks>
   setTimeout(() => {
     for (const id of entries.keys()) runSync(id, { reason: "démarrage" });
   }, STARTUP_DELAY_MS);

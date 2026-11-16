@@ -30,7 +30,68 @@
       { "name": "outgoing", "type": "function", "async": true, "parameters": [] },
       { "name": "setDefaultSmtp", "type": "function", "async": true, "parameters": [{ "name": "key", "type": "string" }] },
       { "name": "effectiveDefaultSmtp", "type": "function", "async": true, "parameters": [] },
-      { "name": "createUserSmtp", "type": "function", "async": true, "parameters": [{ "name": "hostname", "type": "string" }] },
+      {
+        "name": "createUserSmtp",
+        "type": "function",
+        "async": true,
+        "parameters": [
+          { "name": "hostname", "type": "string" },
+          { "name": "makeDefault", "type": "boolean", "optional": true }
+        ]
+      },
+      { "name": "localFolders", "type": "function", "async": true, "parameters": [] },
+      { "name": "localFoldersViaGetter", "type": "function", "async": true, "parameters": [] },
+      { "name": "setLocalFoldersPref", "type": "function", "async": true, "parameters": [{ "name": "value", "type": "string" }] },
+      {
+        "name": "addIdentity",
+        "type": "function",
+        "async": true,
+        "parameters": [
+          { "name": "accountKey", "type": "string" },
+          { "name": "email", "type": "string" }
+        ]
+      },
+      {
+        "name": "editOutgoing",
+        "type": "function",
+        "async": true,
+        "parameters": [
+          { "name": "key", "type": "string" },
+          { "name": "values", "type": "object", "additionalProperties": { "type": "any" } }
+        ]
+      },
+      { "name": "removeOutgoingLikeSettings", "type": "function", "async": true, "parameters": [{ "name": "key", "type": "string" }] },
+      {
+        "name": "replaceOutgoing",
+        "type": "function",
+        "async": true,
+        "parameters": [
+          { "name": "key", "type": "string" },
+          { "name": "hostname", "type": "string" }
+        ]
+      },
+      {
+        "name": "setLocalPath",
+        "type": "function",
+        "async": true,
+        "parameters": [
+          { "name": "accountKey", "type": "string" },
+          { "name": "path", "type": "string" }
+        ]
+      },
+      { "name": "makeCanaryDir", "type": "function", "async": true, "parameters": [{ "name": "name", "type": "string" }] },
+      { "name": "prefsOf", "type": "function", "async": true, "parameters": [{ "name": "prefix", "type": "string" }] },
+      {
+        "name": "setBranchPrefs",
+        "type": "function",
+        "async": true,
+        "parameters": [
+          { "name": "prefix", "type": "string" },
+          { "name": "values", "type": "object", "additionalProperties": { "type": "any" } }
+        ]
+      },
+      { "name": "reloadSpamSettings", "type": "function", "async": true, "parameters": [{ "name": "accountKey", "type": "string" }] },
+      { "name": "dirEntries", "type": "function", "async": true, "parameters": [{ "name": "path", "type": "string" }] },
       {
         "name": "setIdentity",
         "type": "function",

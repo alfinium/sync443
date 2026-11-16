@@ -97,3 +97,23 @@ test("écho : beaucoup d'attentes consommées puis expirées restent bornées en
   t += ECHO_TTL_MS + 1;
   eq(echo.size, 0);
 });
+
+test("écho : garde d'un message importé (état écrit, prêt après les écritures, durée de vie bornée)", async () => {
+  let t = 0;
+  const r = new EchoRegistry({ now: () => t, ttlMs: 30_000 });
+  const release = r.guard("account1", "/Inbox", "m@x", { read: false, flagged: true });
+  const g = r.guarded("account1", "/Inbox", "m@x");
+  eq(g.state, { read: false, flagged: true });
+  let ready = false;
+  g.ready.then(() => (ready = true));
+  await Promise.resolve();
+  eq(ready, false, "pas prêt tant que les écritures continuent");
+  release();
+  await g.ready;
+  r.reguard("account1", "/Inbox", "m@x", { read: true, flagged: true });
+  eq(r.guarded("account1", "/Inbox", "m@x").state, { read: true, flagged: true });
+  eq(r.guarded("account1", "/Inbox", "autre@x"), null);
+  t += 30_000;
+  eq(r.guarded("account1", "/Inbox", "m@x"), null, "expirée");
+  eq(r.size, 0, "les gardes ne sont pas des attentes d'écho");
+});

@@ -3,7 +3,7 @@
 
 /**
  * Folders and messages of ONE Thunderbird account, addressed by folder
- * path (WebExtension APIs of Thunderbird 128 and later, Manifest V2:
+ * path (WebExtension APIs of Thunderbird 140 and later, Manifest V2:
  * browser.folders, browser.messages). The only module of the mail engine
  * that touches Thunderbird; the engine is tested with a double of it.
  *
@@ -12,13 +12,13 @@
  *   createFolder(parentPath, name) → path
  *   renameFolder(path, newName) → path
  *   moveFolder(path, destParentPath) → path
- *   deleteFolder(path)                                       (inside the trash only: permanent)
- *   findByMessageId(path, messageId) → [{ id, flags: { read, flagged } }]
- *   listMessages(path) → [{ id, messageId, flags }]
- *   importMessage(path, bytes, flags) → { id }               (60 s at most)
+ *   findByMessageId(path, messageId) → [{ id, flags: { read, flagged }, date, author }]
+ *   listMessages(path) → [{ id, messageId, flags, date, author }]
+ *   importMessage(path, bytes, flags, { messageId? }) → { id, messageId }   (60 s at most)
  *   setFlags(id, flags, expected?) → boolean                 (true if something changed)
  *   moveMessages(ids, path, expected?) → { moved, skipped }
  *   deleteMessages(ids, { permanent, expected? }) → { deleted, skipped }
+ *   discardImport(id)                                        (a copy importMessage just made, and only that)
  *
  * Message ids are Thunderbird's, valid for this session only; the engine
  * never stores them. `expected` ({ path, messageId }) guards a write made
@@ -26,18 +26,36 @@
  * user moved it meanwhile) is skipped, not touched by mistake.
  *
  * The account is checked on every operation: nothing outside it is read
- * or written. Special folders are never renamed, moved or deleted, and a
- * permanent deletion happens only inside the account's trash.
+ * or written. Special folders are never renamed or moved, and a permanent
+ * deletion of messages happens only inside the account's trash, or of a copy
+ * this session imported (discardImport: a copy Thunderbird read under a
+ * Message-ID another message already has, never the user's mail).
+ *
+ * `date` (milliseconds, or null) and `author` (the From text) are what
+ * Thunderbird read of the message: the engine compares them with a server
+ * item before attaching it to a copy (sync/mail.mjs). `messageId` returned
+ * by importMessage is the Message-ID Thunderbird itself read
+ * (`headerMessageId`), the one its events will carry.
  *
  * Every write declares its echo to sync/echo.mjs before it is made (the
  * event may fire before the API call returns), and retracts it if the call
  * fails. Only writes that produce an event declare one: a flag that does
- * not change is not written at all. An import produces no event that
- * tb/events.mjs listens to.
+ * not change is not written at all. An import changes the copy's flags
+ * on its own after the copy, firing onUpdated each time (Thunderbird 160:
+ * marked read to clear "new", unread again, flagged), in an order and a
+ * number that vary between versions: an imported message is guarded as a
+ * whole instead (sync/echo.mjs guard, with the flags written), before the
+ * import.
  */
 
-export const IMPORT_TIMEOUT_MS = 60_000;
+import { messageIdOf } from "../core/mime.mjs";
+
+import { ACCOUNT_KEY } from "../core/ids.mjs";
+import { join, basename, under, validPath } from "../sync/paths.mjs";
+
+const IMPORT_TIMEOUT_MS = 60_000;
 const MAX_LIST = 1_000_000; // messages listed in one folder, at most
+const MAX_IMPORTED = 1000; // ids of the latest imports, the only ones discardImport accepts
 
 export class MailStoreError extends Error {
   constructor(code, message) {
@@ -47,11 +65,13 @@ export class MailStoreError extends Error {
   }
 }
 
-const join = (parent, name) => (parent === "/" ? `/${name}` : `${parent}/${name}`);
-const basename = (p) => p.slice(p.lastIndexOf("/") + 1);
-const under = (path, root) => path === root || path.startsWith(`${root}/`);
-const validPath = (p) => typeof p === "string" && p.startsWith("/") && p.length <= 2048;
 const validName = (n) => typeof n === "string" && n.length > 0 && n.length <= 255 && !n.includes("/") && !/[\u0000-\u001f\u007f]/.test(n);
+/** A message's Date as Thunderbird gives it (a Date, or a number in some versions) → milliseconds, or null. */
+function timeOf(d) {
+  const t = d instanceof Date ? d.getTime() : typeof d === "number" ? d : typeof d === "string" ? Date.parse(d) : NaN;
+  return Number.isFinite(t) ? t : null;
+}
+const facts = (m) => ({ date: timeOf(m.date), author: typeof m.author === "string" ? m.author : null });
 
 function defaultTimers() {
   return {
@@ -69,6 +89,7 @@ export class MailStore {
   #timers;
   #makeFile;
   #importTimeoutMs;
+  #imported = new Set();
 
   /**
    * @param {object} o
@@ -80,7 +101,7 @@ export class MailStore {
    * @param {number} [o.importTimeoutMs]
    */
   constructor({ accountKey, echo, browser = globalThis.browser, timers = defaultTimers(), makeFile, importTimeoutMs = IMPORT_TIMEOUT_MS }) {
-    if (typeof accountKey !== "string" || !/^account\d{1,6}$/.test(accountKey)) throw new MailStoreError("CONFIG", "compte invalide");
+    if (typeof accountKey !== "string" || !ACCOUNT_KEY.test(accountKey)) throw new MailStoreError("CONFIG", "compte invalide");
     if (!browser?.folders || !browser?.messages) throw new MailStoreError("CONFIG", "API de Thunderbird indisponibles");
     this.#browser = browser;
     this.#accountKey = accountKey;
@@ -88,10 +109,6 @@ export class MailStore {
     this.#timers = timers;
     this.#makeFile = makeFile ?? ((bytes) => new File([bytes], "message.eml", { type: "message/rfc822" }));
     this.#importTimeoutMs = importTimeoutMs;
-  }
-
-  get accountKey() {
-    return this.#accountKey;
   }
 
   // ── Folders ─────────────────────────────────────────────────────────────
@@ -170,16 +187,6 @@ export class MailStore {
     return validPath(moved?.path) ? moved.path : toPath;
   }
 
-  /** Permanent deletion of a folder inside the trash (Thunderbird's folders.delete moves to the trash anywhere else). */
-  async deleteFolder(path) {
-    const f = await this.#folder(path);
-    const trash = await this.#trashPath();
-    if (this.#special(f) || f.isRoot || !trash || path === trash || !under(path, trash)) {
-      throw new MailStoreError("REFUSED", "suppression de dossier hors de la corbeille");
-    }
-    await this.#withEcho([{ kind: "folderDelete", path }], () => this.#browser.folders.delete(f.id));
-  }
-
   // ── Messages ────────────────────────────────────────────────────────────
 
   /** Every message of a MessageList, following its pages. */
@@ -207,7 +214,7 @@ export class MailStore {
     const first = await this.#browser.messages.query({ folderId: f.id, headerMessageId: messageId, includeSubFolders: false });
     for await (const m of this.#pages(first)) {
       if (this.#mine(m) && m.folder.path === path && m.headerMessageId === messageId) {
-        out.push({ id: m.id, flags: { read: Boolean(m.read), flagged: Boolean(m.flagged) } });
+        out.push({ id: m.id, flags: { read: Boolean(m.read), flagged: Boolean(m.flagged) }, ...facts(m) });
       }
     }
     return out;
@@ -218,17 +225,23 @@ export class MailStore {
     const out = [];
     for await (const m of this.#pages(await this.#browser.messages.list(f.id))) {
       if (this.#mine(m) && m.folder.path === path && typeof m.headerMessageId === "string") {
-        out.push({ id: m.id, messageId: m.headerMessageId, flags: { read: Boolean(m.read), flagged: Boolean(m.flagged) } });
+        out.push({ id: m.id, messageId: m.headerMessageId, flags: { read: Boolean(m.read), flagged: Boolean(m.flagged) }, ...facts(m) });
       }
     }
     return out;
   }
 
-  async importMessage(path, bytes, flags = {}) {
+  async importMessage(path, bytes, flags = {}, { messageId = null } = {}) {
     if (!(bytes instanceof Uint8Array) || !bytes.length) throw new MailStoreError("REFUSED", "message vide");
     const f = await this.#folder(path);
     const properties = { read: flags.read === true, flagged: flags.flagged === true, new: false };
     const file = this.#makeFile(bytes);
+    // The flag events Thunderbird fires while importing (and those of #fileUnread) are ours: the message is
+    // guarded as a whole with the flags written, before the import.
+    const mid = typeof messageId === "string" && messageId ? messageId : messageIdOf(bytes);
+    const written = { read: properties.read, flagged: properties.flagged };
+    const releases = [];
+    if (mid) releases.push(this.#echo?.guard?.(this.#accountKey, path, mid, written));
     let timer = null;
     const timeout = new Promise((_, reject) => {
       timer = this.#timers.set(() => reject(new MailStoreError("TIMEOUT", `import non terminé après ${Math.round(this.#importTimeoutMs / 1000)} s`)), this.#importTimeoutMs);
@@ -236,10 +249,34 @@ export class MailStore {
     try {
       const header = await Promise.race([this.#browser.messages.import(file, f.id, properties), timeout]);
       if (!Number.isInteger(header?.id)) throw new MailStoreError("FAILED", "import sans message");
-      return { id: header.id };
+      const read = typeof header.headerMessageId === "string" ? header.headerMessageId : null;
+      if (read !== null && read !== mid) releases.push(this.#echo?.guard?.(this.#accountKey, path, read, written)); // its events carry that one
+      this.#imported.add(header.id);
+      while (this.#imported.size > MAX_IMPORTED) this.#imported.delete(this.#imported.values().next().value);
+      if (!properties.read && read !== null) await this.#fileUnread(header.id);
+      return { id: header.id, messageId: read };
     } finally {
       this.#timers.clear(timer);
+      for (const release of releases) release?.(); // the engine's writes to this message are over
     }
+  }
+
+  /**
+   * messages.import() settles the "new" state of an unread copy by marking it
+   * read, then unread; the second change does not reach the folder file,
+   * whose X-Mozilla-Status keeps saying "read" (a rebuilt summary would then
+   * show the message as read). Marked again once the copy is over, the file
+   * says unread. Our own events (the import's guard covers them); a failure
+   * here changes nothing for the sync.
+   */
+  async #fileUnread(id) {
+    const mark = (read) => this.#browser.messages.update(id, { read });
+    try {
+      await mark(true);
+    } catch {
+      return;
+    }
+    await mark(false).catch(() => mark(false).catch(() => {}));
   }
 
   /** The message `id`, if it is still in this account (and where `expected` says). */
@@ -281,6 +318,16 @@ export class MailStore {
     }
     if (moved.length) await this.#withEcho(intents, () => this.#browser.messages.move(moved, dest.id, { isUserAction: false }));
     return { moved, skipped };
+  }
+
+  /** Permanent deletion of a copy importMessage made in this session (it stays nowhere, not even in the trash). → boolean */
+  async discardImport(id) {
+    if (!this.#imported.has(id)) return false;
+    const m = await this.#message(id);
+    if (!m) return false;
+    this.#imported.delete(id);
+    await this.#withEcho([{ kind: "delete", path: m.folder.path, messageId: m.headerMessageId }], () => this.#browser.messages.delete([id], { deletePermanently: true, isUserAction: false }));
+    return true;
   }
 
   /**

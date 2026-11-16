@@ -24,6 +24,10 @@ import {
   PERIODS,
   KINDS,
   DEFAULTS,
+  DISCARD_CONFIRM,
+  FIELD_ORDER,
+  failedText,
+  shown,
 } from "../../src/options/form.mjs";
 import { SYNC_KINDS } from "../../src/sync/store.mjs";
 
@@ -58,7 +62,7 @@ test("formulaire : nouvelle boîte valable, requête et autorisation d'hôte", (
   const r = validateForm(values({ email: "  alice@example.com ", server: " https://Mail.Example.com/Microsoft-Server-ActiveSync " }));
   eq(r.ok, true);
   eq(r.errors, []);
-  eq(r.passwordRequired, true);
+  eq("passwordRequired" in r, false, "interne");
   eq(r.permission, "https://mail.example.com/*");
   eq(r.request, {
     mailbox: {
@@ -119,7 +123,6 @@ test("formulaire : mot de passe obligatoire pour une nouvelle boîte, sans carac
 test("modification : mot de passe vide gardé si l'origine et l'identifiant ne changent pas", () => {
   const r = validateForm(values({ password: "" }), existing());
   eq(r.ok, true);
-  eq(r.passwordRequired, false);
   eq(r.request.password, null);
   eq(r.request.mailbox.id, "0123456789ab");
   // Same origin written differently, address in other case.
@@ -132,7 +135,6 @@ test("modification : mot de passe vide gardé si l'origine et l'identifiant ne c
 test("modification : changer de serveur ou d'identifiant oblige à retaper le mot de passe", () => {
   for (const over of [{ server: "other.example.com" }, { server: "mail.example.com:8443" }, { username: "EXEMPLE\\alice" }, { email: "bob@example.com" }]) {
     const r = validateForm(values({ password: "", ...over }), existing());
-    eq(r.passwordRequired, true, JSON.stringify(over));
     eq(fields(r), ["password"], JSON.stringify(over));
     eq(r.errors[0].message, "Le serveur ou l'identifiant a changé : retapez le mot de passe.");
     eq(validateForm(values({ password: "retapé", ...over }), existing()).ok, true);
@@ -175,7 +177,7 @@ test("formulaire : au moins un élément à synchroniser, booléens seulement", 
 
 test("formulaire : toutes les erreurs à la fois, dans l'ordre du formulaire", () => {
   const r = validateForm({ email: "x", password: "", server: "http://a.b", syncMinutes: "9", filterType: "9", sync: {} });
-  eq(fields(r), ["email", "server", "password", "syncMinutes", "filterType", "sync"]);
+  eq(fields(r), ["email", "password", "server", "syncMinutes", "filterType", "sync"]);
 });
 
 test("formValues : valeurs par défaut, puis celles d'une boîte", () => {
@@ -199,7 +201,6 @@ test("formValues : valeurs par défaut, puis celles d'une boîte", () => {
     filterType: "3",
     sync: { mail: true, calendar: true, contacts: false, tasks: false },
   });
-  eq(formValues(existing({ server: undefined, origin: "https://mail.example.com:8443", syncMinutes: 7, filterType: "8" })).server, "mail.example.com:8443");
   eq(formValues(existing({ syncMinutes: 7 })).syncMinutes, "0");
   eq(formValues(existing({ filterType: "8" })).filterType, "5");
   // The defaults are a valid mailbox once filled in.
@@ -232,7 +233,7 @@ test("état d'une boîte : bloquée, en cours, erreur, synchronisée, jamais", (
   const at = (h, m) => new Date(2026, 10, 15, h, m).getTime();
   eq(statusView({ blocked: { code: "MASS_DELETE", message: "x" }, pendingDeletes: 120 }, now), {
     tone: "blocked",
-    text: "Synchronisation suspendue : le serveur a supprimé 120 messages d'un coup. Ces suppressions ne seront appliquées qu'après votre confirmation.",
+    text: "Synchronisation suspendue : le serveur a supprimé 120 messages d'un coup. Ces suppressions ne seront appliquées qu'après votre confirmation ; vous pouvez aussi garder les copies locales.",
     massDelete: 120,
   });
   eq(statusView({ blocked: { code: "MASS_DELETE" } }, now).massDelete, 0);
@@ -291,4 +292,37 @@ test("débogage : texte de l'échéance", () => {
   eq(debugText(now, now), "");
   eq(debugText(0, now), "");
   eq(debugText(NaN, now), "");
+});
+
+test("suppressions en masse : garder les copies locales est proposé et expliqué", () => {
+  const v = statusView({ blocked: { code: "MASS_DELETE" }, pendingDeletes: 3 }, 0);
+  eq(v.massDelete, 3, "boutons « Confirmer les suppressions » et « Garder les copies locales » montrés");
+  assert(v.text.endsWith("vous pouvez aussi garder les copies locales."), v.text);
+  eq(statusView({ blocked: { code: "AUTH", message: "x" } }, 0).massDelete, null, "pas pour un autre blocage");
+  assert(DISCARD_CONFIRM.startsWith("Les suppressions faites sur le serveur ne seront pas appliquées"), DISCARD_CONFIRM);
+  assert(DISCARD_CONFIRM.includes("resynchronisés") && DISCARD_CONFIRM.includes("sans synchronisation"), DISCARD_CONFIRM);
+});
+
+test("messages impossibles à importer : signalés après l'état, s'il y en a", () => {
+  const now = new Date(2026, 10, 15, 16, 30).getTime();
+  const at = new Date(2026, 10, 15, 16, 2).getTime();
+  eq(statusView({ lastSuccessAt: at, failedItems: 3 }, now), {
+    tone: "ok",
+    text: "Synchronisée à 16:02. 3 messages n'ont pas pu être importés : nouvel essai automatique.",
+    massDelete: null,
+  });
+  eq(statusView({ lastSuccessAt: at, failedItems: 1 }, now).text, "Synchronisée à 16:02. 1 message n'a pas pu être importé : nouvel essai automatique.");
+  eq(statusView({ running: true, failedItems: 2 }, now).text, "Synchronisation en cours… 2 messages n'ont pas pu être importés : nouvel essai automatique.");
+  for (const failedItems of [0, -1, 1.5, "3", null, undefined]) {
+    eq(statusView({ lastSuccessAt: at, failedItems }, now).text, "Synchronisée à 16:02.", String(failedItems));
+  }
+  eq(failedText(0), "");
+  eq(failedText(12), "12 messages n'ont pas pu être importés : nouvel essai automatique.");
+});
+
+test("page : ordre des champs et texte affiché partagés avec options.mjs", () => {
+  eq([...FIELD_ORDER], ["email", "password", "name", "server", "username", "syncMinutes", "filterType", "sync"]);
+  eq(shown("a\u202eb\nc"), "ab c");
+  eq(shown(42), "");
+  eq(shown("x".repeat(400)).length, 300);
 });

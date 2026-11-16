@@ -27,6 +27,7 @@
 import { pingRequest, parsePing, ProtocolError } from "../core/protocol.mjs";
 import { retryDelay } from "../core/backoff.mjs";
 import { EasError, ERR, FATAL } from "../transport/client.mjs";
+import { errorCode } from "../log.mjs";
 
 export const PING_DEFAULTS = Object.freeze({
   initialHeartbeat: 480, // seconds
@@ -50,7 +51,7 @@ export class Heartbeat {
     this.min = clamp(minHeartbeat, PROTOCOL_MIN, PROTOCOL_MAX);
     this.max = clamp(maxHeartbeat, this.min, PROTOCOL_MAX);
     this.step = Math.max(1, step);
-    this.raiseAfter = Math.max(1, raiseAfter ?? PING_DEFAULTS.raiseAfter);
+    this.raiseAfter = Math.max(1, raiseAfter);
     this.ceiling = this.max;
     this.value = clamp(initialHeartbeat, this.min, this.max);
     this.quiet = 0;
@@ -94,7 +95,7 @@ export class Heartbeat {
 }
 
 /** setTimeout-based sleep that ends early on abort. */
-export function defaultSleep(ms, signal) {
+function defaultSleep(ms, signal) {
   return new Promise((resolve) => {
     if (signal?.aborted) {
       resolve();
@@ -157,7 +158,7 @@ export class PushLoop {
     const ctrl = new AbortController();
     this.#ctrl = ctrl;
     this.#done = this.#loop(ctrl.signal)
-      .catch((e) => this.#o.log?.error?.(`Ping : arrêt sur erreur inattendue (${String(e?.code ?? e?.name ?? "erreur").slice(0, 60)}).`))
+      .catch((e) => this.#o.log?.error?.(`Ping : arrêt sur erreur inattendue (${errorCode(e, 60)}).`))
       .finally(() => {
         if (this.#ctrl === ctrl) this.#ctrl = null;
       });
@@ -247,7 +248,7 @@ export class PushLoop {
             await this.#changes(null, signal);
             break;
           default:
-            throw new EasError("SERVER", `Ping : refus du serveur (Status ${r.status ?? "absent"}).`, { status: r.status });
+            throw new EasError("SERVER", `Ping : refus du serveur (Status ${r.status ?? "absent"}).`);
         }
       } catch (e) {
         if (signal.aborted || e?.code === ERR.CANCELLED) break;
@@ -263,7 +264,7 @@ export class PushLoop {
           continue; // retried at once (after the minimal interval), shorter
         }
         failures++;
-        log?.info?.(`Ping : ${e instanceof EasError ? String(e.message).slice(0, 200) : String(e?.code ?? e?.name ?? "erreur").slice(0, 60)}`);
+        log?.info?.(`Ping : ${e instanceof EasError ? String(e.message).slice(0, 200) : errorCode(e, 60)}`);
         await sleep(retryDelay(failures, { retryAfterMs: e?.retryAfterMs, random }), signal);
       }
     }

@@ -33,6 +33,7 @@ const mailbox = (over = {}) => ({
   filterType: "5",
   accountKey: null,
   tlsPins: [],
+  sync: { mail: true, calendar: true, contacts: true, tasks: true },
   ...over,
 });
 
@@ -64,6 +65,7 @@ test("boîtes : champs invalides refusés à l'écriture", () => {
   throws(() => checkMailbox(mailbox({ deviceId: "x-y" })), StoreError, "deviceId");
   throws(() => checkMailbox(mailbox({ syncMinutes: 1.5 })), StoreError, "intervalle");
   throws(() => checkMailbox(mailbox({ filterType: "9" })), StoreError, "période");
+  throws(() => checkMailbox(mailbox({ filterType: "6" })), StoreError, "période de calendrier, pas de courrier");
   throws(() => checkMailbox(mailbox({ accountKey: "Local Folders" })), StoreError, "compte");
   throws(() => checkMailbox(mailbox({ tlsPins: ["abc"] })), StoreError, "empreinte");
 });
@@ -152,7 +154,7 @@ test("identifiants : formats attendus", () => {
 });
 
 test("éléments à synchroniser : un, plusieurs ou les quatre, jamais aucun", () => {
-  eq(checkMailbox(mailbox()).sync, { mail: true, calendar: true, contacts: true, tasks: true }, "les quatre par défaut");
+  throws(() => checkMailbox(mailbox({ sync: undefined })), StoreError, "le choix est obligatoire");
   // Every non-empty combination of the four is accepted, exactly as chosen.
   for (let mask = 1; mask < 16; mask++) {
     const sync = Object.fromEntries(SYNC_KINDS.map((k, i) => [k, Boolean(mask & (1 << i))]));

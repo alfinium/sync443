@@ -33,12 +33,12 @@ test("ping : une connexion coupée raccourcit l'intervalle et abaisse le plafond
 });
 
 test("ping : statut 5, la borne du serveur est prise", () => {
-  const hb = new Heartbeat({ initialHeartbeat: 1500, minHeartbeat: 120, maxHeartbeat: 1680, step: 120 });
+  const hb = new Heartbeat({ initialHeartbeat: 1500, minHeartbeat: 120, maxHeartbeat: 1680, step: 120, raiseAfter: 10 });
   hb.serverLimit(900);
   eq([hb.value, hb.max], [900, 900]);
   hb.expired();
   eq(hb.value, 900, "le maximum du serveur tient");
-  const low = new Heartbeat({ initialHeartbeat: 120, minHeartbeat: 120, maxHeartbeat: 1680, step: 120 });
+  const low = new Heartbeat({ initialHeartbeat: 120, minHeartbeat: 120, maxHeartbeat: 1680, step: 120, raiseAfter: 10 });
   low.serverLimit(300);
   eq([low.value, low.min], [300, 300]);
   low.cut();

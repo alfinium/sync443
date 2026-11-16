@@ -47,9 +47,11 @@ export const DEFAULTS = Object.freeze({
 });
 
 const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
-const LONE_SURROGATE = /\p{Cs}/u;
 // Characters that change the direction of the text, or cannot be seen.
 const HIDDEN = /[\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2028\u2029\u2060-\u2069\ufeff]/;
+
+/** The fields in the order of the page: errors are listed (and the first one focused) in that order. */
+export const FIELD_ORDER = Object.freeze(["email", "password", "name", "server", "username", "syncMinutes", "filterType", "sync"]);
 
 /** Host permission covering one server (match patterns have no port). */
 export const permissionPattern = (host) => `https://${host}/*`;
@@ -58,7 +60,7 @@ export const permissionPattern = (host) => `https://${host}/*`;
 export function emailError(email) {
   if (!email) return "Indiquez l'adresse e-mail.";
   if (email.length > 254) return "Adresse e-mail trop longue.";
-  if (CONTROL.test(email) || HIDDEN.test(email) || LONE_SURROGATE.test(email) || !/^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/.test(email)) {
+  if (CONTROL.test(email) || HIDDEN.test(email) || !email.isWellFormed() || !/^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/.test(email)) {
     return "Adresse e-mail invalide, par exemple : prenom.nom@exemple.com.";
   }
   return null;
@@ -70,7 +72,7 @@ export function emailError(email) {
  * @param {object} values  { email, username, password, name, server, syncMinutes, filterType, sync }
  *        strings as read from the fields (syncMinutes too), sync: { mail, calendar, contacts, tasks } booleans
  * @param {object|null} existing  the mailbox being edited (as listed by the background), or null for a new one
- * @returns {{ ok: boolean, errors: {field: string, message: string}[], passwordRequired: boolean,
+ * @returns {{ ok: boolean, errors: {field: string, message: string}[],
  *             server: object|null, permission: string|null,
  *             request: { mailbox: object, password: string|null } | null }}
  */
@@ -87,7 +89,7 @@ export function validateForm(values, existing = null) {
   const username = str(values.username).trim();
   if (username.length > 256) error("username", "Identifiant trop long (256 caractères au plus).");
   else if (username.includes(":")) error("username", "L'identifiant ne doit pas contenir de deux-points ( : ).");
-  else if (CONTROL.test(username) || HIDDEN.test(username) || LONE_SURROGATE.test(username)) {
+  else if (CONTROL.test(username) || HIDDEN.test(username) || !username.isWellFormed()) {
     error("username", "L'identifiant contient un caractère non autorisé.");
   }
 
@@ -113,7 +115,7 @@ export function validateForm(values, existing = null) {
     }
   } else if (password.length > 1024) {
     error("password", "Mot de passe trop long.");
-  } else if (/[\u0000-\u001f\u007f]/.test(password) || LONE_SURROGATE.test(password)) {
+  } else if (/[\u0000-\u001f\u007f]/.test(password) || !password.isWellFormed()) {
     error("password", "Le mot de passe contient un caractère non autorisé.");
   }
 
@@ -132,11 +134,13 @@ export function validateForm(values, existing = null) {
   const sync = Object.fromEntries(SYNC_KINDS.map((k) => [k, values.sync?.[k] === true]));
   if (!SYNC_KINDS.some((k) => sync[k])) error("sync", "Choisissez au moins un élément à synchroniser.");
 
-  if (errors.length) return { ok: false, errors, passwordRequired, server, permission: null, request: null };
+  if (errors.length) {
+    errors.sort((a, b) => FIELD_ORDER.indexOf(a.field) - FIELD_ORDER.indexOf(b.field));
+    return { ok: false, errors, server, permission: null, request: null };
+  }
   return {
     ok: true,
     errors,
-    passwordRequired,
     server,
     permission: permissionPattern(server.host),
     request: {
@@ -166,7 +170,7 @@ export function formValues(mailbox = null) {
     username: str2(mailbox.username),
     password: "",
     name: str2(mailbox.name),
-    server: str2(mailbox.server) || hostOf(mailbox.origin),
+    server: str2(mailbox.server),
     syncMinutes: String(FREQUENCIES.some(([m]) => m === mailbox.syncMinutes) ? mailbox.syncMinutes : DEFAULTS.syncMinutes),
     filterType: PERIODS.some(([f]) => f === mailbox.filterType) ? mailbox.filterType : DEFAULTS.filterType,
     sync,
@@ -174,7 +178,6 @@ export function formValues(mailbox = null) {
 }
 
 const str2 = (v) => (typeof v === "string" ? v : "");
-const hostOf = (origin) => (typeof origin === "string" ? origin.replace(/^https:\/\//, "") : "");
 
 // ── Texts shown for a mailbox ─────────────────────────────────────────────
 
@@ -200,21 +203,40 @@ export function formatTime(ms, now = Date.now()) {
 }
 
 /** Text shown, cut to one line of reasonable length (it may come from the server, already cleaned). */
-const shown = (s, max = 300) => cleanText(typeof s === "string" ? s : "", { max, singleLine: true, stripBidi: true }).trim();
+export const shown = (s, max = 300) => cleanText(typeof s === "string" ? s : "", { max, singleLine: true, stripBidi: true }).trim();
+
+/** Asked before « Garder les copies locales » (discardDeletes). */
+export const DISCARD_CONFIRM =
+  "Les suppressions faites sur le serveur ne seront pas appliquées : les messages restent dans Thunderbird, et les dossiers concernés sont resynchronisés avec le serveur. Un dossier supprimé sur le serveur reste ici, sans synchronisation.";
+
+/** "3 messages n'ont pas pu être importés : nouvel essai automatique.", or "" for none. */
+export function failedText(count) {
+  if (!Number.isSafeInteger(count) || count <= 0) return "";
+  return count === 1
+    ? "1 message n'a pas pu être importé : nouvel essai automatique."
+    : `${count} messages n'ont pas pu être importés : nouvel essai automatique.`;
+}
 
 /**
- * Status of a mailbox, from the `status` the background lists.
+ * Status of a mailbox, from the `status` the background lists, followed by
+ * the number of messages whose import keeps failing (status.failedItems).
  * → { tone: "ok" | "running" | "error" | "blocked" | "idle", text, massDelete: number | null }
  * massDelete: number of deletions held back by the mass-deletion threshold, waiting for the user.
  */
 export function statusView(status, now = Date.now()) {
   const s = status && typeof status === "object" ? status : {};
+  const view = baseView(s, now);
+  const failed = failedText(s.failedItems);
+  return failed ? { ...view, text: `${view.text} ${failed}` } : view;
+}
+
+function baseView(s, now) {
   const count = Number.isSafeInteger(s.pendingDeletes) && s.pendingDeletes > 0 ? s.pendingDeletes : 0;
   if (s.blocked && typeof s.blocked === "object") {
     if (s.blocked.code === "MASS_DELETE") {
       return {
         tone: "blocked",
-        text: `Synchronisation suspendue : le serveur a supprimé ${count || "beaucoup de"} messages d'un coup. Ces suppressions ne seront appliquées qu'après votre confirmation.`,
+        text: `Synchronisation suspendue : le serveur a supprimé ${count || "beaucoup de"} messages d'un coup. Ces suppressions ne seront appliquées qu'après votre confirmation ; vous pouvez aussi garder les copies locales.`,
         massDelete: count,
       };
     }
@@ -251,7 +273,9 @@ export function logText(entries) {
   for (const e of [...entries].reverse()) {
     if (!e || typeof e !== "object" || !Number.isFinite(e.t)) continue;
     const d = new Date(e.t);
-    const stamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    const day = [d.getFullYear(), d.getMonth() + 1, d.getDate()].map((n, k) => (k ? pad(n) : String(n))).join("-");
+    const time = [d.getHours(), d.getMinutes(), d.getSeconds()].map(pad).join(":");
+    const stamp = `${day} ${time}`;
     lines.push(`${stamp}  ${(LEVEL_NAMES.get(e.level) ?? "info").padEnd(8)}  ${shown(e.msg)}`);
     if (typeof e.details === "string" && e.details) {
       const details = cleanText(e.details, { max: 4000, stripBidi: true });

@@ -2,11 +2,15 @@
 # Copyright (c) 2026 alfinium
 """Build the extension package, reproducibly: dist/sync443-<version>.xpi.
 
-The package is src/ as it is: every file, sorted by name, with a fixed date
-and fixed permissions, so that the same sources give the same bytes (with
-the same zlib). Junk left by file managers (.DS_Store, Thumbs.db,
+The package is src/ as it is (every file, sorted by name, with a fixed date
+and fixed permissions, so that the same sources give the same bytes with the
+same zlib), with one exception: in src/background.mjs, the lines between
+"// <test-hooks>" and "// </test-hooks>" (the hooks of the end-to-end tests)
+are removed, so that a published package holds no test code. Junk left by file managers (.DS_Store, Thumbs.db,
 desktop.ini) is skipped; any other unexpected file (hidden, link, unknown
-type, name that only differs by case) stops the build.
+type, name that only differs by case) stops the build, and so does test
+material: a published package never contains test-config.json,
+test-scenario.mjs or anything else whose name starts with "test-".
 
     python3 -I tools/build_xpi.py                           check, then build
     python3 -I tools/build_xpi.py --check                   check only
@@ -39,6 +43,15 @@ FIXED_TIME = (1980, 1, 1, 0, 0, 0)  # the earliest date a zip entry can carry
 JUNK = {".DS_Store", "Thumbs.db", "desktop.ini"}
 SHIPPED = {".mjs", ".js", ".json", ".html", ".css", ".svg", ".png"}
 NAME = re.compile(r"^[A-Za-z0-9_-][A-Za-z0-9._-]*(?:/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$")
+# Test material (test-config.json, test-scenario.mjs of the end-to-end tests, any other
+# file or folder named "test-..."): never in a published package.
+TEST_PREFIX = "test-"
+# Blocks of test code removed from the published package (whole lines, in this file only).
+HOOKS_FILE = "background.mjs"
+HOOK_BEGIN = "// <test-hooks>"
+HOOK_END = "// </test-hooks>"
+# What must be gone once they are removed.
+HOOK_LEFTOVERS = ("test-config.json", "test-scenario.mjs", "runScenario", "loadTestConfig")
 VERSION = re.compile(r"^(?:0|[1-9][0-9]{0,8})(?:\.(?:0|[1-9][0-9]{0,8})){1,3}$")
 
 # Relative module specifiers: static imports and re-exports (statements
@@ -91,6 +104,8 @@ def collect():
             arc = os.path.relpath(path, SRC).replace(os.sep, "/")
             if os.path.islink(path):
                 raise BuildError(f"lien symbolique refusé : src/{arc}")
+            if any(part.lower().startswith(TEST_PREFIX) for part in arc.split("/")):
+                raise BuildError(f"matériel de test refusé dans un paquet publié : src/{arc} (à retirer de src/ avant la construction)")
             if not NAME.match(arc):
                 raise BuildError(f"nom de fichier inattendu (caché ou caractère spécial) : src/{arc}")
             if os.path.splitext(n)[1] not in SHIPPED:
@@ -103,6 +118,40 @@ def collect():
             files.append((arc, path))
     files.sort(key=lambda item: item[0].encode("ascii"))
     return files
+
+
+def published(arc, data):
+    """The bytes of `arc` as published: test-hook blocks removed (see HOOK_BEGIN)."""
+    text = data.decode("utf-8")
+    lines = text.split("\n")
+    markers = [i for i, line in enumerate(lines) if line.strip() in (HOOK_BEGIN, HOOK_END)]
+    if arc != HOOKS_FILE:
+        if markers:
+            raise BuildError(f"src/{arc} : bloc de test hors de src/{HOOKS_FILE}")
+        return data
+    if not markers:
+        raise BuildError(f"src/{arc} : aucun bloc de test marqué (attendu entre {HOOK_BEGIN} et {HOOK_END})")
+    out = []
+    inside = False
+    for i, line in enumerate(lines):
+        mark = line.strip()
+        if mark == HOOK_BEGIN:
+            if inside:
+                raise BuildError(f"src/{arc}, ligne {i + 1} : bloc de test ouvert deux fois")
+            inside = True
+        elif mark == HOOK_END:
+            if not inside:
+                raise BuildError(f"src/{arc}, ligne {i + 1} : fin de bloc de test sans début")
+            inside = False
+        elif not inside:
+            out.append(line)
+    if inside:
+        raise BuildError(f"src/{arc} : bloc de test jamais fermé")
+    result = "\n".join(out)
+    for word in HOOK_LEFTOVERS:
+        if word in result:
+            raise BuildError(f"src/{arc} : code de test hors des blocs marqués ({word})")
+    return result.encode("utf-8")
 
 
 def manifest_refs(m):
@@ -189,8 +238,12 @@ def check(files, expect_version=None):
         ext = os.path.splitext(arc)[1]
         if ext not in (".html", ".mjs", ".js"):
             continue
-        with open(path, encoding="utf-8") as f:
-            text = f.read()
+        with open(path, "rb") as f:
+            try:
+                text = published(arc, f.read()).decode("utf-8")
+            except BuildError as e:
+                problems.append(str(e))
+                continue
         base_dir = os.path.dirname(path)
         if ext == ".html":
             refs = [r for r in HTML_REF.findall(text) if r and not EXTERNAL.match(r)]
@@ -233,7 +286,7 @@ def build(files, version):
     with zipfile.ZipFile(buf, "w") as z:
         for arc, path in files:
             with open(path, "rb") as f:
-                data = f.read()
+                data = published(arc, f.read())
             info = zipfile.ZipInfo(arc, FIXED_TIME)
             info.create_system = 3  # the same on every OS
             info.external_attr = 0o100644 << 16  # regular file, rw-r--r--

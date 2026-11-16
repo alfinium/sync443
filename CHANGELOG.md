@@ -9,7 +9,7 @@ de publication à son fichier `.xpi` dans les
 
 ## 0.1.0
 
-Première version utilisable : le **courrier**, dans les deux sens, par HTTPS uniquement.
+Première version utilisable : le **courrier** d'une boîte Exchange ActiveSync, dans les deux sens.
 
 ### Nouveautés
 
@@ -18,6 +18,7 @@ Première version utilisable : le **courrier**, dans les deux sens, par HTTPS un
 - **Dossiers :** création, renommage, déplacement et suppression, dans les deux sens. Les noms
   sont rendus valables sur Windows, macOS et Linux.
 - **Messages :** réception, lu, drapeau, déplacement et suppression, dans les deux sens.
+- **Archiver** (touche A) range le message dans le dossier « Archives » du serveur, créé au besoin.
 - **Arrivée immédiate** des messages (« dès réception »), ou actualisation toutes les 1, 5, 15, 30
   ou 60 minutes. Période de courrier au choix, d'un jour à tout.
 - **Envoi par ActiveSync,** sans SMTP, avec copie dans les Envoyés du serveur.
@@ -28,9 +29,10 @@ Première version utilisable : le **courrier**, dans les deux sens, par HTTPS un
 - **Page de réglages :** état de chaque boîte, synchronisation à la demande, modification,
   suppression avec confirmation ; choix des éléments à synchroniser (courrier, agenda, contacts,
   tâches) ; journal de diagnostic.
-- **Filet contre les suppressions en masse :** si le serveur supprime d'un coup beaucoup de
-  messages d'un dossier, ces suppressions sont retenues jusqu'à votre confirmation dans les
-  réglages.
+- **Filet contre les suppressions en masse :** si le serveur supprime beaucoup de messages d'un
+  dossier (d'un coup ou peu à peu sur 24 heures), ou fait disparaître plusieurs dossiers à la fois,
+  ces suppressions sont retenues. Dans les réglages, vous les confirmez, ou vous gardez les copies
+  locales. Une liste de dossiers sans boîte de réception est refusée.
 
 ### Sécurité et vie privée
 
@@ -43,14 +45,30 @@ Première version utilisable : le **courrier**, dans les deux sens, par HTTPS un
 - Un effacement à distance demandé par le serveur est toujours refusé.
 - Le journal ne contient ni contenu de message, ni objet, ni adresse. Le débogage s'arrête seul au
   bout d'une heure.
+- **Copie cachée (Cci) :** ActiveSync n'a pas d'enveloppe. L'en-tête `Bcc` part donc avec le
+  message jusqu'au serveur, qui en tire les destinataires et le retire avant la remise (c'est le
+  comportement d'Exchange et de SOGo). Sync443 ne peut pas le retirer lui-même sans perdre ces
+  destinataires.
 - Aucune télémétrie.
 
 ### Limites connues
 
 - **Agenda, contacts et tâches :** le choix est enregistré mais pas encore synchronisé
   (« bientôt »).
+- **Certificat d'une autorité privée :** pas encore pris en charge ; le certificat du serveur doit
+  être émis par une autorité publique reconnue par Thunderbird (comme Let's Encrypt).
 - **Microsoft 365 / Exchange Online** (OAuth2) : pas encore pris en charge.
 - **Proxy exigeant sa propre authentification :** pas encore pris en charge ; l'extension le
   signale et n'envoie rien.
-- **Signature et chiffrement** (OpenPGP, S/MIME) : pas appliqués aux messages envoyés par
-  Sync443 ; un brouillon chiffré n'est pas envoyé.
+- **Décocher le courrier** arrête sa synchronisation, mais le compte local et ses messages restent
+  en place ; leur suppression après confirmation viendra plus tard.
+- **Un message déplacé vers un dossier du compte qui n'existe que dans Thunderbird** (les modèles,
+  par exemple) est détaché du serveur : la copie du serveur reste où elle était, rien n'y est
+  supprimé. Déplacé vers un autre compte (« Dossiers locaux », par exemple), il quitte la boîte :
+  sur le serveur, il va dans les Éléments supprimés, comme avec IMAP.
+- **Cas rares côté serveur** (dossiers renumérotés et renommés en même temps, serveur non conforme) :
+  un dossier peut être téléchargé une seconde fois, sans que rien ne soit supprimé. Le détail est
+  dans [docs/audits/etape-2-3.md](https://github.com/alfinium/sync443/blob/main/docs/audits/etape-2-3.md).
+- **Signature et chiffrement** (OpenPGP, S/MIME) : pas encore pris en charge. Un message pour
+  lequel la signature ou le chiffrement est demandé n'est pas envoyé : la fenêtre de rédaction
+  reste ouverte et une notification l'explique.

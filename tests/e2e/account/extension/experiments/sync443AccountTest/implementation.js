@@ -58,7 +58,7 @@ var sync443AccountTest = (() => {
 
   const accountByKey = (key) => MailServices.accounts.accounts.find((a) => a.key === key) ?? null;
   const identityByKey = (key) => MailServices.accounts.allIdentities.find((i) => i.key === key) ?? null;
-  const outgoing = () => MailServices.outgoingServer ?? MailServices.smtp;
+  const outgoing = () => MailServices.outgoingServer;
 
   function folderAt(root, path) {
     let folder = root;
@@ -131,19 +131,50 @@ var sync443AccountTest = (() => {
             };
           },
 
-          /** Creates "Local Folders" if the profile has none; its account key. */
+          /**
+           * "Local Folders" as the preference names it (never through
+           * Thunderbird's getter, which adopts any "none" server when the
+           * preference is unset); made only if the preference is unset.
+           */
           async ensureLocalFolders() {
-            let server = null;
-            try {
-              server = MailServices.accounts.localFoldersServer;
-            } catch {
-              server = null;
-            }
-            if (!server) {
+            if (!Services.prefs.getCharPref("mail.accountmanager.localfoldersserver", "")) {
               MailServices.accounts.createLocalMailAccount();
-              server = MailServices.accounts.localFoldersServer;
             }
-            return { accountKey: MailServices.accounts.findAccountForServer(server).key, localPath: server.localPath.path };
+            const key = Services.prefs.getCharPref("mail.accountmanager.localfoldersserver", "");
+            const server = MailServices.accounts.allServers.find((s) => s.key === key);
+            return { accountKey: MailServices.accounts.findAccountForServer(server).key, localPath: real(server.localPath.path) };
+          },
+
+          /** The "Local Folders" preference and the server it names (or null). */
+          async localFolders() {
+            const pref = Services.prefs.getCharPref("mail.accountmanager.localfoldersserver", "");
+            const server = MailServices.accounts.allServers.find((s) => s.key === pref) ?? null;
+            return {
+              pref,
+              server: server && {
+                key: server.key,
+                type: server.type,
+                hostname: server.hostname,
+                username: server.username,
+                marks: marks("mail.server", server.key),
+                accountKey: MailServices.accounts.findAccountForServer(server)?.key ?? null,
+              },
+            };
+          },
+
+          /** What Thunderbird's own getter answers (it adopts a "none" server if the preference is unset). */
+          async localFoldersViaGetter() {
+            try {
+              return MailServices.accounts.localFoldersServer?.key ?? null;
+            } catch {
+              return null;
+            }
+          },
+
+          /** Sets the "Local Folders" preference ("" clears it), as Thunderbird's getter would save its choice. */
+          async setLocalFoldersPref(value) {
+            if (value) Services.prefs.setCharPref("mail.accountmanager.localfoldersserver", value);
+            else Services.prefs.clearUserPref("mail.accountmanager.localfoldersserver");
           },
 
           /** A "none" account the extension did not create, with optional (forged) marks. */
@@ -192,6 +223,7 @@ var sync443AccountTest = (() => {
               localPath,
               localPathExists: await IOUtils.exists(localPath),
               rootURI: server.rootFolder.URI,
+              moveOnSpamLoaded: server.spamSettings?.moveOnSpam ?? null,
               folders: walk(server.rootFolder, "", []),
               identities: account.identities.map((identity) => ({
                 key: identity.key,
@@ -234,16 +266,108 @@ var sync443AccountTest = (() => {
             return outgoing().defaultServer?.key ?? null;
           },
 
-          /** A user's own outgoing server, made the default one. */
-          async createUserSmtp(hostname) {
+          /** A user's own outgoing server; made the default one unless makeDefault is false. */
+          async createUserSmtp(hostname, makeDefault) {
             const service = outgoing();
             const server = service.createServer("smtp");
             const smtp = server.QueryInterface(Ci.nsISmtpServer);
             smtp.hostname = hostname;
             smtp.port = 587;
             server.socketType = Ci.nsMsgSocketType.alwaysSTARTTLS;
-            service.defaultServer = server;
+            if (makeDefault !== false) service.defaultServer = server;
             return server.key;
+          },
+
+          /** An identity added to an account, as the account settings do (no outgoing server chosen). */
+          async addIdentity(accountKey, email) {
+            const identity = MailServices.accounts.createIdentity();
+            identity.email = email;
+            identity.valid = true;
+            accountByKey(accountKey).addIdentity(identity);
+            return identity.key;
+          },
+
+          /** Edits an outgoing server's preferences, as a user (or anything else) might. */
+          async editOutgoing(key, { hostname, port, username, authMethod, socketType }) {
+            const branch = Services.prefs.getBranch(`mail.smtpserver.${key}.`);
+            if (typeof hostname === "string") branch.setStringPref("hostname", hostname);
+            if (typeof username === "string") branch.setStringPref("username", username);
+            if (Number.isInteger(authMethod)) branch.setIntPref("authMethod", authMethod);
+            if (Number.isInteger(socketType)) branch.setIntPref("try_ssl", socketType);
+            if (Number.isInteger(port)) {
+              const server = outgoing().servers.find((s) => s.key === key);
+              server.QueryInterface(Ci.nsISmtpServer).port = port;
+            }
+          },
+
+          /**
+           * Account Settings › Outgoing Server › Remove: the server is deleted,
+           * then the identities that used it are left on "the default server".
+           */
+          async removeOutgoingLikeSettings(key) {
+            const service = outgoing();
+            service.deleteServer(service.servers.find((s) => s.key === key));
+            for (const identity of MailServices.accounts.allIdentities) {
+              if (identity.smtpServerKey === key) identity.smtpServerKey = "";
+            }
+          },
+
+          /** Deletes an outgoing server, then adds a user's one at once (it may take the freed key). */
+          async replaceOutgoing(key, hostname) {
+            const service = outgoing();
+            service.deleteServer(service.servers.find((s) => s.key === key));
+            const server = service.createServer("smtp");
+            server.QueryInterface(Ci.nsISmtpServer).hostname = hostname;
+            return server.key;
+          },
+
+          /** Points an account's server at another folder (its "directory" preference). */
+          async setLocalPath(accountKey, path) {
+            const file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+            file.initWithPath(path);
+            accountByKey(accountKey).incomingServer.localPath = file;
+          },
+
+          /** A folder in the profile with one file in it; its path. */
+          async makeCanaryDir(name) {
+            const dir = PathUtils.join(PathUtils.profileDir, name);
+            await IOUtils.makeDirectory(dir, { ignoreExisting: true });
+            await IOUtils.writeUTF8(PathUtils.join(dir, "canari.txt"), "ne pas supprimer\n");
+            return real(dir);
+          },
+
+          /** The preferences of a branch ("mail.identity.id3.", "mail.server.server2."), as {name: value}. */
+          async prefsOf(prefix) {
+            const branch = Services.prefs.getBranch(prefix);
+            const out = {};
+            for (const name of branch.getChildList("").sort()) {
+              const type = branch.getPrefType(name);
+              if (type === branch.PREF_STRING) out[name] = branch.getStringPref(name);
+              else if (type === branch.PREF_INT) out[name] = branch.getIntPref(name);
+              else if (type === branch.PREF_BOOL) out[name] = branch.getBoolPref(name);
+            }
+            return out;
+          },
+
+          /** Writes preferences of a branch ({name: boolean | integer | string}). */
+          async setBranchPrefs(prefix, values) {
+            const branch = Services.prefs.getBranch(prefix);
+            for (const [name, value] of Object.entries(values)) {
+              if (typeof value === "boolean") branch.setBoolPref(name, value);
+              else if (Number.isInteger(value)) branch.setIntPref(name, value);
+              else branch.setStringPref(name, String(value));
+            }
+          },
+
+          /** Thunderbird's loaded junk settings of an account read again from its preferences, as the account settings do. */
+          async reloadSpamSettings(accountKey) {
+            const server = accountByKey(accountKey).incomingServer;
+            server.spamSettings.initialize(server);
+            return server.spamSettings.moveOnSpam;
+          },
+
+          async dirEntries(path) {
+            return (await IOUtils.getChildren(path)).map((p) => PathUtils.filename(p)).sort();
           },
 
           /** As a user editing the identity in the account settings would. */

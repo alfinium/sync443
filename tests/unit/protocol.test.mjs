@@ -7,12 +7,12 @@
  */
 
 import { test, assert, eq, throws } from "./harness.mjs";
-import { el, encode, decode, text, child, at, childrenNamed } from "../../src/core/wbxml.mjs";
-import { allTags } from "../../src/core/codepages.mjs";
+import { el, encode, decode, text, child, at } from "../../src/core/wbxml.mjs";
+import { namespaceOf, tokenOf } from "../../src/core/codepages.mjs";
 import {
   ProtocolError, MAX_COMMANDS_PER_COLLECTION, MAX_FOLDERS, PING_CLASSES, DEBUG_SHOWN, topStatus,
   folderSyncRequest, parseFolderSync, folderCreateRequest, folderUpdateRequest, folderDeleteRequest, parseFolderChange,
-  syncRequest, addCommand, changeCommand, deleteCommand, fetchCommand, parseSync,
+  syncRequest, changeCommand, deleteCommand, fetchCommand, parseSync,
   pingRequest, parsePing, moveItemsRequest, parseMoveItems, provisionRequest, parseProvision,
   userInformationRequest, parseUserInformation, sendMailRequest, parseSendMail,
 } from "../../src/core/protocol.mjs";
@@ -91,7 +91,7 @@ test("syncRequest : éléments facultatifs absents, DeletesAsMoves 0, plusieurs 
     { collectionId: "5", syncKey: "1" },
     { collectionId: "6", syncKey: "2", deletesAsMoves: false, getChanges: false, options: [], commands: [] },
   ]));
-  const [a, b] = childrenNamed(child(d, "Collections"), "Collection");
+  const [a, b] = child(d, "Collections").children;
   eq(tags(a), ["SyncKey", "CollectionId"]);
   eq(tags(b), ["SyncKey", "CollectionId", "DeletesAsMoves"]);
   eq(text(b, "DeletesAsMoves"), "0");
@@ -119,16 +119,13 @@ test("syncRequest : identifiants et clés invalides refusés", () => {
   for (const id of BAD_IDS) refused(() => syncRequest([{ collectionId: id, syncKey: "1" }]), `CollectionId ${JSON.stringify(id)}`);
 });
 
-test("commandes Add, Change, Delete, Fetch : structure et identifiants vérifiés", () => {
-  const add = wire(el("AirSync:Sync", [addCommand("c-1", [el("Email:Read", "0")])])).children[0];
-  eq([add.tag, tags(add), text(add, "ClientId")], ["Add", ["ClientId", "ApplicationData"], "c-1"]);
+test("commandes Change, Delete, Fetch : structure et identifiants vérifiés", () => {
   const change = changeCommand("5:1", [el("Email:Read", "1")]);
   eq(change.children.map((c) => c.tag), ["ServerId", "ApplicationData"]);
   eq(deleteCommand("5:2").children.map((c) => c.tag), ["ServerId"]);
   eq(fetchCommand("5:3").children.map((c) => c.tag), ["ServerId"]);
   eq(fetchCommand("5:3").tag, "Fetch");
   for (const id of BAD_IDS) {
-    refused(() => addCommand(id, []), "ClientId");
     refused(() => changeCommand(id, []), "ServerId (Change)");
     refused(() => deleteCommand(id), "ServerId (Delete)");
     refused(() => fetchCommand(id), "ServerId (Fetch)");
@@ -139,7 +136,7 @@ test("pingRequest : intervalle 60–3540 s, classes connues, structure", () => {
   const d = wire(pingRequest(480, [{ id: "5", cls: "Email" }, { id: "6", cls: "Calendar" }]));
   eq([d.ns, d.tag, tags(d)], ["Ping", "Ping", ["HeartbeatInterval", "Folders"]]);
   eq(text(d, "HeartbeatInterval"), "480");
-  const folders = childrenNamed(child(d, "Folders"), "Folder");
+  const folders = child(d, "Folders").children;
   eq(folders.map((f) => [tags(f), text(f, "Id"), text(f, "Class")]), [[["Id", "Class"], "5", "Email"], [["Id", "Class"], "6", "Calendar"]]);
   eq(text(wire(pingRequest(60, [])), "HeartbeatInterval"), "60");
   eq(text(wire(pingRequest("3540", [])), "HeartbeatInterval"), "3540");
@@ -293,22 +290,22 @@ test("parseSync : commandes, réponses, MoreAvailable, rejets", () => {
   eq(r.status, null, "pas de statut global");
   eq(r.collections.length, 2);
   const [a, b] = r.collections;
-  eq([a.collectionId, a.syncKey, a.status, a.moreAvailable, a.rejected], ["5", "43", "1", true, 4], "3 commandes et 1 réponse invalides");
+  eq([a.collectionId, a.syncKey, a.status, a.moreAvailable], ["5", "43", "1", true]);
+  // 3 invalid commands are left out; Fetch is not a command; Add and Delete are not answers we read (no Add is ever sent).
   eq(a.commands.map((c) => [c.op, c.serverId]), [["add", "5:1"], ["change", "5:2"], ["delete", "5:3"], ["softdelete", "5:4"]]);
   eq(text(a.commands[0].data, "Subject"), "Bonjour", "ApplicationData reste un arbre");
   eq([a.commands[2].data, a.commands[3].data], [null, null]);
-  eq(a.responses.map(({ op, clientId, serverId, status }) => [op, clientId, serverId, status]), [
-    ["add", "c1", "5:10", "1"],
-    ["change", null, "5:2", "7"],
-    ["fetch", null, "5:11", "1"],
+  eq(a.responses.map(({ op, serverId, status }) => [op, serverId, status]), [
+    ["change", "5:2", "7"],
+    ["fetch", "5:11", "1"],
   ]);
-  eq(text(a.responses[2].data, "Subject"), "Lu");
-  eq([b.collectionId, b.syncKey, b.status, b.moreAvailable, b.commands, b.responses, b.rejected], ["6", "7", "3", false, [], [], 0]);
+  eq(text(a.responses[1].data, "Subject"), "Lu");
+  eq(b, { collectionId: "6", syncKey: "7", status: "3", moreAvailable: false, commands: [], responses: [] });
 });
 
 test("parseSync : statut global, racine inattendue", () => {
-  eq(parseSync(wire(el("AirSync:Sync", [el("Status", "3")]))), { status: "3", collections: [], rejected: 0 });
-  eq(parseSync(wire(el("AirSync:Sync"))), { status: null, collections: [], rejected: 0 });
+  eq(parseSync(wire(el("AirSync:Sync", [el("Status", "3")]))), { status: "3", collections: [] });
+  eq(parseSync(wire(el("AirSync:Sync"))), { status: null, collections: [] });
   for (const root of [el("FolderHierarchy:FolderSync"), el("AirSync:Collections"), el("Ping:Ping")]) refused(() => parseSync(wire(root)), root.tag);
   refused(() => parseSync(null), "null");
 });
@@ -366,17 +363,13 @@ test("parseProvision : clé, statuts, RemoteWipe et AccountOnlyRemoteWipe", () =
   refused(() => parseProvision(null), "null");
 });
 
-test("parseUserInformation : nom nettoyé, adresse validée", () => {
+test("parseUserInformation : nom nettoyé", () => {
   const info = (status, accounts) => wire(el("Settings:Settings", [el("Status", "1"), el("UserInformation", [el("Status", status), el("Get", [el("Accounts", accounts)])])]));
-  const account = (name, address) => el("Account", [name === null ? null : el("UserDisplayName", name), address === null ? null : el("PrimarySmtpAddress", address)]);
-  eq(parseUserInformation(info("1", [account("  Jean\u202e Dupont\n", "jean@example.com"), account("Autre", "autre@example.com")])), {
-    status: "1", displayName: "Jean Dupont", primarySmtpAddress: "jean@example.com",
-  });
-  eq(parseUserInformation(info("1", [account(null, "pas une adresse"), account("Marie", "marie@example.com")])), {
-    status: "1", displayName: "Marie", primarySmtpAddress: "marie@example.com",
-  }, "premier compte incomplet");
-  eq(parseUserInformation(info("1", [account("x".repeat(300), null)])).displayName.length, 256, "nom coupé à 256");
-  eq(parseUserInformation(info("2", [account("Jean", "jean@example.com")])), { status: "1", displayName: null, primarySmtpAddress: null }, "statut 2");
+  const account = (name) => el("Account", [name === null ? null : el("UserDisplayName", name)]);
+  eq(parseUserInformation(info("1", [account("  Jean\u202e Dupont\n"), account("Autre")])), { status: "1", displayName: "Jean Dupont" });
+  eq(parseUserInformation(info("1", [account(null), account(" \u202e "), account("Marie")])), { status: "1", displayName: "Marie" }, "premiers comptes sans nom");
+  eq(parseUserInformation(info("1", [account("x".repeat(300))])).displayName.length, 256, "nom coupé à 256");
+  eq(parseUserInformation(info("2", [account("Jean")])), { status: "1", displayName: null }, "statut 2");
   refused(() => parseUserInformation(wire(el("Settings:UserInformation"))), "racine");
 });
 
@@ -397,9 +390,10 @@ test("topStatus : seulement le Status placé directement sous la racine", () => 
 });
 
 test("DEBUG_SHOWN : uniquement des balises techniques, jamais de contenu", () => {
-  const known = new Set([...allTags()].map(([, , tag]) => tag));
+  // A page number is one byte: every namespace is tried.
+  const namespaces = Array.from({ length: 256 }, (_, page) => namespaceOf(page)).filter(Boolean);
   for (const tag of DEBUG_SHOWN) {
-    assert(known.has(tag), `balise inconnue dans DEBUG_SHOWN : ${tag}`);
+    assert(namespaces.some((ns) => tokenOf(ns, tag) !== undefined), `balise inconnue dans DEBUG_SHOWN : ${tag}`);
   }
   for (const tag of [
     "Subject", "Body", "Data", "DisplayName", "To", "From", "Cc", "Bcc", "ReplyTo", "DisplayTo", "Sender", "Mime",

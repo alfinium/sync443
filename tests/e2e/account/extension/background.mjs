@@ -3,12 +3,16 @@
 
 /**
  * sync443Account end-to-end scenario, run inside a headless Thunderbird by
- * tests/e2e/account/run_account_test.py, in two phases (two launches of
- * Thunderbird on the same throw-away profile):
- *   1. creation, update, refusals, special uses, passwords, removal of one
- *      account, refusal of a page other than the background page;
+ * tests/e2e/account/run_account_test.py, in three phases (three launches
+ * of Thunderbird on the same throw-away profile):
+ *   1. on a fresh profile, Local Folders and the default outgoing server;
+ *      then creation, update, the send route, archive and junk settings,
+ *      refusals, passwords, files, removal of one account, refusal of a
+ *      page other than the background page;
  *   2. after the restart: what was kept (marks, folders, identity, neutral
- *      outgoing server, password), then removal of everything.
+ *      outgoing server, settings, password), old neutral-server values
+ *      planted by the runner, then removal of everything;
+ *   3. the password functions with Thunderbird's Rust login store.
  *
  * Every check is printed as "SYNC443ACCOUNT-CHECK {label, ok, detail}";
  * "SYNC443ACCOUNT-INFO {...}" carries facts for the runner (paths on disk);
@@ -24,7 +28,6 @@ const M2 = "0123456789ab";
 const M_UNMARKED = "fedcba987654";
 const M_OTHER = "00000000beef";
 const M_HALF = "111111111111";
-const USES = ["inbox", "drafts", "trash", "sent", "junk", "archives", "templates", "outbox"];
 const ORIGIN = "https://mail.example.com";
 const ORIGIN_PORT = "https://mail.example.com:8443";
 const KEEP = { origin: ORIGIN_PORT, username: "alice@example.com", password: "gardé après redémarrage ✓" };
@@ -74,6 +77,58 @@ const sorted = (list) => [...list].sort((x, y) => (JSON.stringify(x) < JSON.stri
 const folder = (info, path) => info?.folders.find((f) => f.path === path) ?? null;
 const holders = (info, use) => info.folders.filter((f) => f.uses.includes(use)).map((f) => f.path);
 const neutralServers = (out) => out.servers.filter((s) => s.owner === EXT_ID);
+/** 127.0.0.1, port 1, TLS (SSL = 3), no authentication (none = 1), no user name. */
+const isSafeNeutral = (s) =>
+  !!s && s.hostname === "127.0.0.1" && s.port === 1 && s.socketType === 3 && s.authMethod === 1 && s.username === "";
+
+/**
+ * Archive and junk settings of an account (identity: archive_granularity 0,
+ * archive_keep_folder_structure false, archive_folder = archivesUri; server:
+ * moveOnSpam false, stored and loaded): [ok, details].
+ */
+async function mailSettings(accountKey, archivesUri) {
+  const info = await helper.inspect(accountKey);
+  const identities = [];
+  for (const identity of info.identities) identities.push(await helper.prefsOf(`mail.identity.${identity.key}.`));
+  const server = await helper.prefsOf(`mail.server.${info.serverKey}.`);
+  const ok =
+    identities.length > 0 &&
+    identities.every(
+      (p) => p.archive_granularity === 0 && p.archive_keep_folder_structure === false && p.archive_folder === archivesUri,
+    ) &&
+    server.moveOnSpam === false &&
+    info.moveOnSpamLoaded === false;
+  const details = {
+    identities: identities.map((p) => [p.archive_granularity, p.archive_keep_folder_structure, p.archive_folder]),
+    moveOnSpam: server.moveOnSpam,
+    loaded: info.moveOnSpamLoaded,
+  };
+  return [ok, details];
+}
+
+/** Polls `test` (async) until it is true or `ms` have passed; its last value. */
+async function waitFor(test, ms = 3000) {
+  const end = Date.now() + ms;
+  for (;;) {
+    const value = await test();
+    if (value || Date.now() > end) return value;
+    await sleep(50);
+  }
+}
+
+/** Does every identity of the account send through a marked neutral server with its safe values? */
+async function routeClosed(accountKey) {
+  const info = await helper.inspect(accountKey);
+  const out = await helper.outgoing();
+  return (
+    !!info &&
+    info.identities.length > 0 &&
+    info.identities.every((i) => {
+      const server = out.servers.find((s) => s.key === i.smtpServerKey);
+      return server && server.owner === EXT_ID && isSafeNeutral(server) && i.effectiveSmtpKey === server.key;
+    })
+  );
+}
 
 // ── Phase 1 ─────────────────────────────────────────────────────────────
 
@@ -115,13 +170,6 @@ async function argumentChecks() {
   for (const key of ["id1", "account", "Account1", "../account1", "account1 ", ""]) {
     await expectCode(`removeAccount(${shown(key)})`, api.removeAccount(key), "CONFIG");
   }
-  for (const path of ["Inbox", "/", "//Inbox", "/Inbox/", "/Inbox/../Trash", "/./Inbox", "/In\u0000box", "/Inbox\u202e", "", `/${"x".repeat(256)}`]) {
-    await expectCode(`setSpecialUse, chemin ${shown(path)}`, api.setSpecialUse("account999999", path, "inbox"), "CONFIG");
-  }
-  for (const use of ["spam", "Inbox", "", "INBOX", "sent "]) {
-    await expectCode(`setSpecialUse, usage ${shown(use)}`, api.setSpecialUse("account999999", "/Inbox", use), "CONFIG");
-  }
-  await expectCode("setSpecialUse, clé de compte invalide", api.setSpecialUse("x", "/Inbox", "inbox"), "CONFIG");
 
   const badOrigins = [
     "http://mail.example.com",
@@ -248,6 +296,97 @@ async function loginFaultChecks() {
     (await api.getPassword(ORIGIN, "bob")) === "pw-bob" && (await api.getPassword(ORIGIN, "dave")) === null);
 }
 
+/** The send route: checkSendRoute, automatic repairs, the neutral server's safe values. */
+async function sendRouteChecks(r1, r2, userSmtp) {
+  await check("checkSendRoute() : tout est en ordre → false", (await api.checkSendRoute()) === false);
+  await check("checkSendRoute(identité du compte) → false", (await api.checkSendRoute(r1.identityId)) === false);
+  await expectCode("checkSendRoute d'un identifiant invalide", api.checkSendRoute("account1"), "CONFIG");
+  await expectCode("checkSendRoute d'une identité inconnue (rien ne peut être garanti)", api.checkSendRoute("id987654"), "NOT_FOUND");
+
+  // An identity added to the account by the user: no outgoing server chosen ("the default server").
+  const alias = await helper.addIdentity(r1.accountKey, "alias@example.com");
+  let info = await helper.inspect(r1.accountKey);
+  const added = info.identities.find((i) => i.key === alias);
+  await check("(identité ajoutée au compte par l'utilisateur : elle enverrait par le serveur par défaut)",
+    !!added && added.effectiveSmtpKey === userSmtp, added);
+  await check("checkSendRoute() la rattache au serveur neutre → true", (await api.checkSendRoute()) === true);
+  await check("… route fermée pour toutes les identités du compte", await routeClosed(r1.accountKey));
+  await check("… accountOfIdentity de la nouvelle identité", same(await api.accountOfIdentity(alias), { accountKey: r1.accountKey, mailboxId: M1 }));
+  await check("checkSendRoute(nouvelle identité) → false", (await api.checkSendRoute(alias)) === false);
+
+  // The neutral server's own preferences changed behind our back: repaired at
+  // once, without any call (checkSendRoute's repair of old values is proven
+  // in phase 2, where they were planted while Thunderbird was stopped).
+  let neutral = neutralServers(await helper.outgoing())[0];
+  const restored = async () => {
+    const now = neutralServers(await helper.outgoing());
+    return now.length === 1 && now[0].key === neutral.key && isSafeNeutral(now[0]);
+  };
+  await helper.editOutgoing(neutral.key, { hostname: "smtp.evil.example" });
+  await check("hôte du serveur neutre changé en smtp.evil.example : rétabli aussitôt, sans appel à checkSendRoute",
+    await waitFor(restored), neutralServers(await helper.outgoing()));
+  await helper.editOutgoing(neutral.key, { hostname: "smtp.evil.example", port: 25, username: "victime", authMethod: 3, socketType: 0 });
+  await check("valeurs du serveur neutre changées (smtp.evil.example:25, en clair, avec authentification) : rétablies aussitôt, même serveur",
+    await waitFor(restored), neutralServers(await helper.outgoing()));
+  for (const [what, values] of [
+    ["port 25", { port: 25 }],
+    ["sans TLS", { socketType: 0 }],
+    ["mot de passe en clair", { authMethod: 3 }],
+    ["avec un identifiant", { username: "victime" }],
+    ["ancienne valeur sync443.invalid:465", { hostname: "sync443.invalid", port: 465 }],
+  ]) {
+    await helper.editOutgoing(neutral.key, values);
+    await check(`serveur neutre ${what} : rétabli aussitôt`, await waitFor(restored), neutralServers(await helper.outgoing()));
+  }
+  await check("… checkSendRoute ensuite : rien à réparer → false", (await api.checkSendRoute()) === false);
+
+  // Account Settings › Outgoing Server › Remove.
+  await helper.removeOutgoingLikeSettings(neutral.key);
+  await check("l'utilisateur supprime le serveur neutre (Paramètres › Serveur sortant) : refait et rattaché aussitôt",
+    await waitFor(async () => (await routeClosed(r1.accountKey)) && (await routeClosed(r2.accountKey))),
+    (await helper.inspect(r1.accountKey)).identities.map((i) => [i.key, i.smtpServerKey]));
+  await check("… checkSendRoute ensuite → false", (await api.checkSendRoute()) === false);
+  await check("… un seul serveur neutre", neutralServers(await helper.outgoing()).length === 1);
+
+  // The neutral server deleted and its key given at once to a server of the user's.
+  neutral = neutralServers(await helper.outgoing())[0];
+  const reused = await helper.replaceOutgoing(neutral.key, "smtp.reused.example");
+  await check("serveur neutre supprimé, sa clé reprise par un serveur de l'utilisateur : les identités n'y restent pas",
+    await waitFor(async () => (await routeClosed(r1.accountKey)) && (await routeClosed(r2.accountKey))),
+    { reused, sameKey: reused === neutral.key });
+  const reusedServer = (await helper.outgoing()).servers.find((s) => s.key === reused);
+  await check("… le serveur de l'utilisateur est intact et sans marque",
+    reusedServer?.hostname === "smtp.reused.example" && reusedServer.owner === "", reusedServer);
+  info = await helper.inspect(r1.accountKey);
+  await check("… aucune identité de nos comptes ne l'utilise", !info.identities.some((i) => i.smtpServerKey === reused));
+  await check("… checkSendRoute → false", (await api.checkSendRoute()) === false);
+}
+
+/** removeAccount deletes files only inside the profile's Mail folder, in a folder that is the account's own. */
+async function fileChecks(lf) {
+  const probe = await helper.probe();
+  const cases = [
+    ["un dossier hors du dossier Mail du profil", "d0d0d0d0d0d0", async () => helper.makeCanaryDir("hors-du-dossier-Mail")],
+    ["le dossier de « Dossiers locaux »", "d1d1d1d1d1d1", async () => lf.localPath],
+    ["le dossier Mail lui-même", "d2d2d2d2d2d2", async () => probe.mailDir],
+  ];
+  for (const [what, mailboxId, target] of cases) {
+    const r = await api.ensureAccount({ mailboxId, email: "fichiers@example.com", name: "Fichiers" });
+    const ownPath = (await helper.inspect(r.accountKey)).localPath;
+    const path = await target();
+    const before = await helper.dirEntries(path);
+    const lfBefore = await helper.dirEntries(lf.localPath);
+    await helper.setLocalPath(r.accountKey, path);
+    await expectCode(`removeAccount, dossier du compte changé pour ${what} : compte supprimé sans ses fichiers`,
+      api.removeAccount(r.accountKey), "FILES");
+    await check(`… le compte est supprimé (${what})`, (await helper.inspect(r.accountKey)) === null && (await api.removeAccount(r.accountKey)) === false);
+    await check(`… rien n'est effacé dans ${what}`, (await helper.exists(path)) && same(await helper.dirEntries(path), before),
+      await helper.dirEntries(path));
+    await check(`… « Dossiers locaux » intact (${what})`, same(await helper.dirEntries(lf.localPath), lfBefore));
+    await check(`… l'ancien dossier du compte est resté aussi (${what})`, await helper.exists(ownPath), ownPath);
+  }
+}
+
 async function inspectNewAccount(r, { email, name, fullName, mailboxId }, lf) {
   const info = await helper.inspect(r.accountKey);
   const out = await helper.outgoing();
@@ -281,20 +420,97 @@ async function inspectNewAccount(r, { email, name, fullName, mailboxId }, lf) {
       identity?.templatesFolderURI === folder(info, "/Templates")?.uri && identity?.archivesFolderURI === folder(info, "/Archives")?.uri,
     [identity?.draftsFolderURI, identity?.fccFolderURI, identity?.templatesFolderURI, identity?.archivesFolderURI]);
   const neutral = out.servers.find((s) => s.key === identity?.smtpServerKey);
-  await check("serveur sortant de l'identité : le serveur neutre marqué (sync443.invalid)",
-    !!neutral && neutral.owner === EXT_ID && neutral.hostname === "sync443.invalid", neutral);
+  await check("serveur sortant de l'identité : le serveur neutre marqué, 127.0.0.1 port 1 (aucun nom à résoudre, port fermé)",
+    !!neutral && neutral.owner === EXT_ID && isSafeNeutral(neutral), neutral);
   await check("serveur neutre : TLS (SSL), sans authentification ni identifiant",
     neutral?.socketType === 3 && neutral?.authMethod === 1 && neutral?.username === "", neutral);
   await check("Thunderbird choisirait ce serveur neutre pour cette identité", identity?.effectiveSmtpKey === neutral?.key,
     identity?.effectiveSmtpKey);
+  const [settled, settings] = await mailSettings(r.accountKey, folder(info, "/Archives")?.uri);
+  await check("archivage dans /Archives même (archive_granularity 0, archive_keep_folder_structure false, archive_folder), " +
+    "indésirables jamais déplacés (moveOnSpam false, enregistré et chargé)", settled, settings);
   return { info, identity, neutral };
+}
+
+/**
+ * A fresh profile: no "Local Folders", no outgoing server (Sync443 is the
+ * only mail account). Thunderbird must never take our account for its Local
+ * Folders, and our neutral server must not stay its default outgoing server.
+ * Returns the user's outgoing server made on the way.
+ */
+async function freshProfileChecks() {
+  const M0 = "c0c0c0c0c0c0";
+  const M0B = "c1c1c1c1c1c1";
+  const start = await helper.localFolders();
+  await check("profil neuf : ni « Dossiers locaux », ni compte, ni serveur sortant",
+    start.pref === "" && (await helper.accountKeys()).length === 0 && (await helper.outgoing()).servers.length === 0, start);
+  await check("listAccounts sans compte de l'extension : rien n'est créé",
+    (await api.listAccounts()).length === 0 && (await helper.localFolders()).pref === "" && (await helper.accountKeys()).length === 0);
+
+  const r0 = await api.ensureAccount({ mailboxId: M0, email: "zero@example.com", name: "Zéro" });
+  let lf = await helper.localFolders();
+  const ours0 = await helper.inspect(r0.accountKey);
+  await check("premier compte d'un profil sans « Dossiers locaux » : un vrai « Dossiers locaux » est créé d'abord",
+    !!lf.server && lf.server.type === "none" && lf.server.hostname === "Local Folders" && lf.server.username === "nobody" &&
+      lf.server.key !== ours0.serverKey && lf.server.marks.owner === "" && lf.server.accountKey !== r0.accountKey,
+    lf);
+  await check("… notre compte reste le nôtre (listAccounts, accountOfIdentity)",
+    same(await api.listAccounts(), [{ accountKey: r0.accountKey, mailboxId: M0 }]) &&
+      same(await api.accountOfIdentity(r0.identityId), { accountKey: r0.accountKey, mailboxId: M0 }));
+  await check("… et Thunderbird lui-même (son accesseur, qui adopte un serveur « none » à défaut) désigne le vrai « Dossiers locaux »",
+    (await helper.localFoldersViaGetter()) === lf.server.key, await helper.localFoldersViaGetter());
+  await check("… ensureAccount à nouveau : le même compte (ni CONFLICT ni doublon)",
+    (await api.ensureAccount({ mailboxId: M0, email: "zero@example.com", name: "Zéro" })).accountKey === r0.accountKey);
+
+  // As Thunderbird's getter would have left it: the preference names our server.
+  await helper.setLocalFoldersPref(ours0.serverKey);
+  const listed = await api.listAccounts();
+  lf = await helper.localFolders();
+  await check("« Dossiers locaux » désignant notre compte : rétabli sur le vrai dès l'appel suivant, le compte reste le nôtre",
+    same(listed, [{ accountKey: r0.accountKey, mailboxId: M0 }]) && lf.server?.hostname === "Local Folders" && lf.pref !== ours0.serverKey,
+    [listed, lf.pref]);
+  await helper.setLocalFoldersPref(ours0.serverKey);
+  await check("… accountOfIdentity aussi (l'envoi reste fermé)",
+    same(await api.accountOfIdentity(r0.identityId), { accountKey: r0.accountKey, mailboxId: M0 }) &&
+      (await helper.localFolders()).server?.hostname === "Local Folders");
+
+  // A preference naming a server that no longer exists: its key could be given to our next server.
+  await helper.setLocalFoldersPref("server987");
+  const r0b = await api.ensureAccount({ mailboxId: M0B, email: "zero.bis@example.com", name: "Zéro bis" });
+  lf = await helper.localFolders();
+  await check("« Dossiers locaux » désignant un serveur disparu : rétabli sur le vrai avant de créer le compte suivant",
+    lf.server?.hostname === "Local Folders" && lf.server.key !== (await helper.inspect(r0b.accountKey)).serverKey &&
+      (await api.listAccounts()).length === 2,
+    lf);
+  const accountsNow = await helper.accountKeys();
+  await check("… un seul compte « Dossiers locaux » dans le profil (pas de doublon)",
+    (await Promise.all(accountsNow.map((k) => helper.inspect(k)))).filter((i) => i?.hostname === "Local Folders").length === 1, accountsNow);
+
+  // The neutral server is the profile's only outgoing server.
+  let out = await helper.outgoing();
+  await check("serveur neutre seul serveur sortant du profil : jamais désigné par défaut par l'extension",
+    neutralServers(out).length === 1 && out.servers.length === 1 && out.defaultKey === "", out);
+  const userSmtp = await helper.createUserSmtp("smtp.example.com", false);
+  await check("un serveur de l'utilisateur ajouté (sans le désigner par défaut) : il devient le serveur par défaut, pas le neutre",
+    await waitFor(async () => (await helper.outgoing()).defaultKey === userSmtp), (await helper.outgoing()).defaultKey);
+  await check("… checkSendRoute : rien à réparer", (await api.checkSendRoute()) === false);
+  await check("… Thunderbird envoie par défaut par le serveur de l'utilisateur", (await helper.effectiveDefaultSmtp()) === userSmtp);
+  await helper.setDefaultSmtp(neutralServers(out)[0].key);
+  await check("Thunderbird adopte le serveur neutre comme serveur par défaut : rendu aussitôt à celui de l'utilisateur",
+    await waitFor(async () => (await helper.outgoing()).defaultKey === userSmtp), (await helper.outgoing()).defaultKey);
+
+  for (const r of [r0, r0b]) await api.removeAccount(r.accountKey);
+  out = await helper.outgoing();
+  await check("comptes du profil neuf supprimés : plus de serveur neutre, celui de l'utilisateur reste par défaut",
+    neutralServers(out).length === 0 && out.defaultKey === userSmtp && (await api.listAccounts()).length === 0, out);
+  return userSmtp;
 }
 
 async function phase1() {
   const probe = await helper.probe();
   await emit("INFO", { probe });
+  const userSmtp = await freshProfileChecks();
   const lf = await helper.ensureLocalFolders();
-  const userSmtp = await helper.createUserSmtp("smtp.example.com");
   await emit("INFO", { localFolders: lf, userSmtp });
 
   await argumentChecks();
@@ -305,6 +521,13 @@ async function phase1() {
   const want1 = { mailboxId: M1, email: "alice@example.com", name: "Alice (Sync443)", fullName: "Alice Martin" };
   const r1 = await api.ensureAccount(want1);
   const { info: info1, neutral } = await inspectNewAccount(r1, want1, lf);
+  // What a new account sets in Thunderbird's preferences (identity, incoming server): for the record.
+  await emit("INFO", {
+    newAccountPrefs: {
+      identity: await helper.prefsOf(`mail.identity.${r1.identityId}.`),
+      server: await helper.prefsOf(`mail.server.${info1.serverKey}.`),
+    },
+  });
   let out = await helper.outgoing();
   await check("serveur sortant par défaut de l'utilisateur inchangé", out.defaultKey === userSmtp, out.defaultKey);
 
@@ -328,14 +551,37 @@ async function phase1() {
   info = await helper.inspect(r1.accountKey);
   await check("sans fullName : nom complet inchangé", info.identities[0].fullName === "Alice M.", info.identities[0].fullName);
 
-  // ── Closed sending restored
+  // ── Archive and junk settings changed (as the user might): put back
+  const archivesUri = folder(info, "/Archives").uri;
+  const breakSettings = async () => {
+    await helper.setBranchPrefs(`mail.identity.${r1.identityId}.`, {
+      archive_granularity: 2,
+      archive_keep_folder_structure: true,
+      archive_folder: folder(info, "/Inbox").uri,
+    });
+    await helper.setBranchPrefs(`mail.server.${info.serverKey}.`, { moveOnSpam: true });
+    await helper.reloadSpamSettings(r1.accountKey);
+    return !(await mailSettings(r1.accountKey, archivesUri))[0];
+  };
+  await check("(réglages d'archivage et d'indésirables changés : par mois, arborescence copiée, vers /Inbox, déplacement des indésirables)",
+    await breakSettings());
+  await api.ensureAccount({ mailboxId: M1, email: "alice.martin@example.com", name: "Alice" });
+  let [settled, settings] = await mailSettings(r1.accountKey, archivesUri);
+  await check("ensureAccount d'un compte existant rétablit l'archivage dans /Archives et moveOnSpam false", settled, settings);
+  await check("(changés de nouveau)", await breakSettings());
+  const routeAnswer = await api.checkSendRoute();
+  [settled, settings] = await mailSettings(r1.accountKey, archivesUri);
+  await check("checkSendRoute les rétablit aussi (sans les compter : la route n'avait rien → false)", settled && routeAnswer === false,
+    [routeAnswer, settings]);
+
+  // ── Closed sending restored (the user attaches the identity to their own outgoing server)
   await helper.setIdentity(r1.identityId, { smtpServerKey: userSmtp });
-  info = await helper.inspect(r1.accountKey);
-  await check("(l'utilisateur rattache l'identité à son propre serveur sortant)", info.identities[0].smtpServerKey === userSmtp);
+  await check("l'utilisateur rattache l'identité à son propre serveur sortant : rattachée de nouveau au serveur neutre, aussitôt",
+    await waitFor(() => routeClosed(r1.accountKey)), (await helper.inspect(r1.accountKey)).identities[0]);
   await api.ensureAccount({ mailboxId: M1, email: "alice.martin@example.com", name: "Alice" });
   info = await helper.inspect(r1.accountKey);
   out = await helper.outgoing();
-  await check("ensureAccount rattache de nouveau l'identité au serveur neutre",
+  await check("ensureAccount : identité sur le serveur neutre",
     info.identities[0].smtpServerKey === neutral.key && info.identities[0].effectiveSmtpKey === neutral.key, info.identities[0]);
   await check("… le serveur sortant de l'utilisateur est intact et reste celui par défaut",
     out.servers.some((s) => s.key === userSmtp && s.hostname === "smtp.example.com") && out.defaultKey === userSmtp);
@@ -364,6 +610,8 @@ async function phase1() {
   await check("accountOfIdentity d'une identité inconnue → null", (await api.accountOfIdentity("id987654")) === null);
   await check("… sans créer d'identité au passage", same(await helper.identityKeys(), identitiesBefore));
 
+  await sendRouteChecks(r1, r2, userSmtp);
+
   // ── Accounts that are not ours
   const foreign = {
     unmarked: await helper.createForeignAccount({ username: M_UNMARKED, hostname: "sync443.invalid" }),
@@ -387,8 +635,6 @@ async function phase1() {
   for (const [name, f] of Object.entries(foreign)) {
     const snapshot = await helper.inspect(f.accountKey);
     await expectCode(`${labels[name]} : removeAccount`, api.removeAccount(f.accountKey), "PERMISSION");
-    await expectCode(`${labels[name]} : setSpecialUse`, api.setSpecialUse(f.accountKey, "/Trash", "trash"), "PERMISSION");
-    await expectCode(`${labels[name]} : setSpecialUse d'un chemin absent`, api.setSpecialUse(f.accountKey, "/Absent", "trash"), "PERMISSION");
     await check(`${labels[name]} : accountOfIdentity → null`, (await api.accountOfIdentity(f.identityId)) === null);
     const after = await helper.inspect(f.accountKey);
     await check(`${labels[name]} : intact (marques, dossiers, fichiers)`,
@@ -399,11 +645,8 @@ async function phase1() {
 
   // ── Local Folders, always refused
   await expectCode("« Dossiers locaux » : removeAccount", api.removeAccount(lf.accountKey), "PERMISSION");
-  await expectCode("« Dossiers locaux » : setSpecialUse", api.setSpecialUse(lf.accountKey, "/Trash", "trash"), "PERMISSION");
   await helper.setMarks(lf.accountKey, EXT_ID, M1);
   await expectCode("« Dossiers locaux » portant nos marques : removeAccount quand même refusé", api.removeAccount(lf.accountKey), "PERMISSION");
-  await expectCode("« Dossiers locaux » portant nos marques : setSpecialUse quand même refusé",
-    api.setSpecialUse(lf.accountKey, "/Trash", "trash"), "PERMISSION");
   list = await api.listAccounts();
   await check("« Dossiers locaux » portant nos marques : absent de listAccounts", !list.some((a) => a.accountKey === lf.accountKey), list);
   await helper.setMarks(lf.accountKey, null, null);
@@ -411,37 +654,11 @@ async function phase1() {
 
   // ── Unknown accounts
   await check("removeAccount d'une clé inconnue → false", (await api.removeAccount("account987654")) === false);
-  await expectCode("setSpecialUse d'un compte inconnu", api.setSpecialUse("account987654", "/Inbox", "inbox"), "NOT_FOUND");
 
-  // ── Special uses
-  await helper.createFolder(r1.accountKey, "/Inbox", "Sub");
-  await helper.createFolder(r1.accountKey, "/", "Sent Items");
-  await api.setSpecialUse(r1.accountKey, "/Inbox/Sub", "junk");
-  info = await helper.inspect(r1.accountKey);
-  await check("setSpecialUse /Inbox/Sub junk : sous-dossier résolu, usage « junk » seul",
-    same(folder(info, "/Inbox/Sub")?.uses, ["junk"]) && same(holders(info, "junk"), ["/Inbox/Sub"]), holders(info, "junk"));
-  await check("… /Inbox garde « inbox »", same(folder(info, "/Inbox")?.uses, ["inbox"]));
-  await api.setSpecialUse(r1.accountKey, "/Sent Items", "sent");
-  info = await helper.inspect(r1.accountKey);
-  await check("setSpecialUse /Sent Items sent : seul dossier « sent » du compte",
-    same(holders(info, "sent"), ["/Sent Items"]) && same(folder(info, "/Sent")?.uses, []), holders(info, "sent"));
-  await check("… l'identité envoie ses copies dans /Sent Items", info.identities[0].fccFolderURI === folder(info, "/Sent Items")?.uri,
-    info.identities[0].fccFolderURI);
-  for (const [path, why] of [["/Inbox/Nope", "absent"], ["/inbox", "casse différente"], ["/Inbox/Sub/Deeper", "trop profond"], ["/Sent Items ", "espace final"]]) {
-    await expectCode(`setSpecialUse, dossier ${why} (${path})`, api.setSpecialUse(r1.accountKey, path, "trash"), "NOT_FOUND");
-  }
-  const infoBeforeScratch = await helper.inspect(r1.accountKey);
-  await check("… rien n'a changé après ces refus", same(infoBeforeScratch.folders, info.folders));
-
-  // Every use, on the second account, on one folder in turn.
-  await helper.createFolder(r2.accountKey, "/", "Scratch");
-  for (const use of USES) {
-    const message = await errorOf(api.setSpecialUse(r2.accountKey, "/Scratch", use));
-    const i2 = await helper.inspect(r2.accountKey);
-    await check(`setSpecialUse « ${use} » : /Scratch n'a que cet usage, aucun autre dossier ne l'a`,
-      message === null && same(folder(i2, "/Scratch")?.uses, [use]) && same(holders(i2, use), ["/Scratch"]),
-      message ?? folder(i2, "/Scratch")?.uses);
-  }
+  // ── Folders of the user's in the account: kept across the restart, never carried over to a new account
+  await helper.createFolder(r1.accountKey, "/", "Projets");
+  await helper.createFolder(r1.accountKey, "/Projets", "2026");
+  await check("(dossiers de l'utilisateur créés dans le compte : /Projets/2026)", !!folder(await helper.inspect(r1.accountKey), "/Projets/2026"));
 
   // ── Passwords
   await check("getPassword sans mot de passe enregistré → null", (await api.getPassword(ORIGIN, "alice@example.com")) === null);
@@ -525,8 +742,11 @@ async function phase1() {
     await emit("SKIP", { label: "page autre que l'arrière-plan refusée", detail: tabError ?? "onglet sans réponse" });
   }
 
+  await fileChecks(lf);
+
   // ── Removal of the second account
-  const neutralKey = neutral.key;
+  // The neutral server in use now (it was made again during sendRouteChecks).
+  const neutralKey = neutralServers(await helper.outgoing())[0]?.key;
   const r2Path = info2.localPath;
   await check("removeAccount du deuxième compte → true", (await api.removeAccount(r2.accountKey)) === true);
   await check("… compte disparu", (await helper.inspect(r2.accountKey)) === null);
@@ -551,6 +771,7 @@ async function phase1() {
     folders: (await helper.inspect(r1.accountKey)).folders,
   };
   await browser.storage.local.set({ phase1: state });
+  await emit("INFO", { neutralKey });
   await emit("INFO", { paths: { r1: info1.localPath, r2: r2Path, localFolders: lf.localPath, foreign: Object.values(foreign).map((f) => f.localPath) } });
 }
 
@@ -568,13 +789,24 @@ async function phase2() {
     info?.prettyName === "Alice" && info?.identities[0].email === "alice.martin@example.com" && info?.identities[0].fullName === "Alice M.");
   await check("… identité toujours rattachée au serveur neutre",
     info?.identities[0].smtpServerKey === s.neutralKey && info?.identities[0].effectiveSmtpKey === s.neutralKey, info?.identities[0]);
+  // The neutral server's values of its first design, planted in prefs.js by the runner while Thunderbird was stopped (no notification).
   const out0 = await helper.outgoing();
-  await check("… serveur neutre toujours marqué", neutralServers(out0).length === 1 && neutralServers(out0)[0].hostname === "sync443.invalid");
-  for (const [path, use] of [["/Inbox", "inbox"], ["/Drafts", "drafts"], ["/Trash", "trash"], ["/Inbox/Sub", "junk"], ["/Sent Items", "sent"]]) {
+  const planted = neutralServers(out0)[0];
+  await check("… serveur neutre toujours marqué ; anciennes valeurs plantées hors de Thunderbird bien là (sync443.invalid:465)",
+    neutralServers(out0).length === 1 && planted.key === s.neutralKey && planted.hostname === "sync443.invalid" && planted.port === 465,
+    neutralServers(out0));
+  const migrated = await api.checkSendRoute();
+  const out1 = await helper.outgoing();
+  await check("… checkSendRoute le passe à 127.0.0.1 port 1, TLS, sans authentification → true",
+    migrated === true && neutralServers(out1).length === 1 && neutralServers(out1)[0].key === s.neutralKey && isSafeNeutral(neutralServers(out1)[0]),
+    [migrated, neutralServers(out1)]);
+  for (const [path, use] of [["/Inbox", "inbox"], ["/Drafts", "drafts"], ["/Sent", "sent"], ["/Archives", "archives"], ["/Trash", "trash"]]) {
     await check(`… usage « ${use} » de ${path} conservé`, folder(info, path)?.uses.includes(use), folder(info, path)?.uses);
   }
-  await emit("INFO", { afterRestart: { sentHolders: holders(info, "sent"), folders: info.folders.map((f) => [f.path, f.uses]) } });
+  await check("… dossiers de l'utilisateur conservés (/Projets/2026)", !!folder(info, "/Projets/2026"));
   await check("… accountOfIdentity", same(await api.accountOfIdentity(s.r1.identityId), { accountKey: s.r1.accountKey, mailboxId: M1 }));
+  const [settled, settings] = await mailSettings(s.r1.accountKey, folder(info, "/Archives")?.uri);
+  await check("… réglages d'archivage et d'indésirables conservés", settled, settings);
   await check("… mot de passe conservé", (await api.getPassword(KEEP.origin, KEEP.username)) === KEEP.password);
   await expectCode("… un compte sans marque est toujours refusé", api.removeAccount(s.foreign.unmarked.accountKey), "PERMISSION");
   await expectCode("… « Dossiers locaux » toujours refusé", api.removeAccount(s.lf.accountKey), "PERMISSION");
@@ -601,7 +833,7 @@ async function phase2() {
       infoAgain.identities[0].smtpServerKey === neutralServers(out2)[0].key,
     again);
   await check("… rien de l'ancien compte n'est repris (dossiers d'un compte neuf seulement)",
-    !infoAgain.folders.some((f) => f.path === "/Sent Items" || f.path === "/Inbox/Sub"), infoAgain.folders.map((f) => f.path));
+    !infoAgain.folders.some((f) => f.path.startsWith("/Projets")), infoAgain.folders.map((f) => f.path));
   // As if Thunderbird had made the neutral server its default (it does so when it is the only one).
   await helper.setDefaultSmtp(neutralServers(out2)[0].key);
   await check("… removeAccount", (await api.removeAccount(again.accountKey)) === true);

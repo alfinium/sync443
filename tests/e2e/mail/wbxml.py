@@ -439,7 +439,7 @@ def el(name, content=None, opaque=None):
     return node
 
 
-# ── Encoding ──────────────────────────────────────────────────────────────
+# ── Writing ──────────────────────────────────────────────────────────────
 
 
 def _mb_uint32(value):
@@ -506,7 +506,7 @@ def encode(root):
     return bytes(out)
 
 
-# ── Decoding ──────────────────────────────────────────────────────────────
+# ── Reading ──────────────────────────────────────────────────────────────
 
 
 def decode(data, *, max_bytes=MAX_BYTES, max_nodes=MAX_NODES, max_depth=MAX_DEPTH, check_utf8=True):

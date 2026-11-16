@@ -14,7 +14,6 @@
     listAccounts: () => api.listAccounts(),
     accountOfIdentity: () => api.accountOfIdentity(identityId),
     removeAccount: () => api.removeAccount(accountKey),
-    setSpecialUse: () => api.setSpecialUse(accountKey, "/Inbox", "inbox"),
     getPassword: () => api.getPassword(origin, "alice"),
     setPassword: () => api.setPassword(origin, "alice", "depuis-la-page"),
     removePassword: () => api.removePassword(origin, "alice"),

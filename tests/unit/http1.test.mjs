@@ -170,8 +170,7 @@ test("requête : Content-Length selon la méthode et le corps", () => {
   }
   const { body: _omitted, ...noBody } = BASE;
   assert(head(noBody).includes("\r\nContent-Length: 0\r\n"), "POST, corps omis : Content-Length: 0");
-  for (const method of ["PUT", "PATCH"]) assert(head(req({ method })).includes("\r\nContent-Length: 0\r\n"), `${method} sans corps`);
-  for (const method of ["OPTIONS", "GET", "HEAD", "DELETE"]) assert(!head(req({ method })).includes("Content-Length"), `${method} sans corps : pas de Content-Length`);
+  for (const method of ["OPTIONS", "GET", "HEAD", "DELETE", "PUT"]) assert(!head(req({ method })).includes("Content-Length"), `${method} sans corps : pas de Content-Length`);
   assert(head(req({ method: "OPTIONS", body: new Uint8Array(0) })).includes("\r\nContent-Length: 0\r\n"), "corps vide fourni : Content-Length: 0");
   const out = serializeRequest(req({ method: "GET", body: new Uint8Array(70000) }));
   assert(latin1(out.subarray(0, 300)).includes("\r\nContent-Length: 70000\r\n"), "Content-Length du corps");
@@ -471,7 +470,7 @@ test("requête : requêtes valides aléatoires, en-tête toujours bien formé", 
     eq(lines[1], `Host: ${host}`);
     for (let k = 0; k < headers.length; k++) eq(lines[2 + k], `${headers[k][0]}: ${headers[k][1]}`);
     const rest = lines.slice(2 + headers.length);
-    const cl = body ? [`Content-Length: ${body.length}`] : ["POST", "PUT"].includes(method) ? ["Content-Length: 0"] : [];
+    const cl = body ? [`Content-Length: ${body.length}`] : method === "POST" ? ["Content-Length: 0"] : [];
     eq(rest, [...cl, "Accept-Encoding: identity"]);
     eq(out.subarray(end + 4), body ?? new Uint8Array(0));
   }
@@ -519,20 +518,20 @@ test("réponse : chunked sans données (bloc final seul) et tailles hexadécimal
   eq(latin1(parse(`HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n${ext}\r\nhello\r\n0\r\n\r\n`).body), "hello");
 });
 
-test("réponse : corps délimité par la fermeture de la connexion", () => {
-  const p = new ResponseParser({ method: "POST" });
-  p.push(b("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nbody "));
-  p.push(b("until close"));
-  eq(p.done, false, "pas terminé avant end()");
-  p.end();
-  eq(p.done, true);
-  eq(latin1(p.response.body), "body until close");
-  eq(parse("HTTP/1.1 200 OK\r\n\r\n").body, new Uint8Array(0), "corps vide jusqu'à la fermeture");
+test("réponse : corps sans longueur annoncée refusé dès la fin des en-têtes", () => {
+  // Ended only by the connection, it could not be told from a connection cut by the network.
+  for (const text of ["HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n", "HTTP/1.1 200 OK\r\n\r\n", "HTTP/1.0 404 Not Found\r\nX-A: 1\r\n\r\n"]) {
+    const p = new ResponseParser({ method: "POST" });
+    const e = throws(() => p.push(b(`${text}body until close`)), isHttpError, show(text));
+    assert(/longueur/.test(e.message), e.message);
+    throws(() => p.end(), isHttpError, "toujours refusé à la fermeture");
+    eq([p.done, p.response], [false, null]);
+  }
 });
 
 test("réponse : HTTP/1.0 accepté", () => {
   eq(parse("HTTP/1.0 200 OK\r\nContent-Length: 2\r\n\r\nok", { end: false }).body, b("ok"));
-  const r = parse("HTTP/1.0 404 Not Found\r\nX-A: 1\r\n\r\ngone");
+  const r = parse("HTTP/1.0 404 Not Found\r\nX-A: 1\r\nContent-Length: 4\r\n\r\ngone");
   eq([r.status, r.reason, latin1(r.body)], [404, "Not Found", "gone"]);
 });
 
@@ -614,11 +613,8 @@ test("réponse : réponses intermédiaires 1xx ignorées (100, 102, 103, 199)", 
   refused("HTTP/1.1 100 Continue\r\nX: a\r\n folded\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n", {}, "en-têtes d'une 1xx vérifiés");
 });
 
-test("réponse : HEAD, 204 et 304 sans corps, quels que soient les en-têtes", () => {
+test("réponse : 204 et 304 sans corps, quels que soient les en-têtes", () => {
   for (const [method, text] of [
-    ["HEAD", "HTTP/1.1 200 OK\r\nContent-Length: 1234\r\n\r\n"],
-    ["HEAD", "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n"],
-    ["HEAD", "HTTP/1.1 200 OK\r\nContent-Length: 99999999999\r\n\r\n"],
     ["POST", "HTTP/1.1 204 No Content\r\n\r\n"],
     ["POST", "HTTP/1.1 204 No Content\r\nTransfer-Encoding: chunked\r\n\r\n"],
     ["OPTIONS", "HTTP/1.1 304 Not Modified\r\nContent-Length: 50\r\n\r\n"],
@@ -670,15 +666,15 @@ test("réponse : les données sont copiées (l'appelant peut réutiliser son tam
   const expected = new Uint8Array(300);
   for (let k = 0; k < 300; k++) expected[k] = 0x41 + Math.floor(k / 64);
   eq(p2.response.body, expected);
-  // Same for a body delimited by the end of the connection, joined at end().
+  // Same for a chunked body (one chunk of 300 bytes).
   const p3 = new ResponseParser({});
-  p3.push(b("HTTP/1.1 200 OK\r\n\r\n"));
+  p3.push(b("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n12c\r\n"));
   for (let at = 0; at < 300; at += 64) {
     piece.fill(0x61 + at / 64);
     p3.push(piece.subarray(0, Math.min(64, 300 - at)));
   }
   piece.fill(0);
-  p3.end();
+  p3.push(b("\r\n0\r\n\r\n"));
   for (let k = 0; k < 300; k++) expected[k] = 0x61 + Math.floor(k / 64);
   eq(p3.response.body, expected);
 });
@@ -689,8 +685,7 @@ const VALID = [
   ["POST", "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello"],
   ["POST", `HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5;ext=1\r\nhello\r\n1A\r\n${"x".repeat(26)}\r\n0\r\nX-Trailer: t\r\n\r\n`],
   ["POST", "HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 103 Early Hints\r\nLink: </a>\r\n\r\nHTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"x\"\r\nContent-Length: 0\r\n\r\n"],
-  ["POST", "HTTP/1.0 200 OK\r\nX-A: 1\r\nX-A: 2\r\n\r\nbody until close"],
-  ["HEAD", "HTTP/1.1 200 OK\r\nContent-Length: 1234\r\n\r\n"],
+  ["POST", "HTTP/1.0 200 OK\r\nX-A: 1\r\nX-A: 2\r\nContent-Length: 4\r\n\r\nbody"],
   ["OPTIONS", "HTTP/1.1 200 OK\r\nMS-ASProtocolVersions: 2.5,12.0,12.1,14.0,14.1,16.0,16.1\r\nMS-ASProtocolCommands: Sync,SendMail\r\nContent-Length: 0\r\n\r\n"],
   ["POST", "HTTP/1.1 204 No Content\r\n\r\n"],
   ["POST", "HTTP/1.1 304 Not Modified\r\nContent-Length: 99\r\n\r\n"],
@@ -708,6 +703,7 @@ const INVALID = [
   `HTTP/1.1 200 OK\r\nX: a${NUL}b\r\nContent-Length: 0\r\n\r\n`,
   "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhel",
   "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n000000001\r\nx\r\n0\r\n\r\n",
+  "HTTP/1.0 200 OK\r\nX-A: 1\r\nX-A: 2\r\n\r\nbody until close",
 ];
 
 test("réponse : résultat identique pour toute découpe (2 morceaux, octet par octet, aléatoire)", () => {
@@ -983,7 +979,7 @@ test("erreurs : arguments invalides de push(), push() après end()", () => {
     throws(() => p.push(arg), isHttpError, Object.prototype.toString.call(arg));
   }
   const p = new ResponseParser({});
-  p.push(b("HTTP/1.1 200 OK\r\n\r\nabc"));
+  p.push(b("HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nabc"));
   p.end();
   eq(latin1(p.response.body), "abc");
   throws(() => p.push(b("d")), isHttpError, "push() après end()");
@@ -991,13 +987,13 @@ test("erreurs : arguments invalides de push(), push() après end()", () => {
 
 test("erreurs : options invalides du constructeur", () => {
   for (const options of [null, 42, "POST"]) throws(() => new ResponseParser(options), isHttpError, `options ${options}`);
-  for (const method of ["", "PO ST", "CONNECT", 42, null, `GET${CR}`]) throws(() => new ResponseParser({ method }), isHttpError, `méthode ${method}`);
+  for (const method of ["", "PO ST", "CONNECT", "HEAD", 42, null, `GET${CR}`]) throws(() => new ResponseParser({ method }), isHttpError, `méthode ${method}`);
   for (const limits of [42, "x", { maxBodyBytes: -1 }, { maxBodyBytes: 1.5 }, { maxBodyBytes: "10" }, { maxBodyBytes: NaN }, { maxBodyBytes: Infinity }, { maxBodyByte: 10 }, [1]]) {
     throws(() => new ResponseParser({ limits }), isHttpError, `limites ${JSON.stringify(limits)}`);
   }
   new ResponseParser();
   new ResponseParser({});
-  new ResponseParser({ method: "HEAD", limits: null });
+  new ResponseParser({ method: "OPTIONS", limits: null });
   new ResponseParser({ limits: {} });
 });
 
@@ -1029,8 +1025,7 @@ test("limites : ligne d'état (CRLF compris) à la limite acceptée, un octet de
   q.push(b(`HTTP/1.1 200 ${"R".repeat(49)}`));
   q.push(b("\r"));
   q.push(b("\n"));
-  q.push(b("\r\n"));
-  q.end();
+  q.push(b("Content-Length: 0\r\n\r\n"));
   eq(q.done, true);
 });
 
@@ -1073,7 +1068,7 @@ test("limites : nombre de lignes d'en-tête à la limite accepté, une de plus r
   eq(parse(head(3).replace("204 No Content", "100 Continue") + head(3), { limits: { maxHeaders: 3 } }).status, 204);
 });
 
-test("limites : corps (Content-Length, chunked, fermeture) à la limite accepté, un octet de plus refusé", () => {
+test("limites : corps (Content-Length, chunked) à la limite accepté, un octet de plus refusé", () => {
   const limits = { maxBodyBytes: 10 };
   eq(parse("HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\n0123456789", { limits }).body.length, 10);
   const p = new ResponseParser({ limits });
@@ -1085,11 +1080,6 @@ test("limites : corps (Content-Length, chunked, fermeture) à la limite accepté
   throws(() => q.push(b("7\r\n")), isHttpError, "bloc refusé dès sa taille");
   refused("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nB\r\n", { limits });
 
-  eq(parse("HTTP/1.1 200 OK\r\n\r\n0123456789", { limits }).body.length, 10);
-  const r = new ResponseParser({ limits });
-  r.push(b("HTTP/1.1 200 OK\r\n\r\n0123456789"));
-  throws(() => r.push(b("X")), isHttpError, "fermeture : refusé au onzième octet, avant end()");
-
   // Default: 16 MiB.
   const max = 16 * 1024 * 1024;
   const s = new ResponseParser({});
@@ -1099,10 +1089,6 @@ test("limites : corps (Content-Length, chunked, fermeture) à la limite accepté
   s.push(new Uint8Array(1));
   eq(s.response.body.length, max);
   throws(() => new ResponseParser({}).push(b(`HTTP/1.1 200 OK\r\nContent-Length: ${max + 1}\r\n\r\n`)), isHttpError, "défaut : 16 Mio + 1");
-  const t = new ResponseParser({});
-  t.push(b("HTTP/1.1 200 OK\r\n\r\n"));
-  t.push(new Uint8Array(max));
-  throws(() => t.push(new Uint8Array(1)), isHttpError, "fermeture : 16 Mio + 1");
 });
 
 test("limites : chiffres de la taille de bloc à la limite acceptés, un de plus refusé", () => {

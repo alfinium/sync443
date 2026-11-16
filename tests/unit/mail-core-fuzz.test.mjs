@@ -254,6 +254,20 @@ function randomMessage(rnd) {
   return concat(parts);
 }
 
+/** Lines of the top-level header block (LF, CRLF or a lone CR end a line; an empty line ends the block). */
+function headerLines(text) {
+  const out = [];
+  let pos = 0;
+  while (pos < text.length) {
+    let e = pos;
+    while (e < text.length && text[e] !== "\n" && text[e] !== "\r") e++;
+    if (e === pos) break;
+    out.push(text.slice(pos, e));
+    pos = text[e] === "\r" && text[e + 1] === "\n" ? e + 2 : e + 1;
+  }
+  return out;
+}
+
 /** Every invariant of the MIME functions on one input; returns nothing, throws on a violation. */
 function checkMime(input, label) {
   const started = Date.now();
@@ -268,8 +282,17 @@ function checkMime(input, label) {
   if (ensured.synthetic) {
     assert(mid === null, `${label} : synthétique alors qu'un identifiant existe`);
     assert(/^[0-9a-f]{32}@sync443\.invalid$/.test(ensured.messageId), `${label} : forme synthétique`);
-    const prefix = encodeUtf8(`Message-ID: <${ensured.messageId}>\r\n`);
-    assert(sameBytes(ensured.bytes, concat([prefix, input])), `${label} : message d'origine modifié`);
+    // Our field first (with the original's line ending), a guard when the original starts with a blank,
+    // then the original with every Message-ID field renamed and nothing else changed.
+    const text = Array.from(ensured.bytes, (x) => String.fromCharCode(x)).join("");
+    const original = Array.from(input, (x) => String.fromCharCode(x)).join("");
+    const head = /^Message-ID: <[0-9a-f]{32}@sync443\.invalid>(\r\n|\n)(X-Sync443-Continuation:(\r\n|\n))?/.exec(text);
+    assert(head, `${label} : champ synthétique absent en tête`);
+    assert(Boolean(head[2]) === (input.length > 0 && (input[0] === 0x20 || input[0] === 0x09)), `${label} : garde de repli`);
+    const rest = text.slice(head[0].length);
+    const unrename = (x) => x.toLowerCase().split("x-sync443-original-message-id").join("message-id");
+    eq(unrename(rest), unrename(original), `${label} : seuls les noms des champs Message-ID changent`);
+    assert(!headerLines(rest).some((l) => /^message-id[ \t]*:/i.test(l)), `${label} : un ancien Message-ID reste visible`);
   } else {
     assert(ensured.bytes === input && ensured.messageId === mid, `${label} : message déjà identifié modifié`);
   }

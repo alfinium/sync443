@@ -13,12 +13,12 @@
 import { test, assert, eq, rejects } from "./harness.mjs";
 import { el, encode, decode, text, child, at } from "../../src/core/wbxml.mjs";
 import { encodeUtf8, decodeUtf8 } from "../../src/core/utf8.mjs";
-import { messageIdOf } from "../../src/core/mime.mjs";
+import { messageIdOf, dateOf, fromAddressOf, ORIGINAL_ID_FIELD } from "../../src/core/mime.mjs";
 import { EasError, ERR } from "../../src/transport/client.mjs";
 import { Store } from "../../src/sync/store.mjs";
 import {
   CollectionState, MailPass, syncBatch, syncCollection, replayMoves, distinctCopy, loadCollection, loadPendingDeletes,
-  collRecord, MAX_BATCHES, WINDOW_SIZE, ORIGINAL_ID_FIELD,
+  collRecord, MAX_BATCHES, WINDOW_SIZE,
 } from "../../src/sync/mail.mjs";
 import { memoryArea } from "./journal.test.mjs";
 
@@ -236,6 +236,12 @@ export class FakeServer {
         if (read !== null) item.read = read === "1";
         const flag = child(data, "Email:Flag");
         if (flag) item.flagged = text(flag, "Email:Status") === "2";
+      } else if (cmd.tag === "Fetch") {
+        responses.push(
+          item
+            ? el("Fetch", [el("ServerId", sid), el("Status", "1"), el("ApplicationData", this.#appData(item))])
+            : el("Fetch", [el("ServerId", sid), el("Status", "8")]),
+        );
       } else if (cmd.tag === "Delete") {
         if (!item) continue;
         items.delete(sid);
@@ -257,6 +263,9 @@ export class FakeServer {
         commands.push(el("SoftDelete", [el("ServerId", ch.sid)]));
       }
     }
+    // Nothing asked and nothing to send: an empty answer (HTTP 200 without a body), the SyncKey unchanged, as
+    // Exchange answers a folder with no changes.
+    if (!child(c, "Commands")?.children?.length && !commands.length && !responses.length) return null;
     st.prev = st.key;
     st.key++;
     st.last = el("AirSync:Sync", [
@@ -428,20 +437,17 @@ export class FakeMailStore {
     this.writes.push(["moveFolder", path, to]);
     return to;
   }
-  async deleteFolder(path) {
-    this.#check();
-    const trash = [...this.folders].find(([, f]) => f.specialUse.includes("trash"))?.[0];
-    if (!trash || path === trash || !under(path, trash)) throw new Error("REFUSED: hors corbeille");
-    for (const p of [...this.folders.keys()]) if (under(p, path)) this.folders.delete(p);
-    this.writes.push(["deleteFolder", path]);
+  /** Date and author as Thunderbird gives them (read from the stored message; unknown for a message added without bytes). */
+  static #fp(m) {
+    return { date: m.bytes ? dateOf(m.bytes) : null, author: m.bytes ? fromAddressOf(m.bytes) : null };
   }
   async findByMessageId(path, mid) {
     const f = this.#folder(path);
-    return [...f.msgs].filter(([, m]) => m.mid === mid).map(([id, m]) => ({ id, flags: { read: m.read, flagged: m.flagged } }));
+    return [...f.msgs].filter(([, m]) => m.mid === mid).map(([id, m]) => ({ id, flags: { read: m.read, flagged: m.flagged }, ...FakeMailStore.#fp(m) }));
   }
   async listMessages(path) {
     const f = this.#folder(path);
-    return [...f.msgs].map(([id, m]) => ({ id, messageId: m.mid, flags: { read: m.read, flagged: m.flagged } }));
+    return [...f.msgs].map(([id, m]) => ({ id, messageId: m.mid, flags: { read: m.read, flagged: m.flagged }, ...FakeMailStore.#fp(m) }));
   }
   async importMessage(path, bytes, flags) {
     this.#check();
@@ -457,7 +463,15 @@ export class FakeMailStore {
     const id = this.nextId++;
     f.msgs.set(id, { mid, read: flags.read === true, flagged: flags.flagged === true, bytes });
     this.writes.push(["import", path, mid]);
-    return { id };
+    (this.imported ??= new Set()).add(id);
+    return { id, messageId: mid };
+  }
+  async discardImport(id) {
+    const at = this.#locate(id);
+    if (!this.imported?.has(id) || !at) return false;
+    at.f.msgs.delete(id);
+    this.writes.push(["discard", at.path, at.m.mid]);
+    return true;
   }
   async setFlags(id, flags, expected) {
     this.#check();
@@ -526,6 +540,7 @@ export function quietLog() {
 }
 
 const MB = "0123456789ab";
+const H = "0123456789abcdef"; // a fingerprint, for links made by hand
 
 /** A context for mail.mjs functions, around one collection mapped to a local folder. */
 function setup({ server = new FakeServer(), store = new FakeMailStore(), cid = "1", path = "/Inbox", area = memoryArea() } = {}) {
@@ -557,12 +572,12 @@ const commandsOf = (req) => at(req, "Collections", "Collection", "Commands")?.ch
 // ── Collection table ──────────────────────────────────────────────────────
 
 test("table : correspondance ServerId → Message-ID et index inverse", () => {
-  const c = new CollectionState("1", { syncKey: "5", path: "/Inbox", items: [["a", "m@x"], ["b", "m@x"], ["c", "n@x"]] });
+  const c = new CollectionState("1", { syncKey: "5", path: "/Inbox", items: [["a", "m@x", H], ["b", "m@x", H], ["c", "n@x", H]] });
   eq(c.refs("m@x"), 2);
   eq(c.serverIdsOf("m@x"), ["a", "b"]);
   eq(c.unlink("a"), "m@x");
   eq(c.refs("m@x"), 1);
-  c.link("b", "n@x"); // relinked: never two targets
+  c.link("b", "n@x", H); // relinked: never two targets
   eq(c.refs("m@x"), 0);
   eq(c.serverIdsOf("n@x"), ["c", "b"]);
   c.reset();
@@ -570,9 +585,9 @@ test("table : correspondance ServerId → Message-ID et index inverse", () => {
 });
 
 test("table : enregistrement abîmé, éléments invalides écartés ; clé invalide → tout reprendre", () => {
-  const c = CollectionState.fromRecord("1", { syncKey: "7", path: "/Inbox", items: [["a", "m@x"], ["", "z"], ["b", "a b"], 3, ["c", "ok@x"]] });
-  eq([...c.items], [["a", "m@x"], ["c", "ok@x"]]);
-  const d = CollectionState.fromRecord("1", { syncKey: "clé\u0000", path: "/Inbox", items: [["a", "m@x"]] });
+  const c = CollectionState.fromRecord("1", { syncKey: "7", path: "/Inbox", items: [["a", "m@x", H], ["", "z", H], ["b", "a b", H], 3, ["c", "ok@x", H], ["d", "sans@x"], ["e", "mauvaise@x", "?"]] });
+  eq([...c.items], [["a", "m@x"], ["c", "ok@x"]], "sans empreinte valable : écarté");
+  const d = CollectionState.fromRecord("1", { syncKey: "clé\u0000", path: "/Inbox", items: [["a", "m@x", H]] });
   eq([d.syncKey, d.items.size], ["0", 0]);
   eq(CollectionState.fromRecord("1", null).syncKey, "0");
 });
@@ -717,8 +732,8 @@ test("suppressions du serveur : un message encore désigné par un autre ServerI
   t.coll.syncKey = "1";
   t.server.colls.set("1", { key: 1, prev: null, last: null, pending: [] });
   // Two server items attached to the same Message-ID (two local copies existed: here, simulated in the table).
-  t.coll.link("1:a", "deux@x");
-  t.coll.link("1:b", "deux@x");
+  t.coll.link("1:a", "deux@x", H);
+  t.coll.link("1:b", "deux@x", H);
   t.server.items.get("1").set("1:a", { mime: mime("deux@x") });
   t.server.items.get("1").set("1:b", { mime: mime("deux@x") });
   t.server.deleteMessage("1", "1:a");
@@ -822,7 +837,7 @@ test("seuil de suppression en masse : sous 20 % du dossier, appliqué", async ()
   eq((await loadPendingDeletes(t.records)).size, 0);
 });
 
-test("quarantaine : un élément illisible ou un import en échec n'empêche pas les autres", async () => {
+test("quarantaine : un élément illisible est écarté, un import en échec redemandé (Fetch), sans gêner les autres", async () => {
   const t = setup();
   t.server.addMessage("1", mime("q1@x"));
   const bad = t.server.addMessage("1", null); // no MIME body
@@ -833,12 +848,15 @@ test("quarantaine : un élément illisible ou un import en échec n'empêche pas
   t.server.addMessage("1", mime("q5@x"));
   t.store.failImport = 1; // q1 fails
   await syncCollection(t.ctx, t.coll);
-  eq(t.store.mids("/Inbox"), ["q4@x", "q5@x"]);
+  eq(t.store.mids("/Inbox"), ["q1@x", "q4@x", "q5@x"], "q1 redemandé à la fin du passage, importé");
   eq(t.ctx.pass.counts.skipped, 3);
   const stored = await loadCollection(t.records, "1");
   eq(stored.quarantine.map((q) => q.serverId).includes(bad), true);
-  eq(stored.quarantine.length, 3);
-  assert(stored.syncKey === "2", "la SyncKey avance malgré la quarantaine");
+  eq(stored.quarantine.length, 2);
+  eq(stored.failed.size, 0);
+  const fetch = at(t.server.sent("Sync").at(-1), "Collections", "Collection", "Commands");
+  eq(fetch.children.map((c) => c.tag), ["Fetch"]);
+  assert(stored.syncKey === "3", "la SyncKey avance malgré la quarantaine");
   assert(t.log.lines.some(([lvl, m]) => lvl === "warn" && m.includes("quarantaine") && !m.includes("q4@x")), "journalisé sans contenu");
 });
 
@@ -875,6 +893,22 @@ test("annulation au milieu d'un lot : SyncKey non enregistrée, reprise sans dou
   await syncCollection(t.ctx, again);
   eq(t.store.mids("/Inbox"), ["c1@x", "c2@x", "c3@x", "c4@x"]);
   eq(again.items.size, 4);
+});
+
+test("réponse vide après le lot initial (dossier vide, comme Exchange) : table complète, plus rien à demander", async () => {
+  const t = setup({ cid: "2", path: "/Drafts" });
+  let r = await syncBatch(t.ctx, t.coll); // SyncKey "0": a key, nothing else
+  eq([r.moreAvailable, t.coll.more, t.coll.full], [true, true, true]);
+  t.server.hook("Sync", () => null); // nothing in the folder: HTTP 200 without a body
+  r = await syncBatch(t.ctx, t.coll);
+  eq([r.moreAvailable, t.coll.more, t.coll.full, t.coll.syncKey], [false, false, false, "1"]);
+  const saved = await loadCollection(t.records, "2");
+  eq([saved.more, saved.full, saved.syncKey], [false, false, "1"], "enregistré");
+  // An empty answer to an initial SyncKey (no key given): the table is not built yet.
+  const u = setup({ cid: "2", path: "/Drafts" });
+  u.server.hook("Sync", () => null);
+  eq((await syncBatch(u.ctx, u.coll)).moreAvailable, false);
+  eq([u.coll.syncKey, u.coll.full], ["0", true]);
 });
 
 test("réponse trop lourde : lots réduits, puis repris", async () => {
@@ -960,7 +994,7 @@ test("envoi : réponse vide ou SyncKey initiale → rien d'acquitté", async () 
   const t = setup();
   const up = [{ id: 1, op: "flags", path: "/Inbox", messageId: "a@x", flags: { read: true } }];
   let r = await syncBatch(t.ctx, t.coll, { uploads: up });
-  eq(r.outcomes.get(1), "keep", "SyncKey 0 : impossible d'envoyer");
+  eq(r.outcomes.get(1), "wait", "SyncKey 0 : impossible d'envoyer, aucun essai compté");
   t.server.addMessage("1", mime("a@x"));
   await syncCollection(t.ctx, t.coll);
   t.server.hook("Sync", () => null);
@@ -994,7 +1028,7 @@ test("déplacements : MoveItems avec le bon SrcMsgId, tables mises à jour, stat
   eq(saved.refs("a@x"), 1);
 });
 
-test("déplacements : vers un dossier non synchronisé → suppression ; rien à faire si la copie est revenue", async () => {
+test("déplacements : vers un dossier local (sans équivalent sur le serveur) → la copie du serveur reste, seul le lien part ; rien à faire si la copie est revenue", async () => {
   const t = setup();
   t.server.addMessage("1", mime("a@x"));
   t.server.addMessage("1", mime("b@x"));
@@ -1009,9 +1043,12 @@ test("déplacements : vers un dossier non synchronisé → suppression ; rien à
     ],
     t.ctx.collectionOf,
   );
-  eq(r.unmapped.map((e) => e.id), [1]);
-  eq(r.outcomes.get(2), "done");
+  eq(r.unlinked, 1);
+  eq([r.outcomes.get(1), r.outcomes.get(2)], ["done", "done"]);
   eq(t.server.sent("MoveItems").length, 0);
+  eq(t.server.sent("Sync").length, 2, "aucune suppression envoyée");
+  eq(t.coll.refs("a@x"), 0);
+  eq(t.server.items.get("1").size, 2, "rien n'a quitté le serveur");
 });
 
 test("synchro : le serveur ne reçoit jamais de requête sans signal transmis", async () => {
@@ -1060,7 +1097,8 @@ test("suppressions laissées en suspens par un passage interrompu : décidées a
   t.newPass();
   await syncBatch(t.ctx, t.coll);
   const pending = await loadPendingDeletes(t.records);
-  eq(pending.get("1"), { items: [[sids[0], "l1@x"]], at: 1000, retained: false });
+  eq(pending.get("1").items.map((e) => e.slice(0, 2)), [[sids[0], "l1@x"]]);
+  eq([pending.get("1").retained, pending.get("1").base], [false, 2], "taille du dossier avant les suppressions");
   eq(t.store.mids("/Inbox"), ["l1@x", "l2@x"], "pas encore appliquée");
   t.newPass();
   await syncCollection(t.ctx, t.coll);
@@ -1083,6 +1121,6 @@ test("lot refusé en entier plusieurs passages de suite : laissé passer en quar
   const coll = await loadCollection(t.records, "1");
   await syncBatch(t.ctx, coll);
   eq(coll.syncKey, "2");
-  eq(coll.quarantine.length, 2);
+  eq(coll.failed.size, 2, "gardés pour être redemandés");
   assert(t.log.lines.some(([lvl]) => lvl === "error"));
 });

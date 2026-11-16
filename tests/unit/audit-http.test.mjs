@@ -106,14 +106,14 @@ test("audit http V4 : délais entiers, délai trop court refusé avant toute con
   eq(short.ops.length, 0, "aucune connexion ouverte");
 });
 
-test("audit http V5 : destination et confiance figées après construction", () => {
-  const c = client(connector(), { pins: ["22".repeat(32)] });
-  eq(c.pins, undefined, "empreintes non exposées");
-  eq(c.connector, undefined, "connecteur non exposé");
-  assert(Object.isFrozen(c.server), "serveur figé");
-  throws(() => {
-    c.server.host = "evil.example.net";
-  }, TypeError);
+test("audit http V5 : destination et confiance figées après construction", async () => {
+  const conn = connector({ answer: "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n" });
+  const c = client(conn, { pins: ["22".repeat(32)] });
+  eq([c.server, c.pins, c.connector], [undefined, undefined, undefined], "destination, empreintes et connecteur non exposés");
+  c.server = { host: "evil.example.net", port: 443, origin: "https://evil.example.net" };
+  await c.command("FolderSync", fs0());
+  eq(conn.ops.find((o) => o[0] === "open")[1].host, "mail.example.com", "connexion vers le serveur configuré");
+  assert(conn.ops.find((o) => o[0] === "write")[1].includes("Host: mail.example.com\r\n"), "Host inchangé");
 });
 
 test("audit http H2 : entrées locales invalides refusées à la construction", () => {
@@ -182,7 +182,7 @@ test("audit module A1 : gros envoi découpé en morceaux d'1 Mio, un seul à la 
   assert(total > mime.length, "toute la requête a été écrite");
 });
 
-test("UserInformation 14.1 : adresse principale sous EmailAddresses", async () => {
+test("UserInformation 14.1 : nom affiché lu à côté de EmailAddresses", async () => {
   const { parseUserInformation } = await import("../../src/core/protocol.mjs");
   const { decode } = await import("../../src/core/wbxml.mjs");
   const doc = el("Settings:Settings", [el("Status", "1"), el("UserInformation", [el("Status", "1"), el("Get", [el("Accounts", [el("Account", [
@@ -190,5 +190,5 @@ test("UserInformation 14.1 : adresse principale sous EmailAddresses", async () =
     el("EmailAddresses", [el("SMTPAddress", "alias@example.com"), el("PrimarySmtpAddress", "alice@example.com")]),
   ])])])])]);
   const r = parseUserInformation(decode(encode(doc)));
-  eq([r.displayName, r.primarySmtpAddress], ["Alice Martin", "alice@example.com"]);
+  eq(r, { status: "1", displayName: "Alice Martin" });
 });

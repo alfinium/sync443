@@ -1,0 +1,21 @@
+[
+  {
+    "namespace": "sync443MailTest",
+    "description": "TEST ONLY, never shipped: helpers for the mail end-to-end test (results file, phase, requests to the test runner, trust of the throw-away test authorities, host permission as an accepted request would grant it, inspection of accounts, outgoing servers, logins and files, console errors, quit).",
+    "functions": [
+      { "name": "print", "type": "function", "async": true, "parameters": [{ "name": "line", "type": "string" }] },
+      { "name": "phase", "type": "function", "async": true, "parameters": [] },
+      { "name": "rpc", "type": "function", "async": true, "parameters": [{ "name": "request", "type": "any" }, { "name": "timeoutMs", "type": "integer", "optional": true }] },
+      { "name": "trustAuthority", "type": "function", "async": true, "parameters": [{ "name": "base64Der", "type": "string" }] },
+      { "name": "grantOrigin", "type": "function", "async": true, "parameters": [{ "name": "origin", "type": "string" }] },
+      { "name": "inspect", "type": "function", "async": true, "parameters": [{ "name": "accountKey", "type": "string" }] },
+      { "name": "createLocalFolders", "type": "function", "async": true, "parameters": [] },
+      { "name": "localFolders", "type": "function", "async": true, "parameters": [] },
+      { "name": "outgoing", "type": "function", "async": true, "parameters": [] },
+      { "name": "rawLogins", "type": "function", "async": true, "parameters": [{ "name": "origin", "type": "string" }] },
+      { "name": "exists", "type": "function", "async": true, "parameters": [{ "name": "path", "type": "string" }] },
+      { "name": "consoleErrors", "type": "function", "async": true, "parameters": [] },
+      { "name": "quit", "type": "function", "async": true, "parameters": [] }
+    ]
+  }
+]

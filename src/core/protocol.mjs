@@ -7,7 +7,8 @@
  *
  * Readers never hand raw server strings to the rest of the extension:
  * ids, keys and statuses go through sanitize.mjs, names are cleaned, and
- * an entry that cannot be validated is counted in `rejected` and left out.
+ * an entry that cannot be validated is left out (FolderSync counts them in
+ * `rejected`, for the log).
  * Only ApplicationData (the content of an item) stays an element tree, for
  * the codecs of each item type, which validate it in turn.
  */
@@ -26,7 +27,7 @@ export class ProtocolError extends Error {
 export const MAX_COMMANDS_PER_COLLECTION = 2000;
 export const MAX_FOLDERS = 5000;
 /** Most collections one Sync response may carry (the client never asks for more than a few). */
-export const MAX_COLLECTIONS = 100;
+const MAX_COLLECTIONS = 100;
 export const PING_CLASSES = new Set(["Email", "Calendar", "Contacts", "Tasks", "Notes"]);
 
 /** Tags whose values the debug log may show: technical values only, never content. */
@@ -174,39 +175,33 @@ export function syncRequest(collections) {
   ]);
 }
 
-export const addCommand = (clientId, data) =>
-  el("Add", [el("ClientId", need(clientId, v.itemId, "ClientId")), el("ApplicationData", data)]);
 export const changeCommand = (serverId, data) =>
   el("Change", [el("ServerId", need(serverId, v.itemId, "ServerId")), el("ApplicationData", data)]);
 export const deleteCommand = (serverId) => el("Delete", [el("ServerId", need(serverId, v.itemId, "ServerId"))]);
 export const fetchCommand = (serverId) => el("Fetch", [el("ServerId", need(serverId, v.itemId, "ServerId"))]);
 
 const COMMANDS = { Add: "add", Change: "change", Delete: "delete", SoftDelete: "softdelete" };
-const RESPONSES = { Add: "add", Change: "change", Fetch: "fetch" };
+// The client sends Change and Fetch only (never Add): only their answers are read.
+const RESPONSES = { Change: "change", Fetch: "fetch" };
 
 /**
  * → { status, collections: [{ collectionId, syncKey, status, moreAvailable,
- *      commands: [{op, serverId, data}], responses: [{op, clientId, serverId, status, data}], rejected }] }
+ *      commands: [{op, serverId, data}], responses: [{op: "change"|"fetch", serverId, status, data}] }] }
  * `status` is the command-level status (null when the response is normal).
  */
 export function parseSync(doc) {
   expectRoot(doc, "AirSync", "Sync");
   const collections = [];
-  let rejectedCollections = 0;
   const list = (child(doc, "Collections")?.children ?? []).filter((c) => c.tag === "Collection");
   if (list.length > MAX_COLLECTIONS) throw new ProtocolError(`réponse anormale : ${list.length} dossiers`);
   const seen = new Set();
   for (const c of list) {
     const collectionId = v.itemId(text(c, "CollectionId"));
-    if (!collectionId) {
-      rejectedCollections++;
-      continue;
-    }
+    if (!collectionId) continue;
     if (seen.has(collectionId)) throw new ProtocolError("réponse anormale : un dossier apparaît deux fois");
     seen.add(collectionId);
     const commands = [];
     const responses = [];
-    let rejected = 0;
     const list = child(c, "Commands")?.children ?? [];
     if (list.length > MAX_COMMANDS_PER_COLLECTION) {
       throw new ProtocolError(`réponse anormale : ${list.length} éléments pour un seul dossier`);
@@ -215,10 +210,7 @@ export function parseSync(doc) {
       const op = COMMANDS[cmd.tag];
       if (!op) continue;
       const serverId = v.itemId(text(cmd, "ServerId"));
-      if (!serverId) {
-        rejected++;
-        continue;
-      }
+      if (!serverId) continue;
       commands.push({ op, serverId, data: child(cmd, "ApplicationData") });
     }
     const answers = child(c, "Responses")?.children ?? [];
@@ -230,16 +222,11 @@ export function parseSync(doc) {
       if (!op) continue;
       const answer = {
         op,
-        clientId: v.itemId(text(r, "ClientId")),
         serverId: v.itemId(text(r, "ServerId")),
         status: v.status(text(r, "Status")),
         data: child(r, "ApplicationData"),
       };
-      // An answer to an Add names our ClientId; the others name the ServerId.
-      if (!answer.status || (op === "add" ? !answer.clientId : !answer.serverId)) {
-        rejected++;
-        continue;
-      }
+      if (!answer.status || !answer.serverId) continue;
       responses.push(answer);
     }
     collections.push({
@@ -249,10 +236,9 @@ export function parseSync(doc) {
       moreAvailable: Boolean(child(c, "MoreAvailable")),
       commands,
       responses,
-      rejected,
     });
   }
-  return { status: topStatus(doc), collections, rejected: rejectedCollections };
+  return { status: topStatus(doc), collections };
 }
 
 // ── Ping ──────────────────────────────────────────────────────────────────
@@ -368,22 +354,22 @@ export function userInformationRequest() {
   return el("Settings:Settings", [el("UserInformation", [el("Get")])]);
 }
 
-/** → { status, displayName, primarySmtpAddress } (cleaned, or null) */
+/** → { status, displayName } (the first UserDisplayName not empty once cleaned, or null) */
 export function parseUserInformation(doc) {
   expectRoot(doc, "Settings", "Settings");
   const info = child(doc, "UserInformation");
   let displayName = null;
-  let primarySmtpAddress = null;
   if (v.status(text(info, "Status")) === "1") {
     for (const account of at(info, "Get", "Accounts")?.children ?? []) {
       if (account.tag !== "Account") continue;
       const name = v.cleanText(text(account, "UserDisplayName") ?? "", { max: 256, singleLine: true, stripBidi: true }).trim();
-      if (name && !displayName) displayName = name;
-      // [MS-ASCMD] 14.1: Account/EmailAddresses/PrimarySmtpAddress (older servers put it directly under Account).
-      primarySmtpAddress ??= v.emailAddress(text(account, "EmailAddresses", "PrimarySmtpAddress") ?? text(account, "PrimarySmtpAddress") ?? "");
+      if (name) {
+        displayName = name;
+        break;
+      }
     }
   }
-  return { status: v.status(text(doc, "Status")), displayName, primarySmtpAddress };
+  return { status: v.status(text(doc, "Status")), displayName };
 }
 
 // ── SendMail ──────────────────────────────────────────────────────────────

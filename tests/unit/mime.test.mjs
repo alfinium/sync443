@@ -38,18 +38,21 @@ test("messageIdOf : nom de champ sans égard à la casse", () => {
   }
 });
 
-test("messageIdOf : champ replié, commentaires et blancs autour ignorés", () => {
+test("messageIdOf : champ replié et blancs autour acceptés ; commentaires et blanc avant les deux-points refusés (lecture stricte)", () => {
   eq(messageIdOf(b("Message-ID:\r\n <abc@example.com>\r\n\r\n")), "abc@example.com", "replié");
   eq(messageIdOf(b("Message-ID:\r\n\t<abc@example.com>\r\nX: y\r\n\r\n")), "abc@example.com", "tabulation");
-  eq(messageIdOf(b("Message-ID: (un commentaire) <abc@example.com> (un autre)\r\n\r\n")), "abc@example.com");
-  eq(messageIdOf(b("Message-ID: (imbriqué (deux) \\) niveaux)  <abc@x>\r\n\r\n")), "abc@x", "commentaire imbriqué");
-  eq(messageIdOf(b("Message-ID :  <abc@x>\r\n\r\n")), "abc@x", "blanc avant les deux-points (syntaxe obsolète)");
+  eq(messageIdOf(b("Message-ID:   <abc@x>  \r\n\r\n")), "abc@x", "blancs autour");
   eq(messageIdOf(b("Message-ID:<abc@x>\r\n\r\n")), "abc@x", "sans espace");
+  // Thunderbird's readers do not agree on these: no id is taken, the message gets its own.
+  eq(messageIdOf(b("Message-ID: (un commentaire) <abc@example.com> (un autre)\r\n\r\n")), null, "commentaires");
+  eq(messageIdOf(b("Message-ID: <abc@x> (copie de liste)\r\n\r\n")), null, "commentaire après");
+  eq(messageIdOf(b("Message-ID :  <abc@x>\r\n\r\n")), null, "blanc avant les deux-points (syntaxe obsolète)");
+  eq(messageIdOf(b("Message-ID: <abc@x> suite\r\n\r\n")), null, "texte après le chevron fermant");
 });
 
-test("messageIdOf : sans chevrons, le premier mot", () => {
+test("messageIdOf : sans chevrons, un seul mot", () => {
   eq(messageIdOf(b("Message-ID: abc@example.com\r\n\r\n")), "abc@example.com");
-  eq(messageIdOf(b("Message-ID: abc@example.com (commentaire)\r\n\r\n")), "abc@example.com");
+  eq(messageIdOf(b("Message-ID: abc@example.com (commentaire)\r\n\r\n")), null, "un second mot");
   eq(messageIdOf(b("Message-ID: 12345\r\n\r\n")), "12345", "sans @, comme certains logiciels");
 });
 
@@ -59,9 +62,18 @@ test("messageIdOf : fins de ligne LF seules, et champ en fin de données", () =>
   eq(messageIdOf(b("Message-ID: a@b")), "a@b", "sans chevrons ni fin de ligne");
 });
 
-test("messageIdOf : seul le premier champ Message-ID compte", () => {
-  eq(messageIdOf(b("Message-ID: <premier@x>\r\nMessage-ID: <second@x>\r\n\r\n")), "premier@x");
+test("messageIdOf : deux champs Message-ID → aucun (un lecteur peut garder l'un ou l'autre)", () => {
+  eq(messageIdOf(b("Message-ID: <premier@x>\r\nMessage-ID: <second@x>\r\n\r\n")), null);
+  eq(messageIdOf(b("Message-ID: <premier@x>\r\nSubject: y\r\nmessage-id : <second@x>\r\n\r\n")), null, "le second avec un blanc");
   eq(messageIdOf(b("Message-ID: <>\r\nMessage-ID: <second@x>\r\n\r\n")), null, "premier inutilisable → null");
+});
+
+test("messageIdOf : ligne mal formée, NUL ou CR isolé avant le champ → aucun ; après le champ, sans effet", () => {
+  eq(messageIdOf(b("ligne sans deux-points\r\nMessage-ID: <a@b>\r\n\r\n")), null, "sans deux-points");
+  eq(messageIdOf(b(`X${ch(0)}y: z\r\nMessage-ID: <a@b>\r\n\r\n`)), null, "NUL");
+  eq(messageIdOf(b("Mauvais nom: z\r\nMessage-ID: <a@b>\r\n\r\n")), null, "nom avec un blanc");
+  eq(messageIdOf(b(" début replié\r\nMessage-ID: <a@b>\r\n\r\n")), null, "commence par une ligne de continuation");
+  eq(messageIdOf(b("Message-ID: <a@b>\r\nligne sans deux-points\r\nX: y\rz\r\n\r\n")), "a@b", "après le champ");
 });
 
 test("messageIdOf : rien hors du bloc d'en-têtes de tête", () => {
@@ -78,9 +90,9 @@ test("messageIdOf : une ligne de blancs prolonge le champ, elle ne termine pas l
   eq(messageIdOf(b("Subject: x\r\n\t\r\nMessage-ID: <a@b>\r\n\r\n")), "a@b");
 });
 
-test("messageIdOf : un CR isolé termine une ligne", () => {
-  eq(messageIdOf(b("Subject: x\rMessage-ID: <a@b>\r\n\r\n")), "a@b");
-  eq(messageIdOf(b("Subject: x\r\rMessage-ID: <a@b>\r\n\r\n")), null, "CR CR : ligne vide, fin du bloc");
+test("messageIdOf : un CR isolé avant le champ → aucun (Thunderbird ne coupe pas toujours la ligne là)", () => {
+  eq(messageIdOf(b("Subject: x\rMessage-ID: <a@b>\r\n\r\n")), null);
+  eq(messageIdOf(b("Subject: x\r\rMessage-ID: <a@b>\r\n\r\n")), null, "CR CR");
   eq(messageIdOf(b("Subject: x\n\r\nMessage-ID: <a@b>\r\n")), null, "LF CRLF : ligne vide");
 });
 
@@ -115,8 +127,8 @@ test("messageIdOf : fenêtre de 1 Mio", () => {
   const count = Math.ceil(MAX_HEADER_BYTES / filler.length);
   const big = filler.repeat(count);
   eq(messageIdOf(b(`${big}Message-ID: <loin@x>\r\n\r\ncorps`)), null, "au-delà de 1 Mio");
-  eq(messageIdOf(b(`Message-ID: <tot@x>\r\n${big}\r\ncorps`)), "tot@x", "bloc de plus de 1 Mio, identifiant au début");
-  eq(messageIdOf(b(`Message-ID: <tot@x>\r\n${big}`)), "tot@x", "aucune ligne vide");
+  eq(messageIdOf(b(`Message-ID: <tot@x>\r\n${big}\r\ncorps`)), null, "bloc de plus de 1 Mio : un second champ pourrait suivre");
+  eq(messageIdOf(b(`Message-ID: <tot@x>\r\n${big}`)), null, "aucune ligne vide");
   // A field cut by the window: the id is not closed within it.
   const head = "X: y\r\n".repeat(Math.floor((MAX_HEADER_BYTES - 20) / 6));
   const cut = b(`${head}Message-ID:${" ".repeat(MAX_HEADER_BYTES)}<a@b>\r\n\r\n`);
@@ -162,12 +174,14 @@ test("ensureMessageId : message vide, sans en-têtes, ou au premier champ inutil
   }
 });
 
-test("ensureMessageId : en-têtes de plus de 1 Mio → identifiant ajouté, relu", () => {
+test("ensureMessageId : en-têtes de plus de 1 Mio → identifiant ajouté en tête, l'ancien renommé jusqu'au bout", () => {
   const big = b(`${"X-Filler: abcdefghij\r\n".repeat(60_000)}Message-ID: <loin@x>\r\n\r\ncorps`);
   assert(big.length > MAX_HEADER_BYTES);
   const r = ensureMessageId(big);
   eq(r.synthetic, true);
-  eq(messageIdOf(r.bytes), r.messageId);
+  const out = s(r.bytes);
+  assert(out.startsWith(`Message-ID: <${r.messageId}>\r\n`));
+  assert(out.endsWith("X-Sync443-Original-Message-ID: <loin@x>\r\n\r\ncorps"), "ancien champ renommé, même loin");
 });
 
 test("ensureMessageId : entrée qui n'est pas un Uint8Array refusée", () => {

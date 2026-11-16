@@ -20,6 +20,7 @@
 import { test, assert, eq, throws, rejects, prng } from "./harness.mjs";
 import { EasClient, EasError, ERR, FATAL, DEFAULTS, retryAfter } from "../../src/transport/client.mjs";
 import { serializeRequest } from "../../src/core/http1.mjs";
+import { evaluateTls, tlsMessage } from "../../src/core/tls-policy.mjs";
 import { el, encode, decode, text, at, child } from "../../src/core/wbxml.mjs";
 import { encodeUtf8 } from "../../src/core/utf8.mjs";
 import { parseServer } from "../../src/core/server.mjs";
@@ -386,8 +387,8 @@ test("TLS : chaque motif de refus → aucune écriture, close, code TLS non fata
       const what = `${reason} ${JSON.stringify(info?.state)} ${proto ? "(POST)" : "(OPTIONS)"}`;
       const { client, connector } = setup({ tls: () => info, proto, handlers: { FolderSync: folderSyncOk } });
       const e = await rejects(() => client.command("FolderSync", fs0()), isCode(ERR.TLS), what);
-      eq(e.reason, reason, what);
-      eq(e.route, "direct", what);
+      eq(evaluateTls(info).reason, reason, what);
+      eq(e.message, tlsMessage(reason, evaluateTls(info).issuer), what);
       eq(connector.ops.map((o) => o.op), ["open", "close"], what);
       assert(!FATAL.has(e.code), "TLS n'est pas fatal : rien n'a été envoyé");
       assert(e.message.startsWith("Connexion refusée"), e.message);
@@ -401,7 +402,7 @@ test("TLS : une empreinte de confiance ne couvre aucun autre défaut du certific
   for (const [reason, info] of REFUSALS.filter(([r]) => r !== "not-public-root" && r !== "no-certificate")) {
     const { client, connector } = setup({ tls: () => info, pins: [PIN.leaf, PIN.root], proto: KNOWN });
     const e = await rejects(() => client.command("FolderSync", fs0()), isCode(ERR.TLS), reason);
-    eq([e.reason, opsOf(connector, "write").length], [reason, 0], reason);
+    eq([e.message, opsOf(connector, "write").length], [tlsMessage(reason, evaluateTls(info).issuer), 0], reason);
   }
 });
 
@@ -413,7 +414,7 @@ test("TLS : empreinte du certificat du serveur ou de la racine → requête écr
   }
   const { client, connector } = setup({ tls: PRIVATE, pins: [PIN.inter], proto: KNOWN, handlers: { FolderSync: folderSyncOk } });
   const e = await rejects(() => client.command("FolderSync", fs0()), isCode(ERR.TLS));
-  eq([e.reason, opsOf(connector, "write").length], ["not-public-root", 0]);
+  eq([e.message, opsOf(connector, "write").length], [tlsMessage("not-public-root", "CN=Example CA"), 0]);
   checkClosed(connector);
 });
 
@@ -498,7 +499,7 @@ test("requête POST : Cmd, User, DeviceId, DeviceType encodés dans le chemin", 
 
 test("OPTIONS : même connexion vérifiée, requête exacte, Authorization comprise", async () => {
   const { client, connector } = setup();
-  eq(await client.options(), { versions: ["2.5", "12.0", "12.1", "14.0", "14.1"], commands: ["Sync", "FolderSync", "Provision", "Ping"] });
+  eq(await client.options(), { versions: ["2.5", "12.0", "12.1", "14.0", "14.1"] });
   eq(latin1(opsOf(connector, "write")[0].bytes),
     `OPTIONS ${PATH} HTTP/1.1\r\nHost: mail.example.com\r\nUser-Agent: Sync443/1.0\r\nAuthorization: ${AUTH}\r\nAccept-Encoding: identity\r\n\r\n`);
   const refused = setup({ tls: PRIVATE });
@@ -557,7 +558,6 @@ const CONNECTOR_ERRORS = [
   ["PROXY_AUTH: le proxy demande une authentification", ERR.PROXY_AUTH],
   ["PROXY: le proxy refuse le tunnel", ERR.NETWORK],
   ["CONFIG: trop de connexions ouvertes (16 au plus)", ERR.BUSY],
-  ["LIMIT: trop de connexions ouvertes", ERR.BUSY],
   ["TIMEOUT: le serveur ne répond pas", ERR.TIMEOUT],
   ["NETWORK: connexion impossible (NS_ERROR_CONNECTION_REFUSED)", ERR.NETWORK],
   ["CLOSED: connexion inconnue ou fermée", ERR.NETWORK],
@@ -613,8 +613,8 @@ test("FATAL : AUTH, DENIED, WIPE_REQUESTED, CONFIG seulement", () => {
     assert(!FATAL.has(code), `${code} ne doit pas être fatal`);
   }
   assert(Object.isFrozen(ERR));
-  const e = new EasError(ERR.BUSY, "occupé", { status: 503, retryAfterMs: 5, code: "AUTRE", message: "autre" });
-  eq([e.name, e.code, e.message, e.status, e.retryAfterMs], ["EasError", "BUSY", "occupé", 503, 5]);
+  const e = new EasError(ERR.BUSY, "occupé", { sent: true, retryAfterMs: 5, code: "AUTRE", message: "autre" });
+  eq([e.name, e.code, e.message, e.sent, e.retryAfterMs], ["EasError", "BUSY", "occupé", true, 5]);
   eq([DEFAULTS.maxBytes, DEFAULTS.deviceType], [16 * MIB, "Sync443"]);
 });
 
@@ -669,6 +669,14 @@ test("constructeur : identifiants", () => {
     config(() => make({ username: `jean${c}x` }), `identifiant avec U+${c.charCodeAt(0)}`);
     config(() => make({ password: `secret${c}x` }), `mot de passe avec U+${c.charCodeAt(0)}`);
   }
+  // Lone surrogates, also next to U+FFFF or U+F800, which an engine's /u regex can mistake for half a pair.
+  const [high, low] = [String.fromCharCode(0xd83d), String.fromCharCode(0xde00)];
+  for (const s of [high, low, `${low}${high}`, `${high}${String.fromCharCode(0xffff)}`, `${String.fromCharCode(0xf800)}${low}`]) {
+    config(() => make({ username: `jean${s}` }), `identifiant avec un surrogat isolé ${s.length}`);
+    config(() => make({ password: `${s}secret` }), `mot de passe avec un surrogat isolé ${s.length}`);
+  }
+  // Each checked on its own: two halves that would join into a pair across the colon are still refused.
+  config(() => make({ username: `jean${high}`, password: `${low}secret` }), "surrogats isolés de part et d'autre");
   assert(make({ password: "a:b:c" }), "deux-points permis dans le mot de passe (RFC 7617)");
   assert(make({ username: "jean@example.com", password: "123£ é😀" }));
 });
@@ -711,7 +719,7 @@ test("HTTP 401 → AUTH, 403 → DENIED, sans nouvel essai ni secret dans l'erre
   for (const [status, code] of [[401, ERR.AUTH], [403, ERR.DENIED]]) {
     const { client, connector } = setup({ proto: KNOWN, handlers: { FolderSync: () => http(status, { headers: [["WWW-Authenticate", 'Basic realm="x"']] }) } });
     const e = await rejects(() => client.command("FolderSync", fs0()), isCode(code), String(status));
-    eq([e.status, FATAL.has(e.code), cmdsOf(connector)], [status, true, ["FolderSync"]]);
+    eq([FATAL.has(e.code), cmdsOf(connector)], [true, ["FolderSync"]]);
     const dump = `${String(e)} ${JSON.stringify(e)} ${e.stack ?? ""}`;
     assert(!dump.includes(PASSWORD) && !dump.includes(CREDENTIALS), "secret dans l'erreur");
   }
@@ -722,7 +730,7 @@ test("HTTP 451 → HTTP : seul le nom d'hôte de X-MS-Location est montré, rien
     const headers = location === null ? [] : [["X-MS-Location", location]];
     const { client, connector } = setup({ proto: KNOWN, handlers: { FolderSync: () => http(451, { headers }) } });
     const e = await rejects(() => client.command("FolderSync", fs0()), isCode(ERR.HTTP), String(location));
-    eq([e.status, opsOf(connector, "open").length], [451, 1], "aucune connexion vers l'autre adresse");
+    eq(opsOf(connector, "open").length, 1, "aucune connexion vers l'autre adresse");
     return e.message;
   };
   const shown = await run(`https://Autre.Example.com:444${PATH}?x=<script>`);
@@ -737,7 +745,8 @@ test("HTTP 429 et 503 → BUSY avec Retry-After (secondes ou date HTTP)", async 
   const busy = async (status, headers) => {
     const { client } = setup({ proto: KNOWN, handlers: { FolderSync: () => http(status, { headers }) } });
     const e = await rejects(() => client.command("FolderSync", fs0()), isCode(ERR.BUSY));
-    eq([e.status, FATAL.has(e.code)], [status, false]);
+    eq(FATAL.has(e.code), false);
+    assert(e.message.includes(`HTTP ${status}`), e.message);
     return e.retryAfterMs;
   };
   eq(await busy(429, [["Retry-After", "120"]]), 120_000);
@@ -764,7 +773,7 @@ test("retryAfter : secondes, date HTTP, plafond d'un jour", () => {
 test("autres statuts non 2xx → HTTP ; 2xx sans corps → null ; réponses 1xx ignorées", async () => {
   for (const status of [300, 302, 304, 400, 404, 409, 500, 502, 599]) {
     const { client } = setup({ proto: KNOWN, handlers: { FolderSync: () => http(status) } });
-    eq((await rejects(() => client.command("FolderSync", fs0()), isCode(ERR.HTTP), String(status))).status, status);
+    eq((await rejects(() => client.command("FolderSync", fs0()), isCode(ERR.HTTP), String(status))).message, `FolderSync : erreur HTTP ${status}.`);
   }
   for (const [what, answer] of [
     ["200 vide", http(200)], ["204", http(204, { framing: "none" })], ["299", http(299)],
@@ -1153,3 +1162,6 @@ test("journal désactivé : debug() jamais appelé", async () => {
   const { client } = setup({ log, handlers: { FolderSync: folderSyncOk } });
   await client.command("FolderSync", fs0());
 });
+
+// Shared with background.test.mjs (the background page against a fake server).
+export { fakeConnector, fakeClock, server, http, wbxmlHttp, PUBLIC, PIN };

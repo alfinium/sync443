@@ -203,11 +203,21 @@ export function createLog({ area, now = () => Date.now(), schedule } = {}) {
       await persist();
     },
 
-    /** Write pending entries now (before the extension unloads, in tests). */
+    /** Write pending entries now (tests). */
     flush() {
       return persist();
     },
   };
+}
+
+/**
+ * The code of an error, for a log line: its `code`, else the "CODE:" prefix
+ * of its message (the experiments' errors), else its name. Never the
+ * message itself, which may carry server text.
+ */
+export function errorCode(e, max = 40) {
+  const code = e?.code ?? /^[A-Z][A-Z_]{1,23}(?=:)/.exec(String(e?.message ?? ""))?.[0] ?? e?.name ?? "erreur";
+  return cleanText(String(code), { max, singleLine: true, stripBidi: true }) || "erreur";
 }
 
 /** The extension's log. */

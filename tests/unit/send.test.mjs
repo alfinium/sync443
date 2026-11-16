@@ -8,15 +8,17 @@
  */
 
 import { test, eq, assert } from "./harness.mjs";
-import { installSendHandler, topContentType, sendTimeout, MAX_MESSAGE_BYTES } from "../../src/send.mjs";
+import { installSendHandler, topContentType, protectionAsked, sendTimeout, MAX_MESSAGE_BYTES } from "../../src/send.mjs";
 import { el, text, at, child } from "../../src/core/wbxml.mjs";
 import { encodeUtf8, decodeUtf8 } from "../../src/core/utf8.mjs";
 import { EasError, ERR } from "../../src/transport/client.mjs";
 
 const MAILBOX = "0123456789ab";
+const ACCOUNT = "account7";
 const OURS = "id3";
 const OTHER = "id1";
 const SUBJECT = "Rendez-vous secret";
+const CLEAR = Object.freeze({ name: "OpenPGP", encryptBody: false, encryptSubject: false, signMessage: false });
 
 const DRAFT = [
   "X-Mozilla-Status: 0001",
@@ -44,12 +46,14 @@ function setup(o = {}) {
     saveFails: o.saveFails ?? 0,
     saveResult: "saveResult" in o ? o.saveResult : { mode: "draft", messages: [{ id: 77 }] },
     raw: "raw" in o ? o.raw : fileOf(encodeUtf8(DRAFT)),
-    deleteObjectFails: o.deleteObjectFails ?? false,
     deleteFails: o.deleteFails ?? false,
     removeFails: o.removeFails ?? false,
     response: o.response ?? null,
     commandError: o.commandError ?? null,
     gate: o.gate ?? null,
+    // What compose.getComposeDetails tells after the draft is saved.
+    current: o.current ?? null,
+    header: "header" in o ? o.header : undefined,
   };
   let listener = null;
   let counter = 0;
@@ -63,6 +67,11 @@ function setup(o = {}) {
           if (listener === fn) listener = null;
         },
       },
+      async getComposeDetails(tabId) {
+        calls.push(["getComposeDetails", tabId]);
+        if (state.current instanceof Error) throw state.current;
+        return state.current ?? { identityId: OURS, selectedEncryptionTechnology: CLEAR };
+      },
       async saveMessage(tabId, options) {
         calls.push(["saveMessage", tabId, options]);
         if (state.saveFails-- > 0) throw new Error("Window is busy");
@@ -70,13 +79,18 @@ function setup(o = {}) {
       },
     },
     messages: {
+      async get(id) {
+        calls.push(["messages.get", id]);
+        if (state.header instanceof Error) throw state.header;
+        return state.header !== undefined ? state.header : { id, folder: { accountId: ACCOUNT, path: "/Drafts", type: "drafts" } };
+      },
       async getRaw(id, options) {
         calls.push(["getRaw", id, options]);
         return state.raw;
       },
       async delete(ids, option) {
         calls.push(["delete", ids, option]);
-        if (state.deleteFails || (state.deleteObjectFails && typeof option === "object")) throw new Error("Type error for parameter skipTrash");
+        if (state.deleteFails) throw new Error("no message");
       },
     },
     tabs: {
@@ -100,8 +114,10 @@ function setup(o = {}) {
       o.accountOfIdentity ??
       (async (identityId) => {
         calls.push(["accountOfIdentity", identityId]);
-        return identityId === OURS ? { accountKey: "account7", mailboxId: MAILBOX } : null;
+        if (o.ownerGate) await o.ownerGate;
+        return identityId === OURS ? { accountKey: ACCOUNT, mailboxId: MAILBOX } : null;
       }),
+    checkSendRoute: o.checkSendRoute,
     clientFor:
       o.clientFor ??
       (async (id) => {
@@ -123,7 +139,8 @@ function setup(o = {}) {
     delay: async () => {},
   });
   const fire = (tab, details) => listener(tab, details);
-  const send = (tabId = 5, identityId = OURS) => fire({ id: tabId, windowId: 9, type: "messageCompose" }, { identityId, subject: SUBJECT });
+  const send = (tabId = 5, identityId = OURS, technology = CLEAR) =>
+    fire({ id: tabId, windowId: 9, type: "messageCompose" }, { identityId, subject: SUBJECT, selectedEncryptionTechnology: technology });
   const names = () => calls.map((c) => c[0]);
   const sent = () => calls.filter((c) => c[0] === "command");
   return { calls, notes, logs, handler, fire, send, names, sent, state, hasListener: () => listener !== null };
@@ -143,23 +160,25 @@ test("envoi : identité d'un compte marqué, envoi de Thunderbird annulé, SendM
   const t = setup();
   eq(await t.send(5), { cancel: true });
   await t.handler.idle();
-  eq(t.names(), ["accountOfIdentity", "saveMessage", "getRaw", "clientFor", "command", "delete", "tabs.remove", "afterSend"]);
+  eq(t.names(), ["accountOfIdentity", "saveMessage", "getComposeDetails", "messages.get", "getRaw", "clientFor", "command", "delete", "tabs.remove", "afterSend"]);
   eq(t.calls[1], ["saveMessage", 5, { mode: "draft" }]);
-  eq(t.calls[2], ["getRaw", 77, { data_format: "File" }]);
-  eq(t.calls[3], ["clientFor", MAILBOX]);
-  const [, cmd, root, options] = t.calls[4];
+  eq(t.calls[2], ["getComposeDetails", 5]);
+  eq(t.calls[3], ["messages.get", 77]);
+  eq(t.calls[4], ["getRaw", 77, { data_format: "File" }]);
+  eq(t.calls[5], ["clientFor", MAILBOX]);
+  const [, cmd, root, options] = t.calls[6];
   eq(cmd, "SendMail");
   eq([root.ns, root.tag], ["ComposeMail", "SendMail"]);
   assert(/^[0-9a-f]{32}$/.test(text(root, "ClientId")), "ClientId de 32 chiffres hexadécimaux");
   assert(child(root, "SaveInSentItems") !== null, "copie dans les Envoyés du serveur");
-  const mime = mimeOf(t.calls[4]);
+  const mime = mimeOf(t.calls[6]);
   assert(!/X-Mozilla-/i.test(mime) && !/^Fcc:/im.test(mime), "en-têtes internes retirés");
   assert(mime.includes(`Subject: ${SUBJECT}`) && mime.includes("Bonjour Bob."), "message intact");
   eq(options.maxBytes, 64 * 1024);
   eq(options.timeoutMs, sendTimeout(at(root, "Mime").value.length));
-  eq(t.calls[5], ["delete", [77], { deletePermanently: true }]);
-  eq(t.calls[6], ["tabs.remove", 5]);
-  eq(t.calls[7], ["afterSend", MAILBOX]);
+  eq(t.calls[7], ["delete", [77], { deletePermanently: true }]);
+  eq(t.calls[8], ["tabs.remove", 5]);
+  eq(t.calls[9], ["afterSend", MAILBOX]);
   eq(t.notes, []);
   eq(t.logs, [["info", "Message envoyé."]]);
   eq(t.handler.isSending(5), false);
@@ -190,6 +209,8 @@ test("envoi fermé : compte impossible à déterminer, annulé et signalé", asy
     },
     async () => undefined,
     async () => ({ mailboxId: "../autre" }),
+    async () => ({ mailboxId: MAILBOX }),
+    async () => ({ mailboxId: MAILBOX, accountKey: "account7; x" }),
     async () => ({}),
     async () => "0123456789ab",
   ];
@@ -223,6 +244,7 @@ test("envoi fermé : identité ou onglet absent, annulé sans consulter les comp
     eq(await t.fire(tab, { identityId: OURS }), { cancel: true }, JSON.stringify(tab));
     await t.handler.idle();
     eq(t.names(), ["accountOfIdentity"], "rien d'autre");
+    eq(t.handler.isSending(5), false);
     eq(t.notes.length, 1);
   }
 });
@@ -260,7 +282,7 @@ test("échec : mot de passe refusé, fenêtre et brouillon gardés, raison affic
   const t = setup({ commandError: new EasError(ERR.AUTH, "Identifiant ou mot de passe refusé par le serveur.", { status: 401 }) });
   await t.send();
   await t.handler.idle();
-  eq(t.names(), ["accountOfIdentity", "saveMessage", "getRaw", "clientFor", "command"]);
+  eq(t.names(), ["accountOfIdentity", "saveMessage", "getComposeDetails", "messages.get", "getRaw", "clientFor", "command"]);
   eq(t.notes, ["Message non envoyé : identifiant ou mot de passe refusé par le serveur. Il reste dans la fenêtre de rédaction et dans les brouillons."]);
   eq(t.logs, [["warn", "Envoi échoué (AUTH)."]]);
 });
@@ -346,13 +368,9 @@ test("brouillon : enregistrement impossible, rien n'est envoyé", async () => {
   }
 });
 
-test("brouillon : forme texte binaire acceptée, contenu illisible refusé", async () => {
-  const t = setup({ raw: DRAFT });
-  await t.send();
-  await t.handler.idle();
-  eq(t.sent().length, 1);
-  assert(mimeOf(t.sent()[0]).includes("Bonjour Bob."));
-  for (const raw of [null, 42, "", "Āabc", fileOf(new Uint8Array(0))]) {
+test("brouillon : contenu illisible ou vide refusé", async () => {
+  // Only a File is read (data_format "File"): any other form is refused.
+  for (const raw of [null, 42, "", DRAFT, fileOf(new Uint8Array(0))]) {
     const u = setup({ raw });
     await u.send();
     await u.handler.idle();
@@ -389,14 +407,7 @@ test("brouillon chiffré (OpenPGP, S/MIME) : refusé, jamais envoyé tel quel", 
   }
 });
 
-test("boîte introuvable ou sans mot de passe : rien n'est envoyé", async () => {
-  for (const clientFor of [async () => null, async () => ({}), () => undefined]) {
-    const t = setup({ clientFor });
-    await t.send();
-    await t.handler.idle();
-    eq(t.sent().length, 0);
-    assert(t.notes[0].includes("introuvable"), t.notes[0]);
-  }
+test("boîte introuvable ou sans mot de passe (EasError de clientFor) : rien n'est envoyé", async () => {
   const t = setup({
     clientFor: async () => {
       throw new EasError(ERR.CONFIG, "Identifiant ou mot de passe manquant.");
@@ -405,20 +416,6 @@ test("boîte introuvable ou sans mot de passe : rien n'est envoyé", async () =>
   await t.send();
   await t.handler.idle();
   eq(t.notes[0], "Message non envoyé : identifiant ou mot de passe manquant. Il reste dans la fenêtre de rédaction et dans les brouillons.");
-});
-
-test("après l'envoi : suppression définitive en booléen sur les versions qui l'exigent", async () => {
-  const t = setup({ deleteObjectFails: true });
-  await t.send();
-  await t.handler.idle();
-  eq(
-    t.calls.filter((c) => c[0] === "delete"),
-    [
-      ["delete", [77], { deletePermanently: true }],
-      ["delete", [77], true],
-    ],
-  );
-  eq(t.notes, []);
 });
 
 test("après l'envoi : brouillon ou fenêtre impossible à retirer, signalé sans parler d'échec", async () => {
@@ -487,4 +484,184 @@ test("délai d'envoi : deux minutes, plus selon la taille, au plus trente minute
   eq(sendTimeout(16384), 121_000);
   eq(sendTimeout(16385), 122_000);
   eq(sendTimeout(MAX_MESSAGE_BYTES * 10), 1_800_000);
+});
+
+// ── Audit: signing and encryption (F4) ───────────────────────────────────
+
+test("chiffrement ou signature demandés : annulé avant tout enregistrement", async () => {
+  const cases = [
+    { name: "OpenPGP", encryptBody: true, encryptSubject: true, signMessage: false },
+    { name: "OpenPGP", encryptBody: false, encryptSubject: false, signMessage: true },
+    { name: "S/MIME", encryptBody: true, signMessage: true },
+    { name: "S/MIME", encryptBody: false, signMessage: true },
+  ];
+  for (const technology of cases) {
+    const t = setup();
+    eq(await t.send(5, OURS, technology), { cancel: true }, JSON.stringify(technology));
+    await t.handler.idle();
+    eq(t.names(), ["accountOfIdentity"], "rien n'est enregistré ni envoyé");
+    eq(t.notes.length, 1);
+    assert(t.notes[0].includes("OpenPGP, S/MIME"), t.notes[0]);
+    eq(t.handler.isSending(5), false);
+  }
+});
+
+test("chiffrement : état impossible à établir, annulé (envoi fermé)", async () => {
+  const details = [
+    ...[null, "OpenPGP", { name: "OpenPGP" }, { encryptBody: "false", signMessage: false }, { encryptBody: false, signMessage: 0 }].map(
+      (technology) => ({ identityId: OURS, selectedEncryptionTechnology: technology }),
+    ),
+  ];
+  for (const d of details) {
+    const t = setup();
+    eq(await t.fire({ id: 5 }, d), { cancel: true }, JSON.stringify(d));
+    await t.handler.idle();
+    eq(t.sent().length, 0);
+    eq(t.names().includes("saveMessage"), false);
+    eq(t.notes.length, 1);
+  }
+  // S/MIME without signing or encryption: sent.
+  const t = setup();
+  await t.send(5, OURS, { name: "S/MIME", encryptBody: false, signMessage: false });
+  await t.handler.idle();
+  eq(t.sent().length, 1);
+});
+
+test("chiffrement : champ absent (identité sans OpenPGP ni S/MIME, Thunderbird 160), envoyé", async () => {
+  const t = setup({ current: { identityId: OURS } });
+  eq(await t.fire({ id: 5 }, { identityId: OURS, subject: "x" }), { cancel: true }, "annulé pour Thunderbird, envoyé par ActiveSync");
+  await t.handler.idle();
+  eq(t.sent().length, 1);
+});
+
+test("chiffrement demandé après le clic : refusé après l'enregistrement, rien n'est envoyé", async () => {
+  for (const technology of [{ name: "OpenPGP", encryptBody: true, encryptSubject: true, signMessage: false }, null]) {
+    const t = setup({ current: { identityId: OURS, selectedEncryptionTechnology: technology } });
+    await t.send();
+    await t.handler.idle();
+    eq(t.sent().length, 0);
+    eq(t.names().includes("getRaw"), false);
+    assert(t.notes[0].startsWith("Message non envoyé : la signature ou le chiffrement"), t.notes[0]);
+  }
+});
+
+test("protectionAsked : vrai si demandé ou indéterminable", () => {
+  eq(protectionAsked({ selectedEncryptionTechnology: CLEAR }), false);
+  eq(protectionAsked({ selectedEncryptionTechnology: { ...CLEAR, encryptBody: true } }), true);
+  eq(protectionAsked({ selectedEncryptionTechnology: { ...CLEAR, signMessage: true } }), true);
+  eq(protectionAsked({}), false, "champ absent : rien ne peut être signé ni chiffré");
+  eq(protectionAsked({ selectedEncryptionTechnology: null }), true);
+  eq(protectionAsked(null), true);
+  eq(protectionAsked("x"), true);
+});
+
+// ── Audit: the compose window during a send (F6) ─────────────────────────
+
+test("verrou par fenêtre : un autre envoi de la même fenêtre est annulé, même depuis une autre identité", async () => {
+  let open;
+  const gate = new Promise((resolve) => {
+    open = resolve;
+  });
+  const t = setup({ gate });
+  await t.send(5);
+  for (let i = 0; i < 30 && !t.sent().length; i++) await null;
+  eq(t.sent().length, 1);
+  const before = t.calls.filter((c) => c[0] === "accountOfIdentity").length;
+  // From switched to an identity of another account: still cancelled, not even looked up.
+  eq(await t.send(5, OTHER), { cancel: true });
+  eq(t.calls.filter((c) => c[0] === "accountOfIdentity").length, before);
+  eq(t.notes, ["Ce message est déjà en cours d'envoi."]);
+  // Another window is not concerned.
+  eq(await t.send(6, OTHER), {});
+  open();
+  await t.handler.idle();
+  eq(t.sent().length, 1);
+  // Once ours is over, the window sends normally again.
+  eq(await t.send(5, OTHER), {});
+});
+
+test("verrou par fenêtre : tenu dès le premier clic, pendant la vérification du compte", async () => {
+  let open;
+  const ownerGate = new Promise((resolve) => {
+    open = resolve;
+  });
+  const t = setup({ ownerGate });
+  const first = t.send(5);
+  eq(t.handler.isSending(5), true);
+  eq(await t.send(5, OTHER), { cancel: true });
+  open();
+  eq(await first, { cancel: true });
+  await t.handler.idle();
+  eq(t.sent().length, 1);
+  // Not ours: the window is released at once.
+  const u = setup();
+  eq(await u.send(7, OTHER), {});
+  eq(u.handler.isSending(7), false);
+});
+
+test("expéditeur changé après le clic : refusé, rien n'est envoyé", async () => {
+  const t = setup({ current: { identityId: OTHER, selectedEncryptionTechnology: CLEAR } });
+  await t.send();
+  await t.handler.idle();
+  eq(t.sent().length, 0);
+  eq(t.names().includes("getRaw"), false);
+  assert(t.notes[0].includes("l'expéditeur a changé"), t.notes[0]);
+  const u = setup({ current: new Error("tab closed") });
+  await u.send();
+  await u.handler.idle();
+  eq(u.sent().length, 0);
+});
+
+test("brouillon hors du compte de l'identité : refusé, jamais lu ni envoyé", async () => {
+  const headers = [
+    { id: 77, folder: { accountId: "account1", path: "/Drafts" } },
+    { id: 77, folder: {} },
+    { id: 77 },
+    null,
+    new Error("message inconnu"),
+  ];
+  for (const header of headers) {
+    const t = setup({ header });
+    await t.send();
+    await t.handler.idle();
+    eq(t.sent().length, 0, JSON.stringify(header));
+    eq(t.names().includes("getRaw"), false);
+    assert(t.notes[0].includes("pas été enregistré dans le compte Sync443"), t.notes[0]);
+  }
+});
+
+// ── Audit: outgoing route of the identity (F2) ───────────────────────────
+
+test("serveur d'envoi neutre : vérifié avant de décider, échec = annulé et signalé", async () => {
+  const seen = [];
+  const t = setup({
+    checkSendRoute: async (identityId) => {
+      seen.push(identityId);
+      return false; // resolved: counts as checked
+    },
+  });
+  eq(await t.send(5), { cancel: true });
+  await t.handler.idle();
+  eq(seen, [OURS]);
+  eq(t.sent().length, 1);
+  // Not called for an identity that is not ours.
+  eq(await t.send(6, OTHER), {});
+  eq(seen, [OURS]);
+
+  const u = setup({
+    checkSendRoute: async () => {
+      throw new Error("PERMISSION: serveur sortant non marqué");
+    },
+  });
+  eq(await u.send(5), { cancel: true });
+  await u.handler.idle();
+  eq(u.names(), ["accountOfIdentity"]);
+  eq(u.notes, ["Message non envoyé : Sync443 n'a pas pu vérifier le serveur d'envoi de ce compte, donc rien n'est parti. Le message reste dans la fenêtre de rédaction."]);
+  eq(u.logs, [["error", "Envoi annulé : serveur d'envoi neutre impossible à vérifier."]]);
+  eq(u.handler.isSending(5), false);
+
+  const v = setup({ checkSendRoute: "pas une fonction" });
+  eq(await v.send(5), { cancel: true });
+  await v.handler.idle();
+  eq(v.sent().length, 0);
 });

@@ -2,18 +2,19 @@
 
 [![Tests](https://github.com/alfinium/sync443/actions/workflows/tests.yml/badge.svg)](https://github.com/alfinium/sync443/actions/workflows/tests.yml)
 
-Extension Thunderbird qui synchronise un compte **Exchange ActiveSync** en passant **uniquement
-par HTTPS** (le port 443). Elle est faite pour les réseaux restrictifs — hôtels, sites clients,
-réseaux d'entreprise — où IMAP et SMTP sont bloqués mais où le web passe.
+Extension qui apporte à Thunderbird la prise en charge native d'**Exchange ActiveSync**. Un compte
+ActiveSync s'y utilise comme n'importe quel autre compte, sans passerelle intermédiaire, avec tout
+serveur ou produit qui propose ce protocole : SOGo (et donc mailcow), Exchange Server, grommunio,
+Z-Push, etc.
 
 Courrier, dossiers, envoi, agenda, contacts et tâches, dans les deux sens, pour autant de boîtes
-que nécessaire. Windows, macOS et Linux.
+que nécessaire. Comme le prévoit ActiveSync, tout passe par une connexion HTTPS vers le serveur :
+ni IMAP ni SMTP à configurer. Windows, macOS et Linux.
 
-> **État : réécriture en cours, pas encore installable.**
-> Les fondations (étape 1 sur 6) sont terminées, testées et auditées. La première version
-> utilisable, pour le courrier, sera publiée dans les
-> [Releases](https://github.com/alfinium/sync443/releases) sous forme de fichier `.xpi`
-> à la fin de l'étape 3. L'avancement est suivi dans [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+> **État : version 0.1.0, le courrier.** Boîtes, dossiers, messages et envoi sont pris en charge,
+> testés et audités. L'agenda, les contacts et les tâches suivront (étapes 4 et 5). Le fichier
+> `.xpi` se trouve dans les [Releases](https://github.com/alfinium/sync443/releases) ;
+> l'avancement est suivi dans [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Sommaire
 
@@ -31,17 +32,18 @@ que nécessaire. Windows, macOS et Linux.
 
 | Fonction | État |
 |---|---|
-| Connexion vérifiée (certificat contrôlé avant tout envoi), proxy détecté automatiquement | fait (étape 1) |
-| Protocole ActiveSync 12.1 à 14.1, négociation des règles du serveur, effacement à distance toujours refusé | fait (étape 1) |
-| Comptes Thunderbird dédiés, mots de passe dans le gestionnaire de Thunderbird | étape 2 |
-| Plusieurs boîtes, configuration en quelques champs | étapes 2 et 6 |
-| Choix, pour chaque boîte, des éléments à synchroniser : courrier, agenda, contacts, tâches (un, plusieurs ou les quatre) | modèle prêt (étape 1), réglage à l'étape 6 |
-| Courrier : dossiers, messages, lu / drapeau / déplacement / suppression dans les deux sens | étape 3 |
-| Arrivée immédiate des messages (« push »), ou actualisation périodique | étape 3 |
-| Envoi par ActiveSync, sans SMTP, copie dans les Envoyés du serveur | étape 3 |
+| Connexion vérifiée (certificat contrôlé avant tout envoi), proxy détecté automatiquement | 0.1.0 |
+| Protocole ActiveSync 12.1 à 14.1, négociation des règles du serveur, effacement à distance toujours refusé | 0.1.0 |
+| Comptes Thunderbird dédiés, mots de passe dans le gestionnaire de Thunderbird | 0.1.0 |
+| Plusieurs boîtes, configuration en quelques champs | 0.1.0 |
+| Choix, pour chaque boîte, des éléments à synchroniser : courrier, agenda, contacts, tâches (un, plusieurs ou les quatre) | 0.1.0 (seul le courrier est synchronisé pour l'instant) |
+| Courrier : dossiers, messages, lu / drapeau / déplacement / suppression dans les deux sens | 0.1.0 |
+| Arrivée immédiate des messages (« push »), ou actualisation périodique | 0.1.0 |
+| Envoi par ActiveSync, copie dans les Envoyés du serveur | 0.1.0 |
+| Bouton « Synchroniser », page de réglages, journal de diagnostic | 0.1.0 |
 | Agenda et tâches, réunions et invitations | étape 4 |
 | Contacts | étape 5 |
-| Bouton « Synchroniser », page de réglages, journal | étape 6 |
+| Finitions (assistant, réglages avancés) | étape 6 |
 
 ## Compatibilité
 
@@ -59,27 +61,42 @@ que nécessaire. Windows, macOS et Linux.
 
 ## Installation
 
-*Quand une version sera publiée :*
-
 1. Télécharger le fichier `sync443-<version>.xpi` depuis les
    [Releases](https://github.com/alfinium/sync443/releases).
 2. Dans Thunderbird : **Outils → Modules complémentaires et thèmes**, roue dentée,
    **Installer un module depuis un fichier…**, choisir le fichier.
-3. Accepter les autorisations demandées. Celles-ci permettent :
-   - les comptes et dossiers locaux, l'agenda et les contacts ;
-   - l'accès au seul serveur configuré.
+3. Accepter les autorisations demandées. Le détail de chacune est dans
+   [docs/PERMISSIONS.md](docs/PERMISSIONS.md). L'accès au réseau n'est demandé qu'au moment
+   d'ajouter une boîte, et pour son seul serveur.
+
+L'extension n'est pas encore signée par Mozilla : Thunderbird l'installe depuis un fichier, sans
+passer par addons.thunderbird.net.
+
+**Vérifier le fichier téléchargé (facultatif) :** chaque version est construite par GitHub à
+partir du dépôt, de façon reproductible.
+- Son empreinte est publiée à côté, dans `SHA256SUMS.txt`.
+- Sa provenance est signée : `gh attestation verify sync443-<version>.xpi --repo alfinium/sync443`
+  confirme qu'il a été construit par ce dépôt.
+- `python3 -I tools/build_xpi.py` reconstruit le même fichier à partir des sources de l'étiquette
+  correspondante.
 
 ## Configuration
 
-Pour chaque boîte, il suffira de renseigner :
-- l'adresse e-mail et le mot de passe ;
-- le nom de la boîte ;
+Ouvrir les réglages par **Outils → Réglages de Sync443…** (ou par le bouton **Synchroniser** de
+la barre d'outils, tant qu'aucune boîte n'est configurée), puis **Ajouter une boîte**. Pour chaque
+boîte, il suffit de renseigner :
+- l'adresse e-mail et le mot de passe (et l'identifiant de connexion, s'il diffère de l'adresse) ;
+- le nom de la boîte, tel qu'il apparaîtra dans Thunderbird ;
 - le serveur (par exemple `mail.exemple.com`, sans `/Microsoft-Server-ActiveSync`) ;
 - **les éléments à synchroniser :** courrier, agenda, contacts, tâches. Un seul, plusieurs ou les
-  quatre ; les quatre sont cochés par défaut. Ce qui n'est pas coché n'est jamais téléchargé, et le
-  décocher plus tard retire les copies locales correspondantes, sans rien toucher sur le serveur ;
+  quatre. Ce qui n'est pas coché n'est jamais téléchargé. Dans la version 0.1.0, seul le courrier
+  est synchronisé ; les autres choix sont enregistrés pour les versions suivantes ;
 - la fréquence de synchronisation (dès réception, ou toutes les N minutes) ;
 - la période de courrier à synchroniser.
+
+Les réglages vérifient la connexion (serveur, certificat, mot de passe) avant d'enregistrer quoi
+que ce soit. Chaque boîte devient un compte Thunderbird à part, avec ses dossiers ; ses messages
+partent par ActiveSync, jamais par un autre serveur d'envoi.
 
 **Conseil :** si le serveur le permet (c'est le cas de mailcow), utilisez un **mot de passe
 d'application** réservé à ActiveSync. Il se révoque seul et n'ouvre pas tout le compte.
@@ -96,7 +113,7 @@ serveur, selon ses réglages ou ceux du système.
 | Proxy HTTP | tunnel `CONNECT` ouvert par l'extension, chiffrement de bout en bout |
 | Proxy qui déchiffre le HTTPS | détecté, connexion refusée avant tout envoi |
 | Proxy exigeant une authentification | non pris en charge, signalé |
-| Portail captif d'hôtel | connexion refusée tant que le portail intercepte, reprise automatique ensuite |
+| Portail captif (Wi-Fi public) | connexion refusée tant que le portail intercepte, reprise automatique ensuite |
 
 ## Sécurité
 
@@ -105,8 +122,9 @@ Le modèle de sécurité complet est décrit dans [docs/SECURITE.md](docs/SECURI
 - **Le mot de passe ne part que vers le serveur pour lequel il a été saisi.** Aucune redirection
   n'est suivie, et changer de serveur oblige à retaper le mot de passe.
 - **Le certificat est contrôlé avant le moindre octet de requête**, sur la connexion même qui
-  portera le mot de passe. Il doit être émis par une autorité publique (comme Let's Encrypt), ou
-  par une autorité privée explicitement approuvée pour ce serveur.
+  portera le mot de passe. Il doit être émis par une autorité publique reconnue par Thunderbird
+  (comme Let's Encrypt). Approuver une autorité privée pour un serveur donné viendra dans une
+  version suivante.
   - Une interception est refusée avant que rien ne soit envoyé.
   - Une connexion qui ne passe que par une exception de sécurité est refusée aussi.
 - **Un effacement à distance demandé par le serveur est toujours refusé.**
@@ -140,7 +158,7 @@ en réduisent le risque, et un mot de passe d'application le limite encore.
 |---|---|
 | Python 3.9 ou plus récent | lanceurs de tests et contrôles |
 | Node.js 18 ou plus récent | tests unitaires (sous macOS, le moteur JavaScript intégré suffit) |
-| Thunderbird | test de bout en bout de la connexion vérifiée |
+| Thunderbird 140 ou plus récent | tests de bout en bout (connexion, comptes, courrier) |
 
 ### Commandes
 
@@ -149,9 +167,15 @@ Sous Windows, remplacer `python3` par `py -3`.
 | Commande | Rôle |
 |---|---|
 | `python3 -I tools/unit_tests.py` | tests unitaires et aléatoires du cœur |
-| `python3 -I tests/e2e/net/run_net_test.py` | connexion vérifiée dans un vrai Thunderbird, sans interface, avec un profil jetable. Utilise la variable `THUNDERBIRD` pour choisir l'exécutable ; détection automatique sinon. |
+| `python3 -I tests/e2e/net/run_net_test.py` | connexion vérifiée dans un vrai Thunderbird, sans interface, avec un profil jetable |
+| `python3 -I tests/e2e/account/run_account_test.py` | comptes, « Dossiers locaux », serveur d'envoi neutre et mots de passe, dans un vrai Thunderbird |
+| `python3 -I tests/e2e/mail/run_mail_test.py` | courrier de bout en bout contre un faux serveur ActiveSync en TLS : boîtes, dossiers, messages, envoi, archivage, redémarrage, suppression d'une boîte (`--no-server-archives` : serveur sans dossier « Archives ») |
+| `python3 -I tools/build_xpi.py` | construit `dist/sync443-<version>.xpi`, de façon reproductible ; refuse tout fichier de test |
 | `python3 -I tools/check_source_chars.py` | refuse les caractères invisibles ou bidirectionnels dans le code |
 | `python3 -I tools/provenance_check.py --ref <dossier>` | vérifie qu'aucun code d'un projet tiers n'a été repris |
+
+Les tests de bout en bout trouvent Thunderbird seuls, ou par la variable `THUNDERBIRD`. Ils
+utilisent un profil jetable et ne touchent jamais le profil de l'utilisateur.
 
 Les tests unitaires tournent automatiquement sous Windows, macOS et Linux à chaque envoi sur GitHub.
 

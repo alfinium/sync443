@@ -96,7 +96,7 @@ const hasLoneSurrogate = (s) => {
   return false;
 };
 
-// ── Encoding ──────────────────────────────────────────────────────────────
+// ── Writing ──────────────────────────────────────────────────────────────
 
 test("utf8 : encodage sur 1, 2, 3 et 4 octets, bornes comprises", () => {
   eq(encodeUtf8(""), B(), "chaîne vide");
@@ -144,7 +144,7 @@ test("utf8 : encodeUtf8 convertit une valeur non textuelle avec String()", () =>
   eq(encodeUtf8(null), B(0x6e, 0x75, 0x6c, 0x6c));
 });
 
-// ── Decoding ──────────────────────────────────────────────────────────────
+// ── Reading ──────────────────────────────────────────────────────────────
 
 test("utf8 : aller-retour exact sur tous les points de code hors surrogates", () => {
   const cps = [];

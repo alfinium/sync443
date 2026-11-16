@@ -240,8 +240,3 @@ export const namespaceOf = (page) => nsByPage.get(page);
 export const tokenOf = (ns, tag) => tokenByTag.get(ns)?.get(tag);
 /** Tag of a token in a code page, or undefined. */
 export const tagOf = (page, token) => tagByToken.get(page)?.get(token);
-
-/** Every [page, namespace, tag, token], for tests. */
-export function* allTags() {
-  for (const [page, ns, tags] of PAGES) for (const [token, tag] of tags) yield [page, ns, tag, token];
-}

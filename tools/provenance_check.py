@@ -313,8 +313,8 @@ def norm_key(t):
 
 
 class SrcFile:
-    def __init__(self, path, rel, side):
-        self.path, self.rel, self.side = path, rel, side
+    def __init__(self, path, rel):
+        self.path, self.rel = path, rel
         with open(path, "rb") as fh:
             self.raw = fh.read()
         self.binary = b"\0" in self.raw[:8192]
@@ -383,7 +383,7 @@ class SrcFile:
         return "texte"
 
 
-def collect(roots, side, exclude):
+def collect(roots, exclude):
     """Returns the files under `roots` (directories or single files)."""
     roots = [os.path.abspath(r) for r in roots]
     parents = [os.path.dirname(r.rstrip(os.sep)) for r in roots]
@@ -407,7 +407,7 @@ def collect(roots, side, exclude):
         if any(re.search(x, rel) for x in exclude):
             continue
         try:
-            files.append(SrcFile(p, rel, side))
+            files.append(SrcFile(p, rel))
         except OSError as e:
             print(f"avertissement : {rel} illisible ({e})", file=sys.stderr)
     return files
@@ -809,11 +809,11 @@ def main(argv=None):
     if not target_roots:
         ap.error("aucune cible : passer --target")
 
-    refs = collect(args.ref, "ref", [])
+    refs = collect(args.ref, [])
     ref_real = {os.path.realpath(f.path) for f in refs}
     self_real = {os.path.realpath(os.path.join(here, n)) for n in SELF_FILES}
     targets, excluded = [], []
-    for f in collect(target_roots, "target", args.exclude):
+    for f in collect(target_roots, args.exclude):
         rp = os.path.realpath(f.path)
         if rp in self_real or rp in ref_real:
             excluded.append(f.rel)

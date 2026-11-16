@@ -18,31 +18,65 @@
  *   ensureAccount() never adopts what it did not create: an existing server
  *   with the same name but no marks of ours is a CONFLICT.
  *
+ *   "Local Folders" is the server named by the preference
+ *   mail.accountmanager.localfoldersserver, read directly: when it is unset,
+ *   Thunderbird's getter (MailServices.accounts.localFoldersServer) adopts
+ *   the first "none" server it finds, ours included, and saves that choice.
+ *   So a real "Local Folders" account is made before our first account in
+ *   a profile that has none, and every account operation first puts the
+ *   preference back on a real "Local Folders" server if it names one of
+ *   ours (or names nothing while we have accounts).
+ *
  *   Sending is closed. Each identity of an account of the extension sends
- *   through one "neutral" outgoing server, marked the same way, whose host
- *   name (sync443.invalid) never resolves, over TLS, without credentials.
- *   If the extension is disabled, sending from such an identity fails
- *   instead of leaving through another provider's server.
+ *   through one "neutral" outgoing server, marked the same way
+ *   (mail.smtpserver.<key>.sync443.owner): 127.0.0.1, port 1 (closed; no
+ *   name to resolve, so no DNS answer can redirect it), TLS required, no
+ *   authentication, no user name. If the extension is disabled, sending
+ *   from such an identity fails instead of leaving through another
+ *   provider's server. The route is checked and repaired by
+ *   checkSendRoute(), by ensureAccount(), and as soon as Thunderbird reports
+ *   a change that may break it (an outgoing server removed, an identity's
+ *   outgoing server changed, the list or the default of outgoing servers
+ *   changed, an outgoing server's host, port, security, authentication,
+ *   user name, type or mark changed), once the background page has used
+ *   this API.
+ *   The neutral server is never made Thunderbird's default outgoing server;
+ *   if Thunderbird adopts it (it does so with the first server of a profile)
+ *   and the user has a server of their own, the default goes back to it.
+ *
+ *   Thunderbird's own moves land in synchronised folders: for every
+ *   identity of our accounts, Archive files messages in the account's
+ *   /Archives folder itself (archive_granularity 0, no copied folder
+ *   structure, archive_folder = /Archives), and junk is never moved away
+ *   (moveOnSpam false on our server). Applied at creation, on every update,
+ *   and by checkSendRoute.
  *
  *   ensureAccount({mailboxId, email, name, fullName?}) -> {accountKey, identityId, created}
  *     creates the account (default folders with their special flags,
- *     identity, neutral outgoing server), or updates the account already
- *     marked for this mailboxId: name, address, full name only if the
- *     identity has none, and every identity of the account sent back to
- *     the neutral server.
+ *     identity, neutral outgoing server, archive and junk settings), or
+ *     updates the account already marked for this mailboxId: name,
+ *     address, full name only if the identity has none, the archive and
+ *     junk settings, and the send route of every identity of the account.
  *   listAccounts() -> [{accountKey, mailboxId}]       marked accounts only
  *   accountOfIdentity(identityId) -> {accountKey, mailboxId} | null
  *     null when the identity does not exist or belongs to no marked account
  *     (the identity of another account is "not ours", not an error).
+ *   checkSendRoute(identityId?) -> boolean
+ *     makes sure that the identity (without an argument: every identity of
+ *     every account of the extension) sends through the neutral server, with
+ *     its safe values, repairing what is needed (the neutral server is made
+ *     again if it was removed). Resolves to true if something was repaired,
+ *     false if all was in order; resolves ONLY when, afterwards, Thunderbird
+ *     itself would send each checked identity through that server. Anything
+ *     else is an error, so that the caller does not send: an identity that
+ *     belongs to no account of the extension is NOT_FOUND. It also puts back
+ *     the archive and junk settings (not counted in its answer).
  *   removeAccount(accountKey) -> boolean
- *     false if no account has this key; removes the account and its files,
- *     then the neutral outgoing server once no identity uses it.
- *   setSpecialUse(accountKey, folderPath, use)
- *     folderPath: absolute path in the account ("/Inbox/Sub"), resolved one
- *     folder name at a time; use: inbox, drafts, trash, sent, junk,
- *     archives, templates or outbox. The folder gets this special use and
- *     no other; no other folder of the account keeps it; the identities of
- *     the account use the folder for drafts, sent, templates and archives.
+ *     false if no account has this key; removes the account, its files only
+ *     if their folder is inside the profile's Mail folder and belongs to no
+ *     other server (otherwise the account is removed, its files are left in
+ *     place and the call fails with FILES), then the neutral outgoing server
+ *     once no identity uses it.
  *
  * Passwords: Thunderbird's login manager, realm "Sync443", origin exactly
  * "https://host[:port]" as core/server.mjs writes it (lower-case name,
@@ -56,20 +90,22 @@
  * sync443Net (defence in depth: any page of the extension can reach the
  * background page).
  *
- * One operation at a time: the account operations are queued one behind the
- * other, and so are the password operations. Thunderbird may spin its event
- * loop inside some calls; a second call made meanwhile still waits for the
- * first to finish.
+ * One operation at a time: the account operations (and the automatic
+ * repairs) are queued one behind the other, and so are the password
+ * operations. Thunderbird may spin its event loop inside some calls; a
+ * second call made meanwhile still waits for the first to finish.
  *
  * Every refusal is an ExtensionError "CODE: raison":
  *   CONFIG       invalid argument
  *   PERMISSION   not the background page, or an account the extension did
  *                not mark, or "Local Folders"
- *   NOT_FOUND    no such account (setSpecialUse) or folder
+ *   NOT_FOUND    checkSendRoute: the identity belongs to no account of ours
  *   CONFLICT     ensureAccount: a server of that name exists without our marks
+ *   FILES        removeAccount: account removed, its files left in place
  *   LOCKED       Thunderbird's primary password was not entered
  *   UNSUPPORTED  this Thunderbird lacks an interface this code needs
- *   INTERNAL     Thunderbird refused the operation
+ *   INTERNAL     Thunderbird refused the operation, or its result could not
+ *                be verified
  * No message carries a password, a user name or an address.
  */
 
@@ -89,8 +125,20 @@ var sync443Account = (() => {
   const OWNER = "sync443.owner";
   const MAILBOX = "sync443.mailbox";
   const REALM = "Sync443";
-  const NEUTRAL_PORT = 465;
+  const LOCAL_FOLDERS_PREF = "mail.accountmanager.localfoldersserver";
+  const DEFAULT_OUTGOING_PREF = "mail.smtp.defaultserver";
+  // The neutral outgoing server: this machine, a closed port, TLS required.
+  const NEUTRAL_HOST = "127.0.0.1";
+  const NEUTRAL_PORT = 1;
   const NEUTRAL_DESCRIPTION = "Sync443 : envoi par l'extension uniquement";
+  // Changes after which the send route is checked again: an identity's
+  // outgoing server, the list and the default of outgoing servers, and what
+  // an outgoing server's own preferences say of its route or of our mark.
+  const WATCHED_BRANCHES = ["mail.identity.", DEFAULT_OUTGOING_PREF, "mail.smtpservers", "mail.smtpserver."];
+  const WATCHED_PREF = new RegExp(
+    "^(?:mail\\.identity\\.id[0-9]{1,9}\\.smtpServer|mail\\.smtp\\.defaultserver|mail\\.smtpservers|" +
+      "mail\\.smtpserver\\.[A-Za-z0-9_-]{1,64}\\.(?:hostname|port|try_ssl|authMethod|username|type|sync443\\.owner))$",
+  );
 
   const MAILBOX_ID = /^[a-f0-9]{12}$/;
   const ACCOUNT_KEY = /^account[0-9]{1,9}$/;
@@ -106,41 +154,24 @@ var sync443Account = (() => {
   const IPV4 = /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/;
   const IPV6 = /^\[[0-9a-f:.]{2,45}\]$/;
   const ORIGIN = /^https:\/\/([^/:]+|\[[^\]/]+\])(?::([1-9][0-9]{0,4}))?$/;
+  const NUL = String.fromCharCode(0);
 
   const MAX_NAME = 256;
   const MAX_USERNAME = 256;
   const MAX_PASSWORD = 1024;
-  const MAX_PATH = 4096;
-  const MAX_SEGMENT = 255;
-  const MAX_DEPTH = 64;
 
-  const flags = () => Ci.nsMsgFolderFlags;
-  /** Special use → nsMsgFolderFlags name. */
-  const USES = new Map([
-    ["inbox", "Inbox"],
-    ["drafts", "Drafts"],
-    ["trash", "Trash"],
-    ["sent", "SentMail"],
-    ["junk", "Junk"],
-    ["archives", "Archive"],
-    ["templates", "Templates"],
-    ["outbox", "Queue"],
-  ]);
-  /** Special use → identity attributes that name the folder Thunderbird uses for it. */
-  const IDENTITY_FOLDERS = new Map([
-    ["drafts", ["draftsFolderURI", "draftsFolderPickerMode"]],
-    ["sent", ["fccFolderURI", "fccFolderPickerMode"]],
-    ["templates", ["templatesFolderURI", "templatesFolderPickerMode"]],
-    ["archives", ["archivesFolderURI", "archivesFolderPickerMode"]],
-  ]);
-  /** Folders of a new account, at its root. */
+  /**
+   * Folders of a new account, at its root: name, nsMsgFolderFlags flag, and
+   * the identity attributes that make Thunderbird use it (drafts, copies of
+   * sent messages, templates, archives).
+   */
   const DEFAULT_FOLDERS = [
-    ["Inbox", "inbox"],
-    ["Drafts", "drafts"],
-    ["Templates", "templates"],
-    ["Sent", "sent"],
-    ["Archives", "archives"],
-    ["Trash", "trash"],
+    ["Inbox", "Inbox", null],
+    ["Drafts", "Drafts", ["draftsFolderURI", "draftsFolderPickerMode"]],
+    ["Templates", "Templates", ["templatesFolderURI", "templatesFolderPickerMode"]],
+    ["Sent", "SentMail", ["fccFolderURI", "fccFolderPickerMode"]],
+    ["Archives", "Archive", ["archivesFolderURI", "archivesFolderPickerMode"]],
+    ["Trash", "Trash", null],
   ];
 
   const fail = (code, reason) => new ExtensionError(`${code}: ${reason}`);
@@ -149,13 +180,8 @@ var sync443Account = (() => {
   function errorName(error) {
     const status = error?.result;
     if (typeof status === "number") {
-      try {
-        const name = ChromeUtils.getXPCOMErrorName(status);
-        if (/^[A-Z0-9_]{1,64}$/.test(name)) return name;
-      } catch {
-        // older versions: the code alone
-      }
-      return `0x${(status >>> 0).toString(16)}`;
+      const name = ChromeUtils.getXPCOMErrorName(status);
+      return /^[A-Z0-9_]{1,64}$/.test(name) ? name : `0x${(status >>> 0).toString(16)}`;
     }
     const name = error?.name;
     return typeof name === "string" && /^[A-Za-z]{1,40}$/.test(name) ? name : "erreur";
@@ -170,9 +196,8 @@ var sync443Account = (() => {
   // ── Arguments ─────────────────────────────────────────────────────────
 
   const plainObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
-  const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
   /** No lone surrogate (it would not survive a trip through UTF-8). */
-  const wellFormed = (s) => (typeof s.isWellFormed === "function" ? s.isWellFormed() : !LONE_SURROGATE.test(s));
+  const wellFormed = (s) => s.isWellFormed();
 
   /** A printable string of 1 to `max` characters, not blank. */
   function text(value, what, max) {
@@ -205,32 +230,6 @@ var sync443Account = (() => {
     // The schema hands an absent optional property over as null.
     const fullName = options.fullName === undefined || options.fullName === null ? null : text(options.fullName, "nom complet", MAX_NAME);
     return { mailboxId, email, name, fullName };
-  }
-
-  /** "/Inbox/Sub" → ["Inbox", "Sub"]: absolute, no empty, "." or ".." segment. */
-  function folderSegments(path) {
-    if (
-      typeof path !== "string" ||
-      path.length < 2 ||
-      path.length > MAX_PATH ||
-      path[0] !== "/" ||
-      !wellFormed(path) ||
-      INVISIBLE.test(path)
-    ) {
-      throw fail("CONFIG", "chemin de dossier invalide (chemin absolu attendu, par exemple /Inbox)");
-    }
-    const segments = path.slice(1).split("/");
-    if (segments.length > MAX_DEPTH || segments.some((s) => s === "" || s === "." || s === ".." || s.length > MAX_SEGMENT)) {
-      throw fail("CONFIG", "chemin de dossier invalide");
-    }
-    return segments;
-  }
-
-  function useOf(use) {
-    if (typeof use !== "string" || !USES.has(use)) {
-      throw fail("CONFIG", `usage spécial inconnu (attendu : ${[...USES.keys()].join(", ")})`);
-    }
-    return use;
   }
 
   /** Exactly "https://host" or "https://host:port", in canonical form. */
@@ -277,7 +276,7 @@ var sync443Account = (() => {
       typeof password !== "string" ||
       password.length < 1 ||
       password.length > MAX_PASSWORD ||
-      password.includes("\u0000") ||
+      password.includes(NUL) ||
       !wellFormed(password)
     ) {
       throw fail("CONFIG", `mot de passe invalide (1 à ${MAX_PASSWORD} caractères, sans caractère nul)`);
@@ -325,30 +324,14 @@ var sync443Account = (() => {
     return typeof k === "string" && PREF_KEY.test(k) ? Services.prefs.getBranch(`mail.smtpserver.${k}.`) : null;
   }
 
-  function localFoldersKey() {
-    try {
-      return MailServices.accounts.localFoldersServer?.key ?? null;
-    } catch {
-      return null; // no Local Folders account
-    }
-  }
-
-  function isLocalFolders(server) {
-    const k = localFoldersKey();
-    return k !== null && server?.key === k;
-  }
-
   /**
-   * The mailboxId an account is marked with for this extension, or null:
-   * type "none", our host name, user name = mailboxId, both marks, and never
-   * "Local Folders".
+   * The mailboxId this server carries the marks of this extension for, or
+   * null: type "none", our host name, user name = mailboxId, both marks.
+   * Says nothing about "Local Folders" (see markOf).
    */
-  function markOf(account, extensionId) {
-    let server = null;
+  function marksOf(server, extensionId) {
     try {
-      server = account?.incomingServer ?? null;
-      if (!server || isLocalFolders(server)) return null;
-      if (server.type !== "none" || String(server.hostname).toLowerCase() !== HOST) return null;
+      if (!server || server.type !== "none" || String(server.hostname).toLowerCase() !== HOST) return null;
       const branch = serverBranch(server);
       if (!branch || readPref(branch, OWNER) !== extensionId) return null;
       const mailboxId = readPref(branch, MAILBOX);
@@ -357,6 +340,65 @@ var sync443Account = (() => {
     } catch {
       return null;
     }
+  }
+
+  // ── Local Folders ─────────────────────────────────────────────────────
+
+  /**
+   * Key of Thunderbird's "Local Folders" server, read from its preference.
+   * Never through MailServices.accounts.localFoldersServer: when the
+   * preference is unset, that getter adopts the first "none" server it finds
+   * as Local Folders (and saves the choice), which may be one of ours.
+   */
+  function localFoldersKey() {
+    const k = Services.prefs.getCharPref(LOCAL_FOLDERS_PREF, "");
+    return PREF_KEY.test(k) ? k : null;
+  }
+
+  function isLocalFolders(server) {
+    const k = localFoldersKey();
+    return k !== null && server?.key === k;
+  }
+
+  /**
+   * Keeps the "Local Folders" preference on a real "Local Folders" server.
+   * Repaired when it names a server carrying our marks (Thunderbird adopted
+   * one of our accounts), and, when it names no existing server, if we are
+   * about to create an account (`creating`) or already have one: otherwise
+   * Thunderbird would adopt ours the first time it needs its Local Folders.
+   * An existing "Local Folders" server is pointed to again; with none, one
+   * is made, as Thunderbird's account wizard does. Returns true if repaired.
+   */
+  function keepLocalFolders(extensionId, creating) {
+    const servers = MailServices.accounts.allServers;
+    const k = localFoldersKey();
+    const named = k === null ? null : (servers.find((s) => s.key === k) ?? null);
+    if (named && !marksOf(named, extensionId)) return false;
+    if (!named && !creating && !servers.some((s) => marksOf(s, extensionId))) return false;
+    const real = servers.find((s) => s.type === "none" && String(s.hostname) === "Local Folders" && !marksOf(s, extensionId));
+    if (real) Services.prefs.setCharPref(LOCAL_FOLDERS_PREF, real.key);
+    else MailServices.accounts.createLocalMailAccount();
+    const now = localFoldersKey();
+    const after = now === null ? null : MailServices.accounts.allServers.find((s) => s.key === now);
+    if (!after || marksOf(after, extensionId)) {
+      throw fail("INTERNAL", "le compte « Dossiers locaux » de Thunderbird n'a pas pu être rétabli");
+    }
+    return true;
+  }
+
+  /**
+   * The mailboxId an account is marked with for this extension, or null.
+   * Never "Local Folders".
+   */
+  function markOf(account, extensionId) {
+    let server = null;
+    try {
+      server = account?.incomingServer ?? null;
+    } catch {
+      return null;
+    }
+    if (!server || isLocalFolders(server)) return null;
+    return marksOf(server, extensionId);
   }
 
   /** [{account, mailboxId}] of every account marked for this extension. */
@@ -396,14 +438,9 @@ var sync443Account = (() => {
 
   // ── Neutral outgoing server ───────────────────────────────────────────
 
-  /** Thunderbird's outgoing server service (nsIMsgOutgoingServerService; nsISmtpService before). */
+  /** Thunderbird's outgoing server service (nsIMsgOutgoingServerService). */
   function outgoingService() {
-    let service = null;
-    try {
-      service = MailServices.outgoingServer ?? MailServices.smtp ?? null;
-    } catch {
-      service = null;
-    }
+    const service = MailServices.outgoingServer;
     if (!service || typeof service.createServer !== "function" || typeof service.deleteServer !== "function") {
       throw fail("UNSUPPORTED", "service des serveurs sortants de Thunderbird introuvable");
     }
@@ -414,12 +451,11 @@ var sync443Account = (() => {
     return server.QueryInterface(Ci.nsISmtpServer);
   }
 
+  /** Is this outgoing server the neutral one of this extension (by its mark, whatever its values)? */
   function isNeutral(server, extensionId) {
     try {
       const branch = outgoingBranch(server);
-      if (!branch || readPref(branch, OWNER) !== extensionId) return false;
-      if ((server.type ?? "smtp") !== "smtp") return false;
-      return String(asSmtp(server).hostname).toLowerCase() === HOST;
+      return !!branch && readPref(branch, OWNER) === extensionId && (server.type ?? "smtp") === "smtp";
     } catch {
       return false;
     }
@@ -429,7 +465,70 @@ var sync443Account = (() => {
     return [...service.servers].filter((s) => isNeutral(s, extensionId));
   }
 
-  /** A new outgoing server that cannot send: unresolvable name, TLS, no credentials. Marked first. */
+  const intPref = (branch, name) => {
+    try {
+      return branch.getIntPref(name, -1);
+    } catch {
+      return -1;
+    }
+  };
+
+  /** Does the neutral server hold its safe values (as stored, and as Thunderbird reads them)? */
+  function isSafe(server) {
+    const branch = outgoingBranch(server);
+    if (!branch) return false;
+    const smtp = asSmtp(server);
+    return (
+      readPref(branch, "hostname") === NEUTRAL_HOST &&
+      intPref(branch, "port") === NEUTRAL_PORT &&
+      intPref(branch, "try_ssl") === Ci.nsMsgSocketType.SSL &&
+      intPref(branch, "authMethod") === Ci.nsMsgAuthMethod.none &&
+      readPref(branch, "username") === "" &&
+      smtp.hostname === NEUTRAL_HOST &&
+      smtp.port === NEUTRAL_PORT &&
+      server.socketType === Ci.nsMsgSocketType.SSL &&
+      server.authMethod === Ci.nsMsgAuthMethod.none
+    );
+  }
+
+  /**
+   * Gives the neutral server its safe values; true if any had to change.
+   * Written to its preferences directly: the host name and user name
+   * setters would make Thunderbird forget the saved password of whatever
+   * host and user the server had (possibly one of the user's own servers).
+   * The port setter is used last: it also drops the server's cached address.
+   */
+  function enforceNeutral(server) {
+    const branch = outgoingBranch(server);
+    if (!branch) throw fail("INTERNAL", "clé de serveur sortant inattendue");
+    let changed = false;
+    if (readPref(branch, "hostname") !== NEUTRAL_HOST) {
+      branch.setStringPref("hostname", NEUTRAL_HOST);
+      changed = true;
+    }
+    if (branch.prefHasUserValue("username")) {
+      branch.clearUserPref("username");
+      changed = true;
+    }
+    if (intPref(branch, "try_ssl") !== Ci.nsMsgSocketType.SSL) {
+      branch.setIntPref("try_ssl", Ci.nsMsgSocketType.SSL);
+      changed = true;
+    }
+    if (intPref(branch, "authMethod") !== Ci.nsMsgAuthMethod.none) {
+      branch.setIntPref("authMethod", Ci.nsMsgAuthMethod.none);
+      changed = true;
+    }
+    if (intPref(branch, "port") !== NEUTRAL_PORT) changed = true;
+    if (changed || !isSafe(server)) {
+      asSmtp(server).port = NEUTRAL_PORT;
+      server.password = ""; // forgets a password kept in memory (never a saved one)
+      changed = true;
+    }
+    if (readPref(branch, "description") !== NEUTRAL_DESCRIPTION) branch.setStringPref("description", NEUTRAL_DESCRIPTION);
+    return changed;
+  }
+
+  /** A new neutral server, marked first, then given its safe values. Never made the default one. */
   function createNeutral(service, extensionId) {
     const server = service.createServer("smtp");
     const branch = outgoingBranch(server);
@@ -438,13 +537,15 @@ var sync443Account = (() => {
       throw fail("INTERNAL", "clé de serveur sortant inattendue");
     }
     branch.setStringPref(OWNER, extensionId);
-    const smtp = asSmtp(server);
-    smtp.hostname = HOST;
-    smtp.port = NEUTRAL_PORT;
-    server.socketType = Ci.nsMsgSocketType.SSL;
-    server.authMethod = Ci.nsMsgAuthMethod.none;
-    server.description = NEUTRAL_DESCRIPTION;
+    enforceNeutral(server);
     return server;
+  }
+
+  /** The neutral server, with its safe values: {server, changed}. Made if missing. */
+  function neutralFor(service, extensionId) {
+    const existing = neutralServers(service, extensionId)[0];
+    if (existing) return { server: existing, changed: enforceNeutral(existing) };
+    return { server: createNeutral(service, extensionId), changed: true };
   }
 
   function identityUses(serverKey) {
@@ -453,12 +554,8 @@ var sync443Account = (() => {
 
   function deleteNeutral(service, server) {
     // Thunderbird's default outgoing server: let it pick another one.
-    if (Services.prefs.getCharPref("mail.smtp.defaultserver", "") === server.key) {
-      try {
-        service.defaultServer = null;
-      } catch {
-        Services.prefs.clearUserPref("mail.smtp.defaultserver");
-      }
+    if (Services.prefs.getCharPref(DEFAULT_OUTGOING_PREF, "") === server.key) {
+      Services.prefs.clearUserPref(DEFAULT_OUTGOING_PREF);
     }
     service.deleteServer(server);
   }
@@ -470,9 +567,85 @@ var sync443Account = (() => {
     }
   }
 
-  // ── Folders ───────────────────────────────────────────────────────────
+  /**
+   * The neutral server must not be Thunderbird's default outgoing server
+   * (identities left on "the default server" would lose their route). When
+   * the preference names it, or is unset while it comes first (Thunderbird
+   * then adopts the first server), the default goes to the first server
+   * that is not ours. If ours is the only one, nothing can be done:
+   * Thunderbird may adopt it, and sending from an identity on "the default
+   * server" then fails (closed) until the user adds a server of their own.
+   */
+  function keepDefaultAway(service, extensionId) {
+    const servers = [...service.servers];
+    const ours = new Set(servers.filter((s) => isNeutral(s, extensionId)).map((s) => s.key));
+    if (ours.size === 0) return;
+    const current = Services.prefs.getCharPref(DEFAULT_OUTGOING_PREF, "");
+    const adopted = current ? ours.has(current) : servers.length > 0 && ours.has(servers[0].key);
+    if (!adopted) return;
+    const other = servers.find((s) => !ours.has(s.key));
+    if (other) Services.prefs.setCharPref(DEFAULT_OUTGOING_PREF, other.key);
+  }
 
-  const flagOf = (use) => flags()[USES.get(use)];
+  /**
+   * Every identity of every account of ours (or only `identityId`) sends
+   * through the neutral server with its safe values; repaired if not.
+   * Verified afterwards as Thunderbird resolves it (getServerByIdentity):
+   * returns whether something was repaired, throws if it cannot be sure.
+   */
+  function checkSendRoute(extensionId, identityId = null) {
+    const service = outgoingService();
+    const mine = ownAccounts(extensionId);
+    const identities = [];
+    for (const { account } of mine) {
+      for (const identity of account.identities) {
+        if (identityId === null || identity.key === identityId) identities.push(identity);
+      }
+    }
+    if (identityId !== null && identities.length === 0) {
+      throw fail("NOT_FOUND", "cette identité n'appartient à aucun compte de l'extension");
+    }
+    let repaired = false;
+    if (mine.length > 0) {
+      const { server: neutral, changed } = neutralFor(service, extensionId);
+      repaired = changed;
+      for (const { account } of mine) {
+        for (const identity of account.identities) {
+          if (identity.smtpServerKey !== neutral.key) {
+            identity.smtpServerKey = neutral.key;
+            repaired = true;
+          }
+        }
+      }
+      keepDefaultAway(service, extensionId);
+      // As Thunderbird will resolve it when sending.
+      for (const identity of identities) {
+        let route = null;
+        try {
+          route = service.getServerByIdentity(identity);
+        } catch {
+          route = null;
+        }
+        if (!route || route.key !== neutral.key || !isNeutral(route, extensionId) || !isSafe(route)) {
+          throw fail("INTERNAL", "le serveur sortant neutre de l'identité n'a pas pu être vérifié");
+        }
+      }
+    }
+    dropUnusedNeutral(service, extensionId);
+    // The archive and junk settings too, while here (not part of the answer).
+    let settled = false;
+    for (const { account } of mine) {
+      try {
+        settled = applyMailSettings(account, account.incomingServer) || settled;
+      } catch {
+        // put back by the next ensureAccount
+      }
+    }
+    if (repaired || settled) MailServices.accounts.saveAccountInfo();
+    return repaired;
+  }
+
+  // ── Folders ───────────────────────────────────────────────────────────
 
   function childNamed(folder, name) {
     const found = folder.subFolders.filter((f) => f.name === name);
@@ -484,25 +657,119 @@ var sync443Account = (() => {
     // Listing the root first lets Thunderbird create its own default
     // folders of a "none" server (it may add "Unsent Messages").
     const local = root.QueryInterface(Ci.nsIMsgLocalMailFolder);
-    for (const [name, use] of DEFAULT_FOLDERS) {
+    for (const [name, flag] of DEFAULT_FOLDERS) {
       const folder = childNamed(root, name) ?? local.createLocalSubfolder(name);
-      folder.setFlag(flagOf(use));
+      folder.setFlag(Ci.nsMsgFolderFlags[flag]);
     }
-  }
-
-  function pointIdentityTo(identity, use, folder, pickerMode) {
-    const attributes = IDENTITY_FOLDERS.get(use);
-    if (!attributes) return;
-    const [uri, mode] = attributes;
-    identity[uri] = folder.URI;
-    identity[mode] = pickerMode;
   }
 
   /** The identity uses the account's default folders (those that exist). */
   function defaultIdentityFolders(identity, root) {
-    for (const [name, use] of DEFAULT_FOLDERS) {
-      const folder = childNamed(root, name);
-      if (folder) pointIdentityTo(identity, use, folder, "0");
+    for (const [name, , attributes] of DEFAULT_FOLDERS) {
+      const folder = attributes && childNamed(root, name);
+      if (!folder) continue;
+      const [uri, pickerMode] = attributes;
+      identity[uri] = folder.URI;
+      identity[pickerMode] = "0"; // "the folder of this account", as Thunderbird's account settings say
+    }
+  }
+
+  // ── Archive and junk ──────────────────────────────────────────────────
+
+  /** Preference branch of an identity ("mail.identity.<key>."), or null. */
+  function identityBranch(identity) {
+    const k = identity?.key;
+    return typeof k === "string" && IDENTITY_KEY.test(k) ? Services.prefs.getBranch(`mail.identity.${k}.`) : null;
+  }
+
+  function hasBool(branch, name, value) {
+    try {
+      return branch.prefHasUserValue(name) && branch.getBoolPref(name) === value;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Where Thunderbird's own actions put messages of this account, so that
+   * they stay in synchronised folders: Archive into the account's /Archives
+   * folder itself (archive_granularity 0: no yearly or monthly subfolders;
+   * archive_keep_folder_structure false); junk left where it is (moveOnSpam
+   * false on the server, also in Thunderbird's loaded junk settings).
+   * Written explicitly, whatever Thunderbird's defaults are. True if
+   * anything changed.
+   */
+  function applyMailSettings(account, server) {
+    let changed = false;
+    const root = server.rootFolder;
+    const archives = childNamed(root, "Archives");
+    for (const identity of account.identities) {
+      const branch = identityBranch(identity);
+      if (!branch) continue;
+      if (!branch.prefHasUserValue("archive_granularity") || intPref(branch, "archive_granularity") !== 0) {
+        branch.setIntPref("archive_granularity", 0);
+        changed = true;
+      }
+      if (!hasBool(branch, "archive_keep_folder_structure", false)) {
+        branch.setBoolPref("archive_keep_folder_structure", false);
+        changed = true;
+      }
+      if (archives && identity.archivesFolderURI !== archives.URI) {
+        identity.archivesFolderURI = archives.URI;
+        identity.archivesFolderPickerMode = "0";
+        changed = true;
+      }
+    }
+    const branch = serverBranch(server);
+    if (branch && !hasBool(branch, "moveOnSpam", false)) {
+      branch.setBoolPref("moveOnSpam", false);
+      changed = true;
+    }
+    if (changed) {
+      try {
+        server.spamSettings?.initialize(server); // as the account settings do after a change
+      } catch {
+        // read again at the next start
+      }
+    }
+    return changed;
+  }
+
+  // ── Files ─────────────────────────────────────────────────────────────
+
+  function normalized(file) {
+    const copy = file.clone();
+    try {
+      copy.normalize(); // symbolic links resolved
+    } catch {
+      // does not exist: as it is
+    }
+    return copy;
+  }
+
+  /**
+   * May Thunderbird delete this server's folder (recursively)? Only if it
+   * lies inside the profile's Mail folder (not that folder itself), and is
+   * neither the folder of another server, nor inside it, nor around it.
+   */
+  function filesRemovable(server) {
+    try {
+      const mailDir = normalized(Services.dirsvc.get("MailD", Ci.nsIFile));
+      const path = normalized(server.localPath);
+      if (!mailDir.contains(path)) return false;
+      for (const other of MailServices.accounts.allServers) {
+        if (other.key === server.key || other.type === "im") continue;
+        let otherPath = null;
+        try {
+          otherPath = normalized(other.localPath);
+        } catch {
+          continue; // a server without files
+        }
+        if (otherPath.equals(path) || otherPath.contains(path) || path.contains(otherPath)) return false;
+      }
+      return true;
+    } catch {
+      return false;
     }
   }
 
@@ -524,8 +791,8 @@ var sync443Account = (() => {
 
   function undoCreation({ server, identity, account }, service, extensionId) {
     try {
-      if (account) MailServices.accounts.removeAccount(account, true);
-      else if (server) MailServices.accounts.removeIncomingServer(server, true);
+      if (account) MailServices.accounts.removeAccount(account, filesRemovable(server));
+      else if (server) MailServices.accounts.removeIncomingServer(server, filesRemovable(server));
     } catch {
       // best effort; the original error is reported
     }
@@ -536,12 +803,15 @@ var sync443Account = (() => {
     }
     try {
       dropUnusedNeutral(service, extensionId);
+      keepLocalFolders(extensionId, false);
     } catch {
       // idem
     }
   }
 
   function createAccount(extensionId, service, { mailboxId, email, name, fullName }) {
+    // A real "Local Folders" first: Thunderbird must never take ours for it.
+    keepLocalFolders(extensionId, true);
     const made = { server: null, identity: null, account: null };
     try {
       const server = MailServices.accounts.createIncomingServer(mailboxId, HOST, "none");
@@ -554,7 +824,7 @@ var sync443Account = (() => {
       server.prettyName = name;
       server.valid = true;
 
-      const neutral = neutralServers(service, extensionId)[0] ?? createNeutral(service, extensionId);
+      const { server: neutral } = neutralFor(service, extensionId);
 
       const identity = MailServices.accounts.createIdentity();
       made.identity = identity;
@@ -572,6 +842,11 @@ var sync443Account = (() => {
       const root = server.rootFolder;
       createDefaultFolders(root);
       defaultIdentityFolders(identity, root);
+      applyMailSettings(account, server);
+      // Thunderbird must not have taken it for its Local Folders meanwhile.
+      keepLocalFolders(extensionId, false);
+      if (isLocalFolders(server)) throw fail("INTERNAL", "compte pris pour « Dossiers locaux » par Thunderbird");
+      keepDefaultAway(service, extensionId);
       MailServices.accounts.saveAccountInfo();
       return { accountKey: account.key, identityId: identity.key, created: true };
     } catch (e) {
@@ -583,7 +858,6 @@ var sync443Account = (() => {
   function updateAccount(extensionId, service, account, server, { email, name, fullName }) {
     try {
       if (server.prettyName !== name) server.prettyName = name;
-      const neutral = neutralServers(service, extensionId)[0] ?? createNeutral(service, extensionId);
       let identity = account.defaultIdentity;
       if (!identity) {
         identity = MailServices.accounts.createIdentity();
@@ -593,10 +867,9 @@ var sync443Account = (() => {
       }
       if (identity.email !== email) identity.email = email;
       if (!identity.fullName && fullName) identity.fullName = fullName;
-      // Closed sending, for every identity of the account.
-      for (const each of account.identities) {
-        if (each.smtpServerKey !== neutral.key) each.smtpServerKey = neutral.key;
-      }
+      applyMailSettings(account, server);
+      // Closed sending, for every identity of every account of ours.
+      checkSendRoute(extensionId);
       MailServices.accounts.saveAccountInfo();
       return { accountKey: account.key, identityId: identity.key, created: false };
     } catch (e) {
@@ -624,10 +897,11 @@ var sync443Account = (() => {
     key(accountKey, ACCOUNT_KEY, "clé de compte");
     const account = accountByKey(accountKey);
     if (!account) return false;
-    owned(account, extensionId);
+    const { server } = owned(account, extensionId);
     const service = outgoingService();
+    const withFiles = filesRemovable(server);
     try {
-      MailServices.accounts.removeAccount(account, true);
+      MailServices.accounts.removeAccount(account, withFiles);
     } catch (e) {
       throw internal("suppression du compte", e);
     }
@@ -636,6 +910,12 @@ var sync443Account = (() => {
       MailServices.accounts.saveAccountInfo();
     } catch (e) {
       throw internal("suppression du serveur sortant neutre", e);
+    }
+    if (!withFiles) {
+      throw fail(
+        "FILES",
+        "compte supprimé, mais ses fichiers sont restés en place : leur dossier n'est pas un dossier propre au compte dans le dossier Mail du profil",
+      );
     }
     return true;
   }
@@ -652,37 +932,6 @@ var sync443Account = (() => {
       }
     }
     return null;
-  }
-
-  function setSpecialUse(extensionId, accountKey, folderPath, use) {
-    key(accountKey, ACCOUNT_KEY, "clé de compte");
-    const segments = folderSegments(folderPath);
-    useOf(use);
-    const account = accountByKey(accountKey);
-    if (!account) throw fail("NOT_FOUND", "compte introuvable");
-    const { server } = owned(account, extensionId);
-    try {
-      const root = server.rootFolder;
-      let folder = root;
-      for (const segment of segments) {
-        folder = childNamed(folder, segment);
-        if (!folder) throw fail("NOT_FOUND", "dossier introuvable dans ce compte");
-      }
-      if (folder.getFlag(flags().Virtual)) throw fail("CONFIG", "un dossier virtuel ne peut pas avoir d'usage spécial");
-      const flag = flagOf(use);
-      for (const other of root.descendants) {
-        if (other.URI !== folder.URI && other.getFlag(flag)) other.clearFlag(flag);
-      }
-      for (const otherUse of USES.keys()) {
-        const otherFlag = flagOf(otherUse);
-        if (otherFlag !== flag && folder.getFlag(otherFlag)) folder.clearFlag(otherFlag);
-      }
-      folder.setFlag(flag);
-      for (const identity of account.identities) pointIdentityTo(identity, use, folder, "1");
-      MailServices.accounts.saveAccountInfo();
-    } catch (e) {
-      throw internal("usage spécial du dossier", e);
-    }
   }
 
   // ── Passwords ─────────────────────────────────────────────────────────
@@ -704,8 +953,11 @@ var sync443Account = (() => {
   }
 
   /**
-   * removeLoginAsync / modifyLoginAsync, or, where only they exist (older
-   * versions), their synchronous forerunners. Neither: UNSUPPORTED.
+   * removeLoginAsync / modifyLoginAsync, or else their synchronous
+   * forerunners removeLogin / modifyLogin. Thunderbird 160 has only the
+   * asynchronous ones; Gecko 152 has both (the synchronous ones deprecated).
+   * Whether 140 ESR has the asynchronous ones is not verified, hence the
+   * fallback. Neither: UNSUPPORTED.
    */
   function loginMethod(manager, asyncName, syncName) {
     if (typeof manager[asyncName] === "function") return (...args) => manager[asyncName](...args);
@@ -768,19 +1020,82 @@ var sync443Account = (() => {
   return class extends ExtensionCommon.ExtensionAPI {
     accountQueue = serial();
     loginQueue = serial();
+    watcher = null;
+
+    /**
+     * From the first use of the API on: when Thunderbird removes an
+     * outgoing server, or an identity's outgoing server, the list of
+     * outgoing servers, the default one, or an outgoing server's own route
+     * preferences change, the send route is checked again (in the account
+     * queue) and repaired if needed. A repair that changes nothing writes
+     * nothing, so it does not wake itself up again.
+     */
+    watch(extensionId) {
+      if (this.watcher) return;
+      let pending = false;
+      const repair = () => {
+        if (pending || !this.watcher) return;
+        pending = true;
+        Services.tm.dispatchToMainThread(() => {
+          this.accountQueue(() => {
+            pending = false;
+            if (!this.watcher) return;
+            try {
+              keepLocalFolders(extensionId, false);
+              checkSendRoute(extensionId);
+            } catch {
+              // reported by the next explicit call (checkSendRoute, ensureAccount)
+            }
+          });
+        });
+      };
+      this.watcher = {
+        QueryInterface: ChromeUtils.generateQI(["nsIObserver"]),
+        observe(_subject, topic, data) {
+          if (topic === "nsPref:changed" && !WATCHED_PREF.test(String(data))) return;
+          repair();
+        },
+      };
+      Services.obs.addObserver(this.watcher, "message-smtpserver-removed");
+      for (const branch of WATCHED_BRANCHES) {
+        Services.prefs.addObserver(branch, this.watcher);
+      }
+    }
+
+    onShutdown() {
+      const watcher = this.watcher;
+      this.watcher = null;
+      if (!watcher) return;
+      try {
+        Services.obs.removeObserver(watcher, "message-smtpserver-removed");
+      } catch {
+        // already gone
+      }
+      for (const branch of WATCHED_BRANCHES) {
+        try {
+          Services.prefs.removeObserver(branch, watcher);
+        } catch {
+          // already gone
+        }
+      }
+    }
 
     getAPI(context) {
       const api = this;
       const extensionId = context.extension.id;
+      this.watch(extensionId);
       /**
        * An account operation (synchronous): checked when called, run in
-       * turn, the context re-checked when its turn comes.
+       * turn, the context re-checked when its turn comes; "Local Folders"
+       * is put back on a real Local Folders server first if Thunderbird took
+       * one of ours for it.
        */
       const accounts = (what, task) => {
         checkContext(context);
         return api.accountQueue(() => {
           checkContext(context);
           try {
+            keepLocalFolders(extensionId, false);
             return task();
           } catch (e) {
             throw internal(what, e);
@@ -814,14 +1129,15 @@ var sync443Account = (() => {
             return accounts("recherche du compte", () => accountOfIdentity(extensionId, identityId));
           },
 
-          async removeAccount(accountKey) {
-            return accounts("suppression du compte", () => removeAccount(extensionId, accountKey));
+          async checkSendRoute(identityId) {
+            return accounts("vérification de l'envoi", () => {
+              const only = identityId === undefined || identityId === null ? null : key(identityId, IDENTITY_KEY, "identifiant d'identité");
+              return checkSendRoute(extensionId, only);
+            });
           },
 
-          async setSpecialUse(accountKey, folderPath, use) {
-            return accounts("usage spécial du dossier", () => {
-              setSpecialUse(extensionId, accountKey, folderPath, use);
-            });
+          async removeAccount(accountKey) {
+            return accounts("suppression du compte", () => removeAccount(extensionId, accountKey));
           },
 
           async getPassword(origin, username) {

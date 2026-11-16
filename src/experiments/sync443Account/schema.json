@@ -1,13 +1,13 @@
 [
   {
     "namespace": "sync443Account",
-    "description": "The mail accounts and the passwords of Sync443, and nothing else. An account of the extension is a local account (incoming server of type \"none\", user name = mailboxId, host name \"sync443.invalid\") whose server carries the preferences sync443.owner (the extension's id) and sync443.mailbox (the mailboxId); every operation but the creation in ensureAccount refuses an account without these marks, and always refuses the \"Local Folders\" account. Its identities send through a marked \"neutral\" outgoing server (sync443.invalid, TLS, no credentials) that cannot send. Passwords live in Thunderbird's login manager, realm \"Sync443\", under an origin written exactly https://host[:port]. Accepted from the background page only. This schema checks the argument types; the implementation checks them again with every value constraint, so that every refusal of a well-typed call is an ExtensionError whose message starts with a code: CONFIG, PERMISSION, NOT_FOUND, CONFLICT, LOCKED, UNSUPPORTED or INTERNAL.",
+    "description": "The mail accounts and the passwords of Sync443, and nothing else. An account of the extension is a local account (incoming server of type \"none\", user name = mailboxId, host name \"sync443.invalid\") whose server carries the preferences sync443.owner (the extension's id) and sync443.mailbox (the mailboxId); every operation but the creation in ensureAccount refuses an account without these marks, and always refuses the \"Local Folders\" account (the server named by mail.accountmanager.localfoldersserver, which is kept on a real Local Folders server, made before the first account of ours if the profile has none). Its identities send through a marked \"neutral\" outgoing server (127.0.0.1, port 1, TLS required, no authentication) that cannot send, never made Thunderbird's default outgoing server; the route is checked by checkSendRoute and ensureAccount, and repaired as soon as Thunderbird reports an outgoing server removed or an identity's outgoing server changed. Passwords live in Thunderbird's login manager, realm \"Sync443\", under an origin written exactly https://host[:port]. Accepted from the background page only. This schema checks the argument types; the implementation checks them again with every value constraint, so that every refusal of a well-typed call is an ExtensionError whose message starts with a code: CONFIG, PERMISSION, NOT_FOUND, CONFLICT, FILES, LOCKED, UNSUPPORTED or INTERNAL.",
     "functions": [
       {
         "name": "ensureAccount",
         "type": "function",
         "async": true,
-        "description": "ensureAccount({mailboxId, email, name, fullName}) resolves to {accountKey, identityId, created}. If an account of the extension is marked for mailboxId, it is updated: name (shown name of the account), address, full name only if the identity has none, and every identity of the account sent back to the neutral outgoing server; created is false. Otherwise a local account is created with its default folders (Inbox, Drafts, Templates, Sent, Archives, Trash, each with its special flag), an identity and, if needed, the neutral outgoing server; created is true. An existing server of the same name without the extension's marks is never adopted (CONFLICT). mailboxId: 12 lower-case hexadecimal digits; email: an address of at most 254 characters; name, fullName: 1-256 printable characters.",
+        "description": "ensureAccount({mailboxId, email, name, fullName}) resolves to {accountKey, identityId, created}. If an account of the extension is marked for mailboxId, it is updated: name (shown name of the account), address, full name only if the identity has none, the archive and junk settings, and every identity of the account sent back to the neutral outgoing server; created is false. Otherwise a local account is created with its default folders (Inbox, Drafts, Templates, Sent, Archives, Trash, each with its special flag), an identity and, if needed, the neutral outgoing server; created is true. Archive and junk settings, so that Thunderbird's own moves stay in synchronised folders: for every identity archive_granularity 0, archive_keep_folder_structure false, archive_folder = /Archives; on the incoming server moveOnSpam false. An existing server of the same name without the extension's marks is never adopted (CONFLICT). mailboxId: 12 lower-case hexadecimal digits; email: an address of at most 254 characters; name, fullName: 1-256 printable characters.",
         "parameters": [
           {
             "name": "options",
@@ -50,33 +50,26 @@
         ]
       },
       {
-        "name": "removeAccount",
+        "name": "checkSendRoute",
         "type": "function",
         "async": true,
-        "description": "removeAccount(accountKey) removes an account of the extension and its files, then the neutral outgoing server once no identity uses it, and resolves to true; to false if no account has this key. Any other account is refused (PERMISSION), \"Local Folders\" always. accountKey: \"account\" followed by digits.",
+        "description": "checkSendRoute(identityId) makes sure that the identity (without an argument: every identity of every account of the extension) sends through the extension's neutral outgoing server with its safe values (127.0.0.1, port 1, TLS required, no authentication), repairing what is needed (the neutral server is made again if it was removed). Resolves to true if something was repaired, false if all was in order, and ONLY when, afterwards, Thunderbird itself resolves each checked identity to that server; otherwise it fails, so that nothing is sent. An identity that belongs to no account of the extension is NOT_FOUND. identityId: \"id\" followed by digits. It also puts back the archive and junk settings of the accounts of the extension (not counted in its answer).",
         "parameters": [
           {
-            "name": "accountKey",
-            "type": "string"
+            "name": "identityId",
+            "type": "string",
+            "optional": true
           }
         ]
       },
       {
-        "name": "setSpecialUse",
+        "name": "removeAccount",
         "type": "function",
         "async": true,
-        "description": "setSpecialUse(accountKey, folderPath, use) gives a folder of an account of the extension this special use and no other; no other folder of the account keeps it, and for drafts, sent, templates and archives the identities of the account use this folder. folderPath: absolute path in the account (\"/Inbox/Sub\"), resolved one folder name at a time, case included; a missing folder is NOT_FOUND. use: inbox, drafts, trash, sent, junk, archives, templates or outbox.",
+        "description": "removeAccount(accountKey) removes an account of the extension, then the neutral outgoing server once no identity uses it, and resolves to true; to false if no account has this key. Its files are deleted only if their folder lies inside the profile's Mail folder and belongs to no other server; otherwise the account is removed, its files are left in place, and the call fails with FILES. Any other account is refused (PERMISSION), \"Local Folders\" always. accountKey: \"account\" followed by digits.",
         "parameters": [
           {
             "name": "accountKey",
-            "type": "string"
-          },
-          {
-            "name": "folderPath",
-            "type": "string"
-          },
-          {
-            "name": "use",
             "type": "string"
           }
         ]

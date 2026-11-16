@@ -33,10 +33,14 @@
  *                    nextAttemptAt: ms (0: none),
  *                    lastError: { code, message, at } | null,
  *                    blocked: { code, message, at } | null,
- *                    pendingDeletes: number }
+ *                    pendingDeletes: number,
+ *                    failedItems: number }
  *                  blocked.code "MASS_DELETE": deletions from the server held
  *                  back by the mass-deletion threshold (pendingDeletes of them),
- *                  waiting for "Confirmer les suppressions".
+ *                  waiting for "Confirmer les suppressions" (syncMailbox with
+ *                  confirmDeletes) or "Garder les copies locales" (discardDeletes).
+ *                  failedItems: messages whose import keeps failing (tried again
+ *                  at every sync), shown after the status when there are any.
  *
  * { type: "saveMailbox", mailbox: MailboxInput, password: string | null }
  *   → { ok: true, id }
@@ -63,6 +67,12 @@
  *   apply the deletions held back by the mass-deletion threshold (sent only
  *   by "Confirmer les suppressions").
  *
+ * { type: "discardDeletes", id } → { ok: true }
+ *   The deletions held back by the mass-deletion threshold are dropped: the
+ *   local copies stay, the folders concerned are synchronised again with the
+ *   server, and a sync starts (sent only by "Garder les copies locales",
+ *   after the user confirmed).
+ *
  * { type: "getLog" }  → { ok: true, entries: [{ t, level, msg, details? }], debugUntil }
  *   (log.getLog(); debugUntil: ms since the epoch, 0 when debugging is off)
  * { type: "clearLog" } → { ok: true }
@@ -76,19 +86,32 @@
  *   "log", "settings" → getLog again.
  */
 
-import { FREQUENCIES, PERIODS, KINDS, validateForm, formValues, statusView, frequencyLabel, periodLabel, kindsLabel, logText, debugText } from "./form.mjs";
-import { cleanText } from "../core/sanitize.mjs";
+import {
+  FREQUENCIES,
+  PERIODS,
+  KINDS,
+  FIELD_ORDER,
+  DISCARD_CONFIRM,
+  validateForm,
+  formValues,
+  statusView,
+  frequencyLabel,
+  periodLabel,
+  kindsLabel,
+  logText,
+  debugText,
+  shown,
+} from "./form.mjs";
+import { MAILBOX_ID } from "../core/ids.mjs";
 import { SYNC_KINDS } from "../sync/store.mjs";
 
 const api = globalThis.messenger ?? globalThis.browser;
-const MAILBOX_ID = /^[a-f0-9]{12}$/;
-const FIELDS = new Set(["email", "password", "name", "server", "username", "syncMinutes", "filterType", "sync"]);
+const FIELDS = new Set(FIELD_ORDER);
 const WATCHED = /^mb\/[a-f0-9]{12}\/(?:health|pendingDeletes|status)$/;
 const PASSWORD_HINT_NEW = "Si le serveur le permet, préférez un mot de passe d'application réservé à ActiveSync.";
 const PASSWORD_HINT_EDIT = "Laissez vide pour garder le mot de passe enregistré. Il faut le retaper si le serveur ou l'identifiant change.";
 
 const $ = (id) => document.getElementById(id);
-const shown = (s, max = 300) => cleanText(typeof s === "string" ? s : "", { max, singleLine: true, stripBidi: true }).trim();
 const errorText = (res, fallback) => shown(res?.error) || fallback;
 const labelOf = (mb) => shown(mb?.name) || shown(mb?.email) || "sans nom";
 
@@ -177,7 +200,8 @@ function createItem(id) {
 
   const mass = element("div", "mb-mass");
   const massButton = button("Confirmer les suppressions", "primary", () => syncNow(id, true));
-  mass.append(massButton);
+  const keepButton = button("Garder les copies locales", "", () => keepLocalCopies(id));
+  mass.append(massButton, keepButton);
 
   const actions = element("div", "mb-actions");
   const syncButton = button("Synchroniser", "", () => syncNow(id, false));
@@ -195,9 +219,9 @@ function createItem(id) {
   confirm.append(question, yes, no);
 
   // Each button says which mailbox it acts on.
-  for (const b of [massButton, syncButton, editButton, removeButton]) b.setAttribute("aria-describedby", name.id);
+  for (const b of [massButton, keepButton, syncButton, editButton, removeButton]) b.setAttribute("aria-describedby", name.id);
   li.append(title, meta, status, mass, actions, confirm);
-  return { li, name, email, meta, status, mass, actions, confirm, question, removeButton, no, buttons: [massButton, syncButton, editButton, removeButton, yes, no] };
+  return { li, name, email, meta, status, mass, actions, confirm, question, removeButton, no, buttons: [massButton, keepButton, syncButton, editButton, removeButton, yes, no] };
 }
 
 function updateItem(item, mb) {
@@ -205,7 +229,7 @@ function updateItem(item, mb) {
   const email = shown(mb.email);
   item.name.textContent = label;
   item.email.textContent = email !== label ? email : "";
-  const server = shown(mb.server) || shown(typeof mb.origin === "string" ? mb.origin.replace(/^https:\/\//, "") : "");
+  const server = shown(mb.server);
   item.meta.textContent = [server, frequencyLabel(mb.syncMinutes), `courrier : ${periodLabel(mb.filterType)}`, kindsLabel(mb.sync)].join(" · ");
   const view = statusView(mb.status);
   item.status.textContent = view.text;
@@ -253,6 +277,17 @@ async function syncNow(id, confirmDeletes) {
   renderMailboxes();
   if (res.ok === true) notice(confirmDeletes ? "Suppressions confirmées, synchronisation lancée." : "Synchronisation lancée.");
   else notice(errorText(res, "La synchronisation n'a pas pu être lancée."), { error: true });
+}
+
+async function keepLocalCopies(id) {
+  if (busy.has(id) || !window.confirm(DISCARD_CONFIRM)) return;
+  busy.add(id);
+  renderMailboxes();
+  const res = await call("discardDeletes", { id });
+  busy.delete(id);
+  renderMailboxes();
+  if (res.ok === true) notice("Copies locales gardées, synchronisation lancée.");
+  else notice(errorText(res, "Les suppressions n'ont pas pu être écartées."), { error: true });
 }
 
 function askRemove(id) {

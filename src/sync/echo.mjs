@@ -22,10 +22,24 @@
  *
  * A flag intent is matched field by field: the event of one write may
  * carry `read` and `flagged` together or separately.
+ *
+ * Imported messages are matched as a whole instead (guard): Thunderbird
+ * changes a new copy's flags several times on its own while importing it,
+ * in an order and a number that vary. For (account, folder, Message-ID)
+ * just imported, the guard holds the state accounted for (the one the
+ * engine wrote); tb/events.mjs compares each flag event's message, as it is
+ * when the event is handled, with that state: equal, there is nothing to
+ * send (our own marks, or a change already undone); different, it is the
+ * user's change, sent, and the guard now holds that state. A real change is
+ * never swallowed, and late marks of the import are not taken for one.
+ * While the engine is still writing the message (the import and the marks
+ * after it), events about it wait for the end of those writes (`ready`),
+ * so that no state half-way through is ever compared. A guard lives
+ * ECHO_TTL_MS at most.
  */
 
 export const ECHO_TTL_MS = 30_000;
-export const ECHO_MAX = 10_000;
+const ECHO_MAX = 10_000;
 
 const KINDS = new Set(["flags", "move", "delete", "folderCreate", "folderRename", "folderMove", "folderDelete"]);
 const FLAG_FIELDS = ["read", "flagged"];
@@ -68,6 +82,7 @@ export class EchoRegistry {
   #head = 0;
   #live = new Set(); // ids of expectations not yet consumed, retracted or expired
   #next = 1;
+  #guards = new Map(); // JSON [account, path, Message-ID] → { state: { read, flagged }, expires } (insertion order)
 
   constructor({ now = () => Date.now(), ttlMs = ECHO_TTL_MS, max = ECHO_MAX } = {}) {
     this.#now = now;
@@ -75,7 +90,7 @@ export class EchoRegistry {
     this.#max = Math.max(1, max);
   }
 
-  /** Number of live expectations. */
+  /** Number of live expectations (tests). */
   get size() {
     this.#prune();
     return this.#live.size;
@@ -129,6 +144,39 @@ export class EchoRegistry {
     const [key] = intentKeys(accountKey, intent);
     if (key !== undefined && this.#take(key)) return null;
     return intent;
+  }
+
+  /**
+   * An imported message: its flags as the engine wrote them ({ read, flagged }).
+   * → release(): to call once the engine's writes to it are over (events wait until then).
+   */
+  guard(accountKey, path, messageId, state) {
+    let release = () => {};
+    if (typeof accountKey !== "string" || typeof path !== "string" || typeof messageId !== "string") return release;
+    const key = JSON.stringify([accountKey, path, messageId]);
+    const ready = new Promise((resolve) => (release = resolve));
+    this.#guards.delete(key);
+    while (this.#guards.size >= this.#max) this.#guards.delete(this.#guards.keys().next().value);
+    this.#guards.set(key, { state: { read: state?.read === true, flagged: state?.flagged === true }, expires: this.#now() + this.#ttl, ready });
+    return release;
+  }
+
+  /** The guard of a message: { state, ready }, or null (none, or expired). */
+  guarded(accountKey, path, messageId) {
+    const key = JSON.stringify([accountKey, path, messageId]);
+    const g = this.#guards.get(key);
+    if (!g) return null;
+    if (g.expires <= this.#now()) {
+      this.#guards.delete(key);
+      return null;
+    }
+    return { state: { ...g.state }, ready: g.ready };
+  }
+
+  /** The state now accounted for (a change sent as the user's): the guard keeps its lifetime. */
+  reguard(accountKey, path, messageId, state) {
+    const g = this.#guards.get(JSON.stringify([accountKey, path, messageId]));
+    if (g) g.state = { read: state?.read === true, flagged: state?.flagged === true };
   }
 
   #take(key) {

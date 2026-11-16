@@ -16,7 +16,9 @@
  * is anything in between. It is:
  *  - strict wherever leniency allows request smuggling or response
  *    splitting: framing headers, line endings, chunk syntax, bytes after the
- *    end of the response;
+ *    end of the response. A body must announce its length (Content-Length
+ *    or chunked): one that only ends with the connection cannot be told
+ *    from a connection cut by the network;
  *  - bounded everywhere: status line, header section, number of header
  *    lines, body, chunk size and extensions, trailers, interim responses;
  *  - incremental: any split of the input gives the same result, at a cost
@@ -124,8 +126,6 @@ const RESERVED_HEADERS = new Set([
   "keep-alive",
   "proxy-connection",
 ]);
-// Methods whose request has a meaning for content: "Content-Length: 0" when there is none.
-const CONTENT_METHODS = new Set(["POST", "PUT", "PATCH"]);
 const MAX_METHOD = 32;
 const MAX_PATH = 8 * 1024;
 const MAX_HOST = 512;
@@ -213,12 +213,13 @@ function isValidValue(value) {
 /**
  * request: { method, host, path, headers: [[name, value], ...], body: Uint8Array|null }
  * Returns the request bytes: request line, Host, the caller's headers in
- * order, Content-Length (when there is a body, "0" for POST, PUT and PATCH
- * without one), "Accept-Encoding: identity", the empty line, the body.
+ * order, Content-Length (when there is a body, "0" for a POST without one),
+ * "Accept-Encoding: identity", the empty line, the body.
  * No "Connection: close": an HTTP/1.1 server then frames every body (length
  * or chunks), so a connection cut by the network cannot pass for a complete,
- * empty answer; the caller closes the connection once the answer is read. Throws HttpError on any invalid input. Error messages
- * never contain a header value (it may be a credential).
+ * empty answer; the caller closes the connection once the answer is read.
+ * Throws HttpError on any invalid input. Error messages never contain a
+ * header value (it may be a credential).
  */
 export function serializeRequest(request) {
   if (request === null || typeof request !== "object") fail("requête invalide");
@@ -241,7 +242,7 @@ export function serializeRequest(request) {
     head += `${name}: ${value}\r\n`;
   }
   if (body) head += `Content-Length: ${body.length}\r\n`;
-  else if (CONTENT_METHODS.has(method)) head += "Content-Length: 0\r\n";
+  else if (method === "POST") head += "Content-Length: 0\r\n";
   head += "Accept-Encoding: identity\r\n\r\n";
 
   // Everything in `head` was checked to be ASCII.
@@ -318,13 +319,12 @@ class BodyBuffer {
 const S_STATUS = 0;
 const S_HEADERS = 1;
 const S_LENGTH = 2; // Content-Length body
-const S_CLOSE = 3; // body delimited by the end of the connection
-const S_CHUNK_SIZE = 4;
-const S_CHUNK_DATA = 5;
-const S_CHUNK_CR = 6; // CRLF after the chunk data
-const S_CHUNK_LF = 7;
-const S_TRAILERS = 8;
-const S_DONE = 9;
+const S_CHUNK_SIZE = 3;
+const S_CHUNK_DATA = 4;
+const S_CHUNK_CR = 5; // CRLF after the chunk data
+const S_CHUNK_LF = 6;
+const S_TRAILERS = 7;
+const S_DONE = 8;
 
 function mergeLimits(limits) {
   if (limits === undefined || limits === null) return HTTP_LIMITS;
@@ -347,11 +347,12 @@ function mergeLimits(limits) {
  *   p.done;         // true once a complete final response was parsed
  *   p.response;     // { status, reason, headers: Map<lowercase name, string[]>, body } once done, else null
  * Bytes after the end of the response are an error (no pipelining). The
- * parser copies what it keeps: the caller may reuse its buffers.
+ * parser copies what it keeps: the caller may reuse its buffers. The
+ * response to a HEAD (or CONNECT) request is not handled: those methods
+ * are refused.
  */
 export class ResponseParser {
   #limits;
-  #head; // true for a HEAD request: the response never has a body
   #state = S_STATUS;
   #error = null;
   #ended = false;
@@ -375,18 +376,13 @@ export class ResponseParser {
   #body = null;
   #remaining = 0;
   #trailerBytes = 0;
-  #closeDelimited = true;
 
   constructor(options = {}) {
     if (options === null || typeof options !== "object") fail("options invalides");
-    const { method = "GET", limits, closeDelimited = true } = options;
+    const { method = "GET", limits } = options;
     if (!isToken(method)) fail("méthode invalide");
-    if (method === "CONNECT") fail("méthode CONNECT non prise en charge");
-    this.#head = method === "HEAD";
+    if (method === "CONNECT" || method === "HEAD") fail(`méthode ${method} non prise en charge`);
     this.#limits = mergeLimits(limits);
-    // false: a body must announce its length (Content-Length or chunked). A
-    // body that only ends with the connection cannot be told from a cut one.
-    this.#closeDelimited = closeDelimited !== false;
   }
 
   get done() {
@@ -433,10 +429,6 @@ export class ResponseParser {
     if (this.#ended) return;
     this.#ended = true;
     if (this.#state === S_DONE) return;
-    if (this.#state === S_CLOSE) {
-      this.#finish();
-      return;
-    }
     if (!this.#received) fail("connexion fermée sans réponse");
     fail("réponse incomplète : connexion fermée trop tôt");
   }
@@ -470,10 +462,6 @@ export class ResponseParser {
           }
           break;
         }
-        case S_CLOSE:
-          this.#body.append(chunk, i, n);
-          i = n;
-          break;
         case S_CHUNK_CR:
           if (chunk[i] !== CR) fail("CRLF manquant après les données d'un bloc");
           i++;
@@ -663,7 +651,7 @@ export class ResponseParser {
       if (asciiLower(v) !== "identity") fail("codage de contenu non pris en charge (identity demandé)");
     }
     this.#body = new BodyBuffer(this.#limits.maxBodyBytes);
-    if (this.#head || this.#status === 204 || this.#status === 304) {
+    if (this.#status === 204 || this.#status === 304) {
       // No content, whatever the framing headers say (RFC 9112 section 6.3).
       this.#finish();
       return;
@@ -695,8 +683,7 @@ export class ResponseParser {
       this.#state = S_LENGTH;
       return;
     }
-    if (!this.#closeDelimited) fail("réponse sans longueur annoncée (Content-Length ou chunked attendu)");
-    this.#state = S_CLOSE;
+    fail("réponse sans longueur annoncée (Content-Length ou chunked attendu)");
   }
 
   // chunk-size [ chunk-ext ] CRLF

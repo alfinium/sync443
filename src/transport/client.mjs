@@ -34,6 +34,7 @@ import { provisionRequest, parseProvision, topStatus, ProtocolError, DEBUG_SHOWN
 import { evaluateTls, tlsMessage } from "../core/tls-policy.mjs";
 import { serializeRequest, ResponseParser, HttpError, headerValue } from "../core/http1.mjs";
 import { EAS_PATH } from "../core/server.mjs";
+import { ORIGIN, DEVICE_ID, TLS_PIN } from "../core/ids.mjs";
 
 export const ERR = Object.freeze({
   AUTH: "AUTH", // password refused
@@ -55,12 +56,13 @@ export const ERR = Object.freeze({
 /** No automatic retry for these: the user has to act. */
 export const FATAL = new Set([ERR.AUTH, ERR.DENIED, ERR.WIPE_REQUESTED, ERR.CONFIG]);
 
+/** A typed failure: `code` (one of ERR), a French message for the user, and optional extra fields (retryAfterMs, sent). */
 export class EasError extends Error {
-  constructor(code, message, extra = {}) {
+  constructor(code, message, details = {}) {
     super(message);
+    Object.assign(this, Object.fromEntries(Object.entries(details).filter(([key]) => key !== "code" && key !== "message")));
     this.name = "EasError";
     this.code = code;
-    for (const [k, value] of Object.entries(extra)) if (k !== "code" && k !== "message") this[k] = value;
   }
 }
 
@@ -70,7 +72,6 @@ const WIPE_STATUS = "140";
 // User or device not allowed: disabled for sync, blocked, access denied,
 // account disabled, too many devices ([MS-ASCMD] 2.2.2).
 const DENIED_STATUS = new Set(["126", "127", "129", "130", "131", "177"]);
-const ORIGIN = /^https:\/\/(?:[a-z0-9.-]{1,253}|\[[0-9a-f:]{2,39}\])(?::\d{1,5})?$/;
 const CONTROL = /[\x00-\x1f\x7f]/;
 const MAX_READ_WAIT_MS = 600_000; // longest wait of one connector.read()
 const WRITE_PIECE = 1024 * 1024; // largest connector.write() the privileged module accepts
@@ -89,9 +90,17 @@ export const DEFAULTS = Object.freeze({
  * @param {string} o.username
  * @param {string} o.password
  * @param {string} o.deviceId    1-32 letters or digits
+ * @param {string} [o.deviceType]  DeviceType of every request: 1-32 printable ASCII characters (DEFAULTS.deviceType)
+ * @param {string} [o.userAgent]   User-Agent header, also sent in the Provision device information:
+ *        1-128 printable ASCII characters, no space at either end (DEFAULTS.userAgent)
  * @param {{open: Function, write: Function, read: Function, close: Function}} o.connector
  *        verified connections (browser.sync443Net, or a test double)
- * @param {string[]} [o.pins]    SHA-256 fingerprints the user trusts for this server (private authority)
+ * @param {string[]} [o.pins]    SHA-256 fingerprints (64 upper-case hex digits) trusted for this
+ *        server's certificate or root (core/tls-policy.mjs). Only test builds set them for now;
+ *        a setting will come later.
+ * @param {{set(f: Function, ms: number): any, clear(id: any): void}|null} [o.timers]
+ *        bound the write phase (default: setTimeout and clearTimeout when the engine has them;
+ *        without timers, writes rely on the connector's own stall limit)
  * @param {{asVersion?: string|null, policyKey?: string|null}} [o.proto]
  * @param {(proto) => Promise<void>} [o.saveProto]
  * @param {{debugEnabled: boolean, debug(m, d?): void}} [o.log]
@@ -122,11 +131,11 @@ export class EasClient {
       throw new EasError(ERR.CONFIG, "Identifiant ou mot de passe manquant.");
     }
     // Refused here rather than discovered later as a "server error" retried for ever.
-    if (o.username.includes(":") || CONTROL.test(o.username + o.password) || /\p{Cs}/u.test(o.username + o.password)) {
+    if (o.username.includes(":") || CONTROL.test(o.username + o.password) || !o.username.isWellFormed() || !o.password.isWellFormed()) {
       throw new EasError(ERR.CONFIG, "Identifiant ou mot de passe contenant un caractère non autorisé.");
     }
     if (o.username.length > 256 || o.password.length > 1024) throw new EasError(ERR.CONFIG, "Identifiant ou mot de passe trop long.");
-    if (typeof o.deviceId !== "string" || !/^[A-Za-z0-9]{1,32}$/.test(o.deviceId)) {
+    if (typeof o.deviceId !== "string" || !DEVICE_ID.test(o.deviceId)) {
       throw new EasError(ERR.CONFIG, "Identifiant d'appareil invalide.");
     }
     const deviceType = o.deviceType ?? DEFAULTS.deviceType;
@@ -140,7 +149,7 @@ export class EasClient {
       throw new EasError(ERR.CONFIG, "Connexion vérifiée indisponible : aucune requête ne sera envoyée.");
     }
     const pins = o.pins ?? [];
-    if (!Array.isArray(pins) || pins.some((p) => typeof p !== "string" || !/^[0-9A-F]{64}$/.test(p))) {
+    if (!Array.isArray(pins) || pins.some((p) => typeof p !== "string" || !TLS_PIN.test(p))) {
       throw new EasError(ERR.CONFIG, "Empreinte de certificat invalide.");
     }
     this.#server = Object.freeze({ host: server.host, port: server.port ?? null, origin: server.origin, url: server.url });
@@ -167,11 +176,6 @@ export class EasClient {
     this.#authorization = `Basic ${base64(encodeUtf8(`${o.username}:${o.password}`))}`;
   }
 
-  /** The configured server (read-only). */
-  get server() {
-    return this.#server;
-  }
-
   #close(id) {
     try {
       Promise.resolve(this.#connector.close(id)).catch(() => {});
@@ -195,9 +199,9 @@ export class EasClient {
       headers: [["User-Agent", this.userAgent], ["Authorization", this.#authorization], ...headers],
       body,
     });
-    // A body must announce its length: a connection cut by the network then
-    // cannot pass for a complete, empty answer.
-    const parser = new ResponseParser({ method, limits: { maxBodyBytes: maxBytes }, closeDelimited: false });
+    // The parser requires every body to announce its length: a connection cut
+    // by the network cannot pass for a complete, empty answer.
+    const parser = new ResponseParser({ method, limits: { maxBodyBytes: maxBytes } });
     const deadline = this.now() + timeoutMs;
     const remaining = () => {
       const left = Math.ceil(deadline - this.now());
@@ -233,7 +237,7 @@ export class EasClient {
       // The certificate first. Refused: nothing has been written, nothing will be.
       const verdict = evaluateTls(conn.securityInfo, { pins: this.#pins });
       if (!verdict.ok) {
-        throw new EasError(ERR.TLS, tlsMessage(verdict.reason, verdict.issuer), { reason: verdict.reason, route: conn.route });
+        throw new EasError(ERR.TLS, tlsMessage(verdict.reason, verdict.issuer));
       }
       written = true; // from here on, the request (with the password) may have left
       await this.#write(conn.id, request, remaining());
@@ -311,8 +315,8 @@ export class EasClient {
 
   #checkHttp(resp, what) {
     const s = resp.status;
-    if (s === 401) throw new EasError(ERR.AUTH, "Identifiant ou mot de passe refusé par le serveur.", { status: s });
-    if (s === 403) throw new EasError(ERR.DENIED, "Le serveur refuse l'accès ActiveSync à ce compte (HTTP 403).", { status: s });
+    if (s === 401) throw new EasError(ERR.AUTH, "Identifiant ou mot de passe refusé par le serveur.");
+    if (s === 403) throw new EasError(ERR.DENIED, "Le serveur refuse l'accès ActiveSync à ce compte (HTTP 403).");
     if (s === 451) {
       // Only the host name is shown, never free text from the server.
       const m = /^https:\/\/([a-z0-9.-]{1,253})(?::\d{1,5})?(?:[/?#]|$)/i.exec(headerValue(resp.headers, "x-ms-location") ?? "");
@@ -320,31 +324,28 @@ export class EasClient {
       throw new EasError(
         ERR.HTTP,
         `Le serveur indique une autre adresse${where ? ` (${where})` : ""}. Vérifiez-la, puis modifiez la boîte : le mot de passe ne lui est pas envoyé automatiquement.`,
-        { status: s },
       );
     }
     if (s === 429 || s === 503) {
       throw new EasError(ERR.BUSY, `${what} : serveur occupé (HTTP ${s}).`, {
-        status: s,
         retryAfterMs: retryAfter(headerValue(resp.headers, "retry-after"), this.now()),
       });
     }
-    if ((s < 200 || s > 299) && s !== 449) throw new EasError(ERR.HTTP, `${what} : erreur HTTP ${s}.`, { status: s });
+    if ((s < 200 || s > 299) && s !== 449) throw new EasError(ERR.HTTP, `${what} : erreur HTTP ${s}.`);
   }
 
   // ── Version ─────────────────────────────────────────────────────────────
 
-  /** OPTIONS: versions and commands the server offers. */
+  /** OPTIONS: the protocol versions the server offers. */
   async options({ signal } = {}) {
     const resp = await this.#exchange("OPTIONS", { signal, timeoutMs: 30_000, maxBytes: 64 * 1024 });
     this.#checkHttp(resp, "OPTIONS");
-    const list = (name) =>
-      (resp.headers.get(name) ?? [])
-        .join(",")
-        .split(",")
-        .map((s) => s.trim())
-        .filter((s) => /^[A-Za-z0-9.]{1,32}$/.test(s));
-    return { versions: list("ms-asprotocolversions"), commands: list("ms-asprotocolcommands") };
+    const versions = (resp.headers.get("ms-asprotocolversions") ?? [])
+      .join(",")
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => /^[A-Za-z0-9.]{1,32}$/.test(s));
+    return { versions };
   }
 
   async ensureVersion({ signal } = {}) {
@@ -398,7 +399,8 @@ export class EasClient {
     if (DENIED_STATUS.has(status)) {
       throw new EasError(ERR.DENIED, `Le serveur refuse la synchronisation de cet appareil ou de ce compte (Status ${status}).`);
     }
-    return { needsProvision: NEEDS_PROVISION.has(status ?? ""), doc };
+    const needsProvision = status !== null && NEEDS_PROVISION.has(status);
+    return { needsProvision, doc };
   }
 
   /**
@@ -480,7 +482,6 @@ function connectorError(e) {
     case "PROXY":
       return new EasError(ERR.NETWORK, "Le proxy de ce réseau refuse la connexion au serveur.");
     case "CONFIG":
-    case "LIMIT":
       // The client checks every argument it passes: what remains is the
       // connection limit shared by all mailboxes. Temporary: retried later.
       return new EasError(ERR.BUSY, "Connexion momentanément impossible (trop de connexions ouvertes).");

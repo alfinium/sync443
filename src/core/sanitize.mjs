@@ -14,13 +14,13 @@ const CONTROLS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g;
 const LINE_BREAKS = /\r\n?|[\u2028\u2029]/g;
 // Bidirectional overrides and isolates: they can disguise a name or a file extension.
 const BIDI = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
-// Invisible characters (zero-width, soft hyphen, BOM): they make two names look alike.
 // Visible-looking blanks that are letters or symbols for Unicode.
 const BLANK_LOOKALIKES = new RegExp(`[${String.fromCodePoint(0x2800, 0x3164, 0xffa0, 0x115f, 0x1160)}]`, "gu");
+// Invisible characters (zero-width, soft hyphen, BOM): they make two names look alike.
 const INVISIBLE = /[\u00ad\u180e\u200b-\u200d\u2060\ufeff]/g;
 
 /** Cut to at most `max` UTF-16 units without splitting a surrogate pair. */
-function cut(s, max) {
+export function cut(s, max) {
   if (s.length <= max) return s;
   let end = max;
   const c = s.charCodeAt(end - 1);
@@ -42,12 +42,12 @@ export function cleanText(value, { max = 64 * 1024, singleLine = false, stripBid
 }
 
 /** No control character (including tab and line breaks) at all. */
-const hasControl = (s) => /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(s);
+export const hasControl = (s) => /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(s);
 
 /** ServerId, CollectionId, ParentId, ClientId: 1 to 64 characters, no control ([MS-ASCMD]). */
 export function itemId(value) {
   if (typeof value !== "string" || value.length < 1 || value.length > 64 || hasControl(value)) return null;
-  if (/\p{Cs}/u.test(value)) return null; // lone surrogate: not text
+  if (!value.isWellFormed()) return null; // lone surrogate: not text
   return value;
 }
 
@@ -78,25 +78,8 @@ export function flag(value) {
 }
 
 /**
- * EAS date-time: compact "20261115T143000Z" or extended
- * "2026-11-15T14:30:00.000Z" ([MS-ASDTYPE]), always UTC. Returns a Date.
- */
-export function dateTime(value) {
-  if (typeof value !== "string") return null;
-  const m =
-    /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/.exec(value) ??
-    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?Z$/.exec(value);
-  if (!m) return null;
-  const [y, mo, d, h, mi, s] = m.slice(1, 7).map(Number);
-  const ms = m[7] ? Number(m[7].padEnd(3, "0")) : 0; // ".5" is 500 ms
-  if (y < 1601 || y > 9999 || mo < 1 || mo > 12 || d < 1 || d > 31 || h > 23 || mi > 59 || s > 59) return null;
-  const date = new Date(Date.UTC(y, mo - 1, d, h, mi, s, ms));
-  return date.getUTCDate() === d && date.getUTCMonth() === mo - 1 ? date : null; // rejects 31 February
-}
-
-/**
  * E-mail address (addr-spec, dot-atom form only), at most 254 characters.
- * Enough for every address a server sends; anything else is refused.
+ * Enough for ordinary mailbox addresses; anything else is refused.
  */
 export function emailAddress(value) {
   if (typeof value !== "string") return null;
@@ -120,6 +103,24 @@ export function folderName(value) {
   // Something visible must remain (a blank braille pattern does not count).
   if (!/[\p{L}\p{N}\p{P}\p{S}]/u.test(s.replace(BLANK_LOOKALIKES, ""))) return null;
   if (s === "." || s === "..") return null;
+  return s;
+}
+
+/**
+ * A person's or a mailbox's display name (typed by the user, or the
+ * UserDisplayName sent by the server): one line, NFC, at most `max`
+ * characters, without controls, bidirectional or format characters,
+ * default-ignorable, private-use, unassigned or lone-surrogate code points
+ * (the account experiment refuses all of them). → the name, or null when
+ * nothing visible remains.
+ */
+export function personName(value, { max = 256 } = {}) {
+  if (typeof value !== "string") return null;
+  let s = cleanText(value.normalize("NFC"), { max: 4 * max, singleLine: true, stripBidi: true });
+  s = s.replace(/[\p{Cf}\p{Default_Ignorable_Code_Point}\p{Co}\p{Cn}\p{Cs}]/gu, "");
+  s = s.replace(/(\p{M}{4})\p{M}+/gu, "$1");
+  s = cut(s.replace(/\s+/gu, " ").trim(), max).trim();
+  if (!/[\p{L}\p{N}\p{P}\p{S}]/u.test(s.replace(BLANK_LOOKALIKES, ""))) return null;
   return s;
 }
 

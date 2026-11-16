@@ -4,10 +4,14 @@
 /**
  * SHA-256 (FIPS 180-4, sections 4.1.2, 4.2.2, 5.1.1, 5.3.3 and 6.2), for
  * the JavaScriptCore shell and Thunderbird alike: no crypto.subtle (which
- * is asynchronous and absent from jsc). Used to name messages that arrive
- * without a Message-ID, not for any security decision.
+ * is asynchronous and absent from jsc). Used for the Message-ID given to a
+ * message that has none or to a distinct copy, and for the fingerprint of
+ * each imported message (sync/mail.mjs): a server item is attached to an
+ * existing copy only when its fingerprint matches, which relies on
+ * SHA-256's resistance to collisions.
  *
  *   sha256(bytes: Uint8Array) → Uint8Array(32)
+ *   toHex(bytes) → lowercase hexadecimal
  *
  * Words are kept as signed 32-bit integers (`| 0`); additions wrap modulo
  * 2^32 as the standard requires.

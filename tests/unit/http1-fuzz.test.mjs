@@ -61,7 +61,7 @@ const isBidiOrInvisible = (x) =>
   x === 0x061c || x === 0x200e || x === 0x200f || (x >= 0x202a && x <= 0x202e) || (x >= 0x2066 && x <= 0x2069) || x === 0x00ad || (x >= 0x200b && x <= 0x200d) || x === 0x2060 || x === 0xfeff;
 
 /** Invariants of every accepted response. */
-function checkResponse(r, L, method, data) {
+function checkResponse(r, L, data) {
   const where = ` pour [${hex(data)}]`;
   assert(Number.isInteger(r.status) && r.status >= 200 && r.status <= 599, `statut final ${r.status}${where}`);
   assert(typeof r.reason === "string" && r.reason === r.reason.trim(), `raison non nettoyée${where}`);
@@ -86,7 +86,7 @@ function checkResponse(r, L, method, data) {
   }
   assert(lines <= L.maxHeaders, `maxHeaders dépassé (${lines})${where}`);
   assert(r.body instanceof Uint8Array && r.body.length <= L.maxBodyBytes, `maxBodyBytes dépassé${where}`);
-  const noBody = method === "HEAD" || r.status === 204 || r.status === 304;
+  const noBody = r.status === 204 || r.status === 304;
   if (noBody) {
     eq(r.body.length, 0, `corps d'une réponse sans corps${where}`);
   } else {
@@ -97,6 +97,8 @@ function checkResponse(r, L, method, data) {
     } else if (cl) {
       assert(cl.every((v) => v === cl[0]) && /^[0-9]+$/.test(cl[0]), `Content-Length accepté : ${cl}${where}`);
       eq(r.body.length, Number(cl[0]), `longueur du corps${where}`);
+    } else {
+      assert(false, `corps sans longueur annoncée accepté${where}`);
     }
   }
   for (const v of r.headers.get("content-encoding") ?? []) eq(asciiLower(v), "identity", `Content-Encoding accepté${where}`);
@@ -107,9 +109,9 @@ function checkResponse(r, L, method, data) {
  * { error: message }; anything but an HttpError fails the test, as does an
  * internal error, a slow parse, or a broken invariant.
  */
-function run(data, { method = "POST", limits = TIGHT, sizes = null } = {}) {
+function run(data, { limits = TIGHT, sizes = null } = {}) {
   const started = Date.now();
-  const p = new ResponseParser({ method, limits });
+  const p = new ResponseParser({ method: "POST", limits });
   let error = null;
   try {
     let at = 0;
@@ -140,7 +142,7 @@ function run(data, { method = "POST", limits = TIGHT, sizes = null } = {}) {
     return { error: error.message };
   }
   assert(p.done, `end() accepté mais réponse non terminée pour [${hex(data)}]`);
-  checkResponse(p.response, { ...HTTP_LIMITS, ...limits }, method, data);
+  checkResponse(p.response, { ...HTTP_LIMITS, ...limits }, data);
   return { response: p.response };
 }
 
@@ -209,8 +211,12 @@ test("fuzz http1 : flux d'octets aléatoires, HttpError ou réponse valide, mêm
     let s = rnd() < 0.6 ? "HTTP/1.1 200 OK\r\n" : "";
     const n = 1 + Math.floor(rnd() * 60);
     for (let k = 0; k < n; k++) s += rnd() < 0.85 ? PIECES[Math.floor(rnd() * PIECES.length)] : ch(Math.floor(rnd() * 256));
-    const method = rnd() < 0.2 ? "HEAD" : "POST";
-    const result = runAllSplits(b(s), { method }, rnd);
+    // A body must announce its length: for half the streams, what follows the first empty line gets one.
+    if (rnd() < 0.5) {
+      const end = s.indexOf("\r\n\r\n");
+      if (end >= 0) s = `${s.slice(0, end + 2)}Content-Length: ${s.length - end - 4}\r\n${s.slice(end + 2)}`;
+    }
+    const result = runAllSplits(b(s), {}, rnd);
     if (result.response) stats.accepted++;
     else stats.refused++;
   }
@@ -223,7 +229,7 @@ const CORPUS = [
   "HTTP/1.1 200 OK\r\nContent-Type: application/vnd.ms-sync.wbxml\r\nContent-Length: 12\r\n\r\n\x03\x01j\x00\x00\x07VR\x030\x00\x01",
   "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nX-A: 1\r\n\r\n5;e=1\r\nhello\r\n4\r\n abc\r\n0\r\nT: v\r\n\r\n",
   "HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"x\"\r\nContent-Length: 0\r\n\r\n",
-  "HTTP/1.0 200 OK\r\nX-A: 1\r\nX-A: 2\r\n\r\nclose-delimited body",
+  "HTTP/1.0 200 OK\r\nX-A: 1\r\nX-A: 2\r\nContent-Length: 4\r\n\r\nbody",
   "HTTP/1.1 204 No Content\r\nX-B: b\r\n\r\n",
   "HTTP/1.1 304 Not Modified\r\nContent-Length: 50\r\n\r\n",
   "HTTP/1.1 449 Retry after sending a PROVISION command\r\nContent-Length: 0\r\nMS-Server-ActiveSync: 15.1\r\n\r\n",
@@ -274,9 +280,8 @@ test("fuzz http1 : mutations de réponses valides, HttpError ou réponse valide,
   const stats = { accepted: 0, refused: 0 };
   for (let round = 0; round < 5000; round++) {
     const data = mutate(bases[Math.floor(rnd() * bases.length)], rnd);
-    const method = rnd() < 0.1 ? "HEAD" : "POST";
     const limits = rnd() < 0.5 ? TIGHT : HTTP_LIMITS;
-    const result = runAllSplits(data, { method, limits }, rnd);
+    const result = runAllSplits(data, { limits }, rnd);
     if (result.response) stats.accepted++;
     else stats.refused++;
   }
@@ -360,10 +365,9 @@ function genResponse(rnd) {
     section(randomFields(int(4)));
   }
 
-  const method = rnd() < 0.15 ? "HEAD" : "POST";
   const status = pick([200, 200, 200, 201, 204, 206, 304, 400, 401, 403, 404, 449, 451, 500, 503]);
-  const noBody = method === "HEAD" || status === 204 || status === 304;
-  const framing = noBody ? pick(["none", "ignored-length"]) : pick(["length", "length2", "chunked", "close"]);
+  const noBody = status === 204 || status === 304;
+  const framing = noBody ? pick(["none", "ignored-length"]) : pick(["length", "length2", "chunked"]);
   const body = new Uint8Array(int(4) === 0 ? 0 : int(300)).map(() => int(256));
   const reason = reasonText();
   statusLine(framing === "chunked" || rnd() < 0.8 ? "1" : "0", status, reason);
@@ -394,7 +398,7 @@ function genResponse(rnd) {
     for (const x of bytes) s += ch(x);
     return s;
   };
-  if (framing === "length" || framing === "length2" || framing === "close") {
+  if (framing === "length" || framing === "length2") {
     wire += latin1(body);
     expectedBody = body;
     need.maxBodyBytes = body.length;
@@ -433,14 +437,14 @@ function genResponse(rnd) {
     if (!headers.has(key)) headers.set(key, []);
     headers.get(key).push(d);
   }
-  return { data: b(wire), method, need, expected: { status, reason, headers, body: expectedBody } };
+  return { data: b(wire), need, expected: { status, reason, headers, body: expectedBody } };
 }
 
 test("fuzz http1 : réponses valides aléatoires sous des limites aléatoires (acceptée ssi chaque limite suffit)", () => {
   const rnd = prng(0x9112);
   const stats = { accepted: 0, refused: 0 };
   for (let round = 0; round < 2500; round++) {
-    const { data, method, need, expected } = genResponse(rnd);
+    const { data, need, expected } = genResponse(rnd);
     const limits = {};
     for (const key of Object.keys(need)) {
       const r = rnd();
@@ -450,7 +454,7 @@ test("fuzz http1 : réponses valides aléatoires sous des limites aléatoires (a
     }
     const effective = { ...HTTP_LIMITS, ...limits };
     const fits = Object.keys(need).every((key) => need[key] <= effective[key]);
-    const result = runAllSplits(data, { method, limits }, rnd);
+    const result = runAllSplits(data, { limits }, rnd);
     if (fits) {
       eq(result, { response: expected }, `réponse attendue (limites ${JSON.stringify(limits)}) pour [${hex(data)}]`);
       stats.accepted++;
@@ -508,13 +512,13 @@ test("fuzz http1 : flux sans fin refusés dans les limites, sans blocage", () =>
   endless(chunked, "FFFF\r\n", L.maxBodyBytes + 6 * 0x10000);
   endless(`${chunked}0\r\n`, "T: 1\r\n", L.maxTrailerBytes);
   endless(`${chunked}0\r\nT: `, "v", L.maxTrailerBytes);
-  endless(`${ok}\r\n`, "body", L.maxBodyBytes);
+  endless(`${ok}\r\n`, "body", 0); // no announced length: refused at the end of the header section
   endless(`${ok}Content-Length: 5\r\n\r\n`, "hello", 10);
   endless("HTTP/1.1 204 No Content\r\n\r\n", "x", 1);
   endless("", "\r\n", 2);
   endless("", ch(0), L.maxStatusLine);
   const tight = { ...TIGHT };
-  endless(`${ok}\r\n`, "x", tight.maxBodyBytes, tight);
+  endless(chunked, "1\r\nX\r\n", 6 * tight.maxBodyBytes, tight);
   endless(ok, "X: y\r\n", tight.maxHeaderBytes, tight);
 });
 
@@ -576,27 +580,6 @@ test("perf http1 : 16 Mio chunked en morceaux de 1 à 7 octets", () => {
     assert(p.done, "réponse terminée");
     eq(p.response.body.length, MIB16);
     eq(p.response.body[MIB16 - 1], (blocks - 1) & 0xff);
-  });
-});
-
-test("perf http1 : 16 Mio jusqu'à la fermeture, et refus dès l'octet en trop", () => {
-  timed("16 Mio fermeture", () => {
-    const p = new ResponseParser({});
-    p.push(b("HTTP/1.1 200 OK\r\n\r\n"));
-    const piece = new Uint8Array(1000).fill(7);
-    let left = MIB16;
-    while (left > 0) {
-      const n = Math.min(left, piece.length);
-      p.push(n === piece.length ? piece : piece.subarray(0, n));
-      left -= n;
-    }
-    let refused = false;
-    try {
-      p.push(new Uint8Array(1));
-    } catch (e) {
-      refused = e instanceof HttpError;
-    }
-    assert(refused, "octet au-delà de maxBodyBytes refusé");
   });
 });
 

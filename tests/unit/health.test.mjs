@@ -45,7 +45,8 @@ test("santé : Retry-After du serveur respecté s'il est plus long", () => {
 });
 
 test("santé : un succès efface tout", () => {
-  const h = recordSuccess(recordFailure(initialHealth(), { code: "NETWORK" }, 0), 5000);
+  const h = recordSuccess(5000); // whatever came before
+  eq(h.lastError, null);
   eq(h.failures, 0);
   eq(h.lastSuccessAt, 5000);
   eq(canSyncAutomatically(h, 5000), { ok: true });

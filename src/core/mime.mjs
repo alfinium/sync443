@@ -6,8 +6,10 @@
  * read and edited as bytes: never decoded to text, so every byte that is
  * not removed comes out exactly as it went in.
  *
- *   messageIdOf(bytes)          → string | null
+ *   messageIdOf(bytes)          → string | null   (strict: see the function)
  *   ensureMessageId(bytes)      → { bytes, messageId, synthetic }
+ *   replaceMessageId(bytes, id) → bytes   (the message under another Message-ID)
+ *   dateOf(bytes), fromAddressOf(bytes), addressOf(text)   (fingerprint of a message)
  *   stripInternalHeaders(bytes) → bytes   (received messages: top-level header block)
  *   cleanDraft(bytes)           → bytes   (drafts to send: top level and every MIME part)
  *
@@ -30,12 +32,13 @@
  * named X-Account-Key, X-Identity-Key and Fcc. A removed field goes with its
  * continuation lines and its line ending; nothing else changes.
  *
- * Limits. messageIdOf only looks at the first MAX_HEADER_BYTES (1 MiB) of a
- * message. The removals are not capped: Thunderbird reads a stored header
- * block whatever its size, so a capped removal could be bypassed by padding
- * the headers. They run in one pass, in time linear in the size of the
- * message (times the nesting depth, at most MAX_MIME_DEPTH, for delimiter
- * lines), and never throw on malformed data.
+ * Limits. messageIdOf, dateOf and fromAddressOf only look at the first
+ * MAX_HEADER_BYTES (1 MiB) of a message. The removals and replaceMessageId
+ * are not capped: Thunderbird reads a stored header block whatever its
+ * size, so a capped removal could be bypassed by padding the headers. They
+ * run in one pass, in time linear in the size of the message (a delimiter
+ * line costs at most the length of the longest boundary, whatever the
+ * nesting depth), and never throw on malformed data.
  */
 
 import { sha256, toHex } from "./sha256.mjs";
@@ -158,72 +161,109 @@ function skipCfws(bytes, i, to) {
 
 // ── Message-ID ────────────────────────────────────────────────────────────
 
-/**
- * The id in a Message-ID field value bytes[from, to): the text between the
- * first "<" and the next ">", or, without angle brackets, the first word.
- * `complete` is false when the field may continue past `to` (cut by the
- * 1 MiB window): an id that is not closed within it is then refused.
- * Accepted: 1 to 998 visible ASCII characters other than "<" and ">".
- */
-function extractMessageId(bytes, from, to, complete) {
-  const i = skipCfws(bytes, from, to);
-  if (i >= to) return null;
-  let start;
-  let stop;
-  if (bytes[i] === LT) {
-    start = i + 1;
-    stop = start;
-    while (stop < to && bytes[stop] !== GT) stop++;
-    if (stop >= to) return null;
-  } else {
-    start = i;
-    stop = i;
-    while (stop < to) {
-      const b = bytes[stop];
-      if (b === SP || b === HTAB || b === CR || b === LF || b === LPAREN) break;
-      stop++;
-    }
-    if (stop >= to && !complete) return null;
-  }
-  const length = stop - start;
-  if (length < 1 || length > MAX_MESSAGE_ID) return null;
-  for (let k = start; k < stop; k++) {
-    const b = bytes[k];
-    if (b < 0x21 || b > 0x7e || b === LT || b === GT) return null;
-  }
-  return String.fromCharCode.apply(null, bytes.subarray(start, stop));
+const NUL = 0x00;
+const MAX_ID_VALUE = 2048; // raw bytes of a Message-ID field value, folding included
+// Bytes never accepted in an id: blanks and controls (by range), angle brackets, parentheses, quote, backslash.
+const ID_EXCLUDED = new Set([LT, GT, LPAREN, RPAREN, QUOTE, BACKSLASH]);
+const isIdByte = (b) => b >= 0x21 && b <= 0x7e && !ID_EXCLUDED.has(b);
+
+/** A field name of RFC 5322 (ftext: printable ASCII but the colon), nothing else. */
+function isFieldName(bytes, from, to) {
+  if (to <= from) return false;
+  for (let i = from; i < to; i++) if (bytes[i] < 0x21 || bytes[i] > 0x7e) return false;
+  return true;
 }
 
 /**
- * Message-ID of the top-level header block, without angle brackets, as
- * Thunderbird exposes it (`headerMessageId`) for a well-formed message:
- * the value of the FIRST field named Message-ID, unfolded, comments and
- * blanks around it ignored. null when there is none in the first 1 MiB,
- * when that first field is unusable (empty, no closing ">", controls,
- * blanks or non-ASCII bytes inside, more than 998 characters), or when the
- * input is not a Uint8Array.
+ * The id of an unfolded, trimmed Message-ID value bytes[from, to) skipping
+ * CR and LF: exactly "<id>" or a bare "id", with 1 to 998 visible ASCII
+ * characters other than < > ( ) " \. Anything more (a comment, a second
+ * word, text after the closing bracket) → null.
+ */
+function strictId(bytes, from, to) {
+  const value = [];
+  for (let i = from; i < to; i++) {
+    const b = bytes[i];
+    if (b === CR || b === LF) continue;
+    if (value.length >= MAX_ID_VALUE) return null;
+    value.push(b);
+  }
+  let s = 0;
+  let e = value.length;
+  while (s < e && isBlank(value[s])) s++;
+  while (e > s && isBlank(value[e - 1])) e--;
+  if (s < e && value[s] === LT) {
+    if (value[e - 1] !== GT) return null;
+    s++;
+    e--;
+  }
+  const length = e - s;
+  if (length < 1 || length > MAX_MESSAGE_ID) return null;
+  for (let k = s; k < e; k++) if (!isIdByte(value[k])) return null;
+  return String.fromCharCode.apply(null, value.slice(s, e));
+}
+
+/**
+ * Message-ID of the top-level header block, without angle brackets, read
+ * strictly so that it is the value Thunderbird stores as `headerMessageId`
+ * whichever of its readers is asked. null (the caller then gives the
+ * message an id of its own, see ensureMessageId) unless all of this holds:
+ *  - the header block ends (empty line, or end of data) within the first
+ *    MAX_HEADER_BYTES (1 MiB);
+ *  - up to the end of the Message-ID field, the block does not start with a
+ *    continuation line, holds no NUL and no lone CR, and every field line
+ *    has a colon after a well-formed name (printable ASCII, no blank:
+ *    "Message-ID :" is refused too);
+ *  - exactly one field is named Message-ID (any ASCII case, blanks before
+ *    the colon included) in the whole block;
+ *  - its value, unfolded and trimmed, is "<id>" or a bare "id" and nothing
+ *    else (no comment, no second word): 1 to 998 visible ASCII characters
+ *    other than < > ( ) " \.
+ * Also null when the input is not a Uint8Array.
  */
 export function messageIdOf(bytes) {
   if (!(bytes instanceof Uint8Array)) return null;
   const limit = Math.min(bytes.length, MAX_HEADER_BYTES);
-  const window = bytes.subarray(0, limit);
-  const lines = new Lines(window, limit);
+  const lines = new Lines(bytes, limit);
+  const nul = bytes.subarray(0, limit).indexOf(NUL); // the first NUL: only one before the field's end matters
+  // A NUL in the line, or a lone CR ending it (readers disagree on both).
+  const bad = (pos, ce) => (nul >= pos && nul < ce) || (ce < limit && bytes[ce] === CR && (ce + 1 >= bytes.length || bytes[ce + 1] !== LF));
+  let field = null; // [valueFrom, valueTo] of the Message-ID field
+  let phase = 0; // 0 before the field, 1 in it (continuation lines), 2 after it
   let pos = 0;
-  while (pos < limit) {
+  for (;;) {
+    if (pos >= limit) {
+      if (limit < bytes.length) return null; // the block goes on past the window
+      break;
+    }
     const ce = lines.contentEnd(pos);
-    if (ce === pos) return null; // empty line: end of the header block
+    if (ce === pos) break; // empty line: end of the block
+    if (ce === limit && limit < bytes.length) return null; // line cut by the window
     const next = lines.next(ce);
-    if (!isBlank(window[pos])) {
-      const colon = colonOf(window, pos, ce);
-      if (colon >= 0 && sameWord(window, pos, nameEnd(window, pos, colon), MESSAGE_ID)) {
-        let end = next;
-        while (end < limit && isBlank(window[end])) end = lines.next(lines.contentEnd(end));
-        return extractMessageId(window, colon + 1, end, end < limit || limit === bytes.length);
+    if (isBlank(bytes[pos])) {
+      if (pos === 0) return null; // a block that starts with a continuation line
+      if (phase === 1) {
+        if (bad(pos, ce)) return null;
+        field[1] = ce;
+      }
+      pos = next;
+      continue;
+    }
+    if (phase === 1) phase = 2;
+    const colon = colonOf(bytes, pos, ce);
+    const isMid = colon >= 0 && sameWord(bytes, pos, nameEnd(bytes, pos, colon), MESSAGE_ID);
+    if (phase === 2) {
+      if (isMid) return null; // a second Message-ID field: which one a reader keeps is not certain
+    } else {
+      if (bad(pos, ce) || colon < 0 || !isFieldName(bytes, pos, colon)) return null;
+      if (isMid) {
+        field = [colon + 1, ce];
+        phase = 1;
       }
     }
     pos = next;
   }
-  return null;
+  return field ? strictId(bytes, field[0], field[1]) : null;
 }
 
 /** Bytes of an ASCII string. */
@@ -233,25 +273,187 @@ function asciiBytes(s) {
   return out;
 }
 
+/** Name given to the Message-ID fields a message already had, when it gets an id of its own. */
+export const ORIGINAL_ID_FIELD = "X-Sync443-Original-Message-ID";
+/** Field put after the new Message-ID when the original starts with a continuation line, which then folds into it. */
+const CONTINUATION_FIELD = "X-Sync443-Continuation";
+
+/**
+ * The message under the Message-ID `messageId` (no angle brackets):
+ *  - every field of the top-level header block whose name is Message-ID
+ *    (any case, blanks before the colon included) is renamed
+ *    X-Sync443-Original-Message-ID, however big the block, so that no
+ *    reader can take an old one;
+ *  - "Message-ID: <messageId>" is put first, with the line ending of the
+ *    original's first line (CRLF by default);
+ *  - when the original starts with a blank (a continuation line), an empty
+ *    X-Sync443-Continuation field follows ours: that line folds into it,
+ *    never into the Message-ID.
+ * Nothing else changes. Linear in the size of the header block.
+ */
+export function replaceMessageId(bytes, messageId) {
+  if (!(bytes instanceof Uint8Array)) throw new TypeError("replaceMessageId : Uint8Array attendu");
+  const lines = new Lines(bytes, bytes.length);
+  const renamed = [];
+  let eol = "\r\n";
+  let pos = 0;
+  while (pos < bytes.length) {
+    const ce = lines.contentEnd(pos);
+    if (pos === 0 && ce < bytes.length && bytes[ce] === LF) eol = "\n";
+    if (ce === pos) break; // empty line: end of the header block
+    if (!isBlank(bytes[pos])) {
+      const colon = colonOf(bytes, pos, ce);
+      if (colon >= 0) {
+        const end = nameEnd(bytes, pos, colon);
+        if (sameWord(bytes, pos, end, MESSAGE_ID)) renamed.push([pos, end]);
+      }
+    }
+    pos = lines.next(ce);
+  }
+  const guard = bytes.length && isBlank(bytes[0]) ? `${CONTINUATION_FIELD}:${eol}` : "";
+  const head = asciiBytes(`Message-ID: <${messageId}>${eol}${guard}`);
+  const name = asciiBytes(ORIGINAL_ID_FIELD);
+  const out = new Uint8Array(head.length + bytes.length + renamed.length * (name.length - MESSAGE_ID.length));
+  out.set(head);
+  let n = head.length;
+  let copied = 0;
+  for (const [from, to] of renamed) {
+    out.set(bytes.subarray(copied, from), n);
+    n += from - copied;
+    out.set(name, n);
+    n += name.length;
+    copied = to;
+  }
+  out.set(bytes.subarray(copied), n);
+  return out;
+}
+
 /**
  * The message with a Message-ID. When messageIdOf finds one, the bytes are
  * returned as they are (the same array) with `synthetic: false`. Otherwise
- * "Message-ID: <hex@sync443.invalid>" and CRLF are put in front of the
- * message, hex being the first 16 bytes of the SHA-256 of the original
- * bytes in lowercase hexadecimal (32 characters): the same message always
- * gets the same id. The new field comes first, so it is also the first
- * Message-ID of the result: messageIdOf(result.bytes) === result.messageId.
+ * the message gets "<hex@sync443.invalid>" through replaceMessageId, hex
+ * being the first 16 bytes of the SHA-256 of the original bytes in
+ * lowercase hexadecimal (32 characters): the same message always gets the
+ * same id. `hash` (optional): that SHA-256, when the caller has it already.
  */
-export function ensureMessageId(bytes) {
+export function ensureMessageId(bytes, { hash = null } = {}) {
   if (!(bytes instanceof Uint8Array)) throw new TypeError("ensureMessageId : Uint8Array attendu");
   const existing = messageIdOf(bytes);
   if (existing !== null) return { bytes, messageId: existing, synthetic: false };
-  const messageId = `${toHex(sha256(bytes).subarray(0, 16))}@${SYNTHETIC_DOMAIN}`;
-  const field = asciiBytes(`Message-ID: <${messageId}>\r\n`);
-  const out = new Uint8Array(field.length + bytes.length);
-  out.set(field);
-  out.set(bytes, field.length);
-  return { bytes: out, messageId, synthetic: true };
+  const digest = hash instanceof Uint8Array && hash.length === 32 ? hash : sha256(bytes);
+  const messageId = `${toHex(digest.subarray(0, 16))}@${SYNTHETIC_DOMAIN}`;
+  return { bytes: replaceMessageId(bytes, messageId), messageId, synthetic: true };
+}
+
+// ── Date and sender (fingerprint of a message) ────────────────────────────
+
+const DATE = ascii("date");
+const FROM = ascii("from");
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+const ZONES = new Map([["ut", 0], ["utc", 0], ["gmt", 0], ["z", 0], ["est", -300], ["edt", -240], ["cst", -360], ["cdt", -300], ["mst", -420], ["mdt", -360], ["pst", -480], ["pdt", -420]]);
+const MAX_FIELD_TEXT = 4096;
+
+/** Unfolded value of the first field named `word` in the top-level header block (first 1 MiB), as Latin-1 text, or null. */
+function fieldText(bytes, word) {
+  if (!(bytes instanceof Uint8Array)) return null;
+  const limit = Math.min(bytes.length, MAX_HEADER_BYTES);
+  const lines = new Lines(bytes, limit);
+  let pos = 0;
+  while (pos < limit) {
+    const ce = lines.contentEnd(pos);
+    if (ce === pos) return null;
+    let next = lines.next(ce);
+    if (!isBlank(bytes[pos])) {
+      const colon = colonOf(bytes, pos, ce);
+      if (colon >= 0 && sameWord(bytes, pos, nameEnd(bytes, pos, colon), word)) {
+        let s = "";
+        let from = colon + 1;
+        let to = ce;
+        for (;;) {
+          for (let i = from; i < to && s.length < MAX_FIELD_TEXT; i++) s += String.fromCharCode(bytes[i]);
+          if (next >= limit || !isBlank(bytes[next])) break;
+          from = next;
+          to = lines.contentEnd(next);
+          next = lines.next(to);
+        }
+        return s;
+      }
+    }
+    pos = next;
+  }
+  return null;
+}
+
+/** Comments (nested, RFC 5322 3.2.2) of a header text replaced by a blank. */
+function dropComments(s) {
+  let out = "";
+  let depth = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === "\\" && depth) i++;
+    else if (c === "(") depth++;
+    else if (c === ")" && depth) {
+      if (--depth === 0) out += " ";
+    } else if (!depth) out += c;
+  }
+  return out;
+}
+
+/**
+ * The Date field of the top-level header block (RFC 5322 3.3, obsolete
+ * forms included: two-digit years, named zones), in milliseconds since the
+ * epoch, or null when absent or not understood.
+ */
+export function dateOf(bytes) {
+  const text = fieldText(bytes, DATE);
+  if (text === null) return null;
+  const m = /^\s*(?:[a-z]{3,9}\s*,\s*)?(\d{1,2})\s+([a-z]{3})[a-z]*\.?\s+(\d{2,4})\s+(\d{1,2})\s*:\s*(\d{2})(?:\s*:\s*(\d{2}))?\s*([+-]\d{4}|[a-z]{1,5})?/i.exec(dropComments(text));
+  if (!m) return null;
+  const month = MONTHS.indexOf(m[2].toLowerCase());
+  let year = Number(m[3]);
+  if (m[3].length === 2) year += year < 50 ? 2000 : 1900;
+  else if (m[3].length === 3) year += 1900;
+  const [day, hour, minute, second] = [Number(m[1]), Number(m[4]), Number(m[5]), Number(m[6] ?? 0)];
+  if (month < 0 || day < 1 || day > 31 || hour > 23 || minute > 59 || second > 60) return null;
+  let offset = 0;
+  if (m[7]) {
+    if (/^[+-]/.test(m[7])) {
+      const v = Number(m[7].slice(1, 3)) * 60 + Number(m[7].slice(3));
+      offset = m[7][0] === "-" ? -v : v;
+    } else {
+      offset = ZONES.get(m[7].toLowerCase()) ?? 0;
+    }
+  }
+  const at = Date.UTC(year, month, day, hour, minute, Math.min(second, 59)) - offset * 60_000;
+  return Number.isFinite(at) ? at : null;
+}
+
+/**
+ * The address (lowercase) in a From-like text: the last <…> holding an
+ * "@", else the first word holding one; null when there is none. Display
+ * names, encoded or not, are ignored: the address itself is never encoded.
+ */
+export function addressOf(text) {
+  if (typeof text !== "string") return null;
+  const s = dropComments(text.slice(0, MAX_FIELD_TEXT));
+  let found = null;
+  for (const m of s.matchAll(/<([^<>\s]*)>/g)) if (m[1].includes("@")) found = m[1];
+  if (found === null) {
+    for (const w of s.split(/[\s,;]+/)) {
+      if (w.includes("@")) {
+        found = w;
+        break;
+      }
+    }
+  }
+  if (found === null) return null;
+  found = found.replace(/^[<"'(]+|[>"'),.]+$/g, "").toLowerCase();
+  return /^[^\s@<>]+@[^\s@<>]+$/.test(found) ? found : null;
+}
+
+/** The address of the From field of the top-level header block (see addressOf), or null. */
+export function fromAddressOf(bytes) {
+  return addressOf(fieldText(bytes, FROM));
 }
 
 // ── Removing internal headers ─────────────────────────────────────────────
@@ -375,35 +577,82 @@ function multipartBoundary(bytes, from, to) {
   }
 }
 
+/** Boundary bytes without trailing blanks, as a string (the key of BoundaryStack). */
+function boundaryKey(bytes, from, to) {
+  while (to > from && isBlank(bytes[to - 1])) to--;
+  return String.fromCharCode.apply(null, bytes.subarray(from, to));
+}
+
 /**
- * Whether the line bytes[pos, ce), known to start with "--", is a delimiter
- * of one of the open multipart bodies: "--" boundary, optionally "--" (the
- * close delimiter), then only blanks (RFC 2046 5.1.1). The innermost body
- * is tried first. Returns level * 2 + (close ? 1 : 0), or -1.
+ * Boundaries of the open multipart bodies, innermost last, with an index
+ * by key (the boundary without trailing blanks), so that a line starting
+ * with "--" is checked against the few boundaries it can be, not against
+ * every open one: a delimiter line costs at most the length of the
+ * longest boundary, whatever the nesting depth.
  */
-function delimiterOf(bytes, pos, ce, stack) {
-  for (let level = stack.length - 1; level >= 0; level--) {
-    const boundary = stack[level];
-    let j = pos + 2;
-    if (ce - j < boundary.length) continue;
-    let same = true;
-    for (let k = 0; k < boundary.length; k++) {
-      if (bytes[j + k] !== boundary[k]) {
-        same = false;
-        break;
-      }
+class BoundaryStack {
+  constructor() {
+    this.list = [];
+    this.byKey = new Map(); // key → levels, increasing
+  }
+
+  get length() {
+    return this.list.length;
+  }
+
+  push(boundary) {
+    const key = boundaryKey(boundary, 0, boundary.length);
+    const levels = this.byKey.get(key);
+    if (levels) levels.push(this.list.length);
+    else this.byKey.set(key, [this.list.length]);
+    this.list.push({ boundary, key });
+  }
+
+  /** Close every level from `level` up. */
+  truncate(level) {
+    while (this.list.length > level) {
+      const { key } = this.list.pop();
+      const levels = this.byKey.get(key);
+      levels.pop();
+      if (!levels.length) this.byKey.delete(key);
     }
-    if (!same) continue;
+  }
+
+  /** The line bytes[pos, ce) is "--" boundary, optionally "--", then only blanks (RFC 2046 5.1.1)? → 0 no, 1 open, 2 close. */
+  static #match(bytes, pos, ce, boundary) {
+    let j = pos + 2;
+    if (ce - j < boundary.length) return 0;
+    for (let k = 0; k < boundary.length; k++) if (bytes[j + k] !== boundary[k]) return 0;
     j += boundary.length;
-    let close = 0;
+    let close = false;
     if (j + 1 < ce && bytes[j] === DASH && bytes[j + 1] === DASH) {
-      close = 1;
+      close = true;
       j += 2;
     }
     while (j < ce && isBlank(bytes[j])) j++;
-    if (j === ce) return level * 2 + close;
+    return j === ce ? (close ? 2 : 1) : 0;
   }
-  return -1;
+
+  /**
+   * Whether the line bytes[pos, ce), known to start with "--", is a
+   * delimiter of one of the open bodies, the innermost first. Returns
+   * level * 2 + (close ? 1 : 0), or -1.
+   */
+  delimiterOf(bytes, pos, ce) {
+    let end = ce;
+    while (end > pos + 2 && isBlank(bytes[end - 1])) end--;
+    if (end - pos - 2 > 202) return -1; // longer than any boundary (200) and "--"
+    const candidates = [...(this.byKey.get(boundaryKey(bytes, pos + 2, end)) ?? [])];
+    if (end - pos >= 4 && bytes[end - 1] === DASH && bytes[end - 2] === DASH) {
+      candidates.push(...(this.byKey.get(boundaryKey(bytes, pos + 2, end - 2)) ?? []));
+    }
+    candidates.sort((a, b) => b - a);
+    for (const level of candidates) {
+      const m = BoundaryStack.#match(bytes, pos, ce, this.list[level].boundary);
+      if (m) return level * 2 + (m === 2 ? 1 : 0);
+    }
+    return -1;
+  }
 }
 
 /**
@@ -422,7 +671,7 @@ function removeInternal(bytes, walkParts) {
   const length = bytes.length;
   const lines = new Lines(bytes, length);
   const editor = new Editor(bytes);
-  const stack = []; // boundaries of the open multipart bodies, innermost last
+  const stack = new BoundaryStack(); // boundaries of the open multipart bodies, innermost last
   let parts = 0;
   let inHeaders = true;
   let fieldStart = -1; // field being read, and what to do with it
@@ -468,7 +717,7 @@ function removeInternal(bytes, walkParts) {
     const ce = lines.contentEnd(pos);
     const next = lines.next(ce);
     if (stack.length && ce - pos >= 2 && bytes[pos] === DASH && bytes[pos + 1] === DASH) {
-      const hit = delimiterOf(bytes, pos, ce, stack);
+      const hit = stack.delimiterOf(bytes, pos, ce);
       if (hit >= 0) {
         if (inHeaders) {
           closeField(pos);
@@ -476,9 +725,9 @@ function removeInternal(bytes, walkParts) {
         }
         const level = hit >> 1;
         if (hit & 1) {
-          stack.length = level; // close delimiter: what follows is the epilogue
+          stack.truncate(level); // close delimiter: what follows is the epilogue
         } else {
-          stack.length = level + 1;
+          stack.truncate(level + 1);
           if (++parts > MAX_MIME_PARTS) break; // the rest is left as it is
           inHeaders = true;
         }

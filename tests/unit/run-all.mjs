@@ -43,6 +43,10 @@ import "./mailbox.test.mjs";
 import "./audit-core.test.mjs";
 import "./audit-transport.test.mjs";
 import "./audit-http.test.mjs";
+import "./audit-engine.test.mjs";
+
+// ── Background page (loaded once, against a fake Thunderbird) ─────────────
+import "./background.test.mjs";
 
 // ── Fuzzing (slowest, last) ───────────────────────────────────────────────
 import "./wbxml-fuzz.test.mjs";

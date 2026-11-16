@@ -19,10 +19,12 @@
 import { retryDelay } from "../core/backoff.mjs";
 import { FATAL } from "../transport/client.mjs";
 
-export const initialHealth = () => ({ failures: 0, nextAttemptAt: 0, blocked: null, lastError: null, lastSuccessAt: null });
+/** failedItems: server items whose import keeps failing (fetched again at every pass, sync/mail.mjs), as the last pass counted them. */
+export const initialHealth = () => ({ failures: 0, nextAttemptAt: 0, blocked: null, lastError: null, lastSuccessAt: null, failedItems: 0 });
 
-export function recordSuccess(health, now) {
-  return { ...initialHealth(), lastSuccessAt: now };
+/** A pass succeeded: everything before it is cleared. */
+export function recordSuccess(now, { failedItems = 0 } = {}) {
+  return { ...initialHealth(), lastSuccessAt: now, failedItems: Number.isSafeInteger(failedItems) && failedItems > 0 ? failedItems : 0 };
 }
 
 /** `error`: { code, message, retryAfterMs? } (an EasError or alike). */

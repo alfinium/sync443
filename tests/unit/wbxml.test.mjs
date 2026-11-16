@@ -9,7 +9,7 @@
 
 import { test, assert, eq, throws } from "./harness.mjs";
 import {
-  el, encode, decode, child, childrenNamed, at, text, bytes, toDebugString, looksLikeWbxml, WbxmlError, DEFAULT_LIMITS,
+  el, encode, decode, child, at, text, bytes, toDebugString, looksLikeWbxml, WbxmlError, DEFAULT_LIMITS,
 } from "../../src/core/wbxml.mjs";
 import { encodeUtf8 } from "../../src/core/utf8.mjs";
 
@@ -27,7 +27,7 @@ const nestTree = (n) => {
   return node;
 };
 
-// ── Encoding ──────────────────────────────────────────────────────────────
+// ── Writing ──────────────────────────────────────────────────────────────
 
 test("wbxml : FolderSync avec SyncKey 0, octet par octet", () => {
   const out = encode(el("FolderHierarchy:FolderSync", [el("SyncKey", "0")]));
@@ -137,7 +137,7 @@ test("wbxml : grand document (croissance du tampon d'écriture)", () => {
   const root = el("AirSync:Sync", [el("ComposeMail:Mime", big), el("AirSync:Commands", many)]);
   const back = decode(encode(root));
   eq(bytes(back, "ComposeMail:Mime"), big);
-  const subjects = childrenNamed(child(back, "Commands"), "Subject");
+  const subjects = child(back, "Commands").children;
   eq(subjects.length, 5000);
   eq(text(subjects[4321]), "objet n° 4321 — é😀");
 });
@@ -331,7 +331,7 @@ test("wbxml : une limite absente ou undefined garde la valeur par défaut", () =
 
 // ── Reading ───────────────────────────────────────────────────────────────
 
-test("wbxml : child, childrenNamed, at, text, bytes", () => {
+test("wbxml : child, at, text, bytes", () => {
   const d = decode(encode(el("AirSync:Sync", [
     el("Status", "1"),
     el("Collections", [
@@ -344,8 +344,7 @@ test("wbxml : child, childrenNamed, at, text, bytes", () => {
   eq(text(d, "Status"), "1");
   eq(text(d, "AirSync:Status"), "1", "nom qualifié");
   eq(text(d, "Email:Status"), null, "mauvais espace de noms");
-  eq(childrenNamed(child(d, "Collections"), "Collection").length, 2);
-  eq(childrenNamed(child(d, "Collections"), "AirSync:Collection").map((c) => text(c, "CollectionId")), ["a", "b"]);
+  eq(child(d, "Collections").children.map((c) => text(c, "CollectionId")), ["a", "b"]);
   eq(text(d, "Collections", "Collection", "Email:Status"), "e1", "chemin");
   eq(at(d, "Collections", "Inconnu", "CollectionId"), null);
   eq(text(d, "Absent"), null, "absent → null");
@@ -355,7 +354,6 @@ test("wbxml : child, childrenNamed, at, text, bytes", () => {
   eq(bytes(d, "Absent"), null);
   eq(text(d), "", "élément à enfants, sans texte");
   eq(child(null, "X"), null);
-  eq(childrenNamed(null, "X"), []);
   eq(at(null, "X"), null);
   eq(text(null, "X"), null);
   eq(bytes(undefined, "X"), null);

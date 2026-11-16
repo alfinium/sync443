@@ -17,16 +17,39 @@ manifeste (`src/manifest.json`) ; toute autorisation ajoutée doit y être justi
 | `notifications` | notifications du système | Expliquer pourquoi un message n'est pas parti (envoi fermé), signaler une boîte arrêtée. |
 | `accountsRead` | lecture des comptes, identités et dossiers, événements des dossiers | Retrouver le compte de chaque boîte et ses dossiers, suivre les dossiers créés, renommés, déplacés ou supprimés par l'utilisateur. |
 | `accountsFolders` | création, renommage, déplacement et suppression de dossiers | Reproduire dans Thunderbird l'arborescence des dossiers du serveur. |
-| `messagesRead` | lecture des messages (en-têtes, contenu brut), événements des messages | Suivre les messages lus, marqués, déplacés ou supprimés pour les reporter sur le serveur ; lire le brouillon à envoyer (`messages.getRaw`). |
+| `messagesRead` | lecture des messages (en-têtes, contenu brut), événements des messages | Suivre les messages lus, marqués, déplacés ou supprimés pour les reporter sur le serveur ; vérifier que le brouillon à envoyer est dans le compte de l'expéditeur (`messages.get`) et le lire (`messages.getRaw`). |
 | `messagesImport` | ajout de messages dans un dossier | Importer les messages reçus du serveur. |
 | `messagesUpdate` | modification des propriétés des messages | Reporter « lu » et « drapeau » venant du serveur. |
 | `messagesMove` | déplacement et copie de messages | Reporter les déplacements faits sur le serveur, mettre à la corbeille les messages supprimés sur le serveur. |
 | `messagesDelete` | suppression définitive de messages | Supprimer un message dans la corbeille quand il est supprimé sur le serveur, et le brouillon d'un message envoyé. |
-| `compose` | événements des fenêtres de rédaction | Intercepter l'envoi (`compose.onBeforeSend`) pour les identités des comptes de Sync443 : envoi par ActiveSync, jamais par un autre chemin. |
+| `compose` | événements et état des fenêtres de rédaction | Intercepter l'envoi (`compose.onBeforeSend`) pour les identités des comptes de Sync443 : envoi par ActiveSync, jamais par un autre chemin. Relire l'expéditeur et l'état de signature et de chiffrement (`compose.getComposeDetails`). |
 | `compose.save` | enregistrement d'un message en cours de rédaction | Enregistrer le message en brouillon avant de l'envoyer par ActiveSync (`compose.saveMessage`). |
 
-Les autres comptes de Thunderbird ne sont jamais modifiés : le code privilégié vérifie la marque de
-Sync443 sur un compte avant toute opération (règle 10 de [SECURITE.md](SECURITE.md)).
+### Ce que l'envoi transmet au serveur
+
+Pour une identité d'un compte Sync443, le message enregistré en brouillon est envoyé tel quel au
+serveur ActiveSync (commande `SendMail`), sans les en-têtes internes de Thunderbird. ActiveSync n'a
+pas d'enveloppe : l'en-tête `Bcc` (copie cachée) voyage dans le message jusqu'au serveur, qui en
+tire les destinataires et le retire avant la remise, comme le font Exchange et SOGo. Sync443 ne
+peut pas le retirer lui-même sans perdre ces destinataires.
+
+Un message pour lequel la signature ou le chiffrement (OpenPGP, S/MIME) est demandé, ou dont l'état
+ne peut pas être vérifié, n'est pas envoyé : Thunderbird signe et chiffre au moment de son propre
+envoi, qui n'a jamais lieu ici.
+
+Les autres comptes de Thunderbird ne sont pas modifiés : le code privilégié vérifie la marque de
+Sync443 sur un compte avant toute opération (règle 10 de [SECURITE.md](SECURITE.md)). Deux
+exceptions, qui protègent Thunderbird lui-même :
+- si le profil n'a pas de « Dossiers locaux », Sync443 en crée avant son premier compte. Sans eux,
+  Thunderbird prendrait un compte Sync443 pour ses « Dossiers locaux » ;
+- le serveur d'envoi neutre de Sync443 n'est jamais le serveur d'envoi par défaut tant qu'un
+  serveur de l'utilisateur existe : si Thunderbird le choisit, le premier serveur de l'utilisateur
+  le redevient.
+
+Les messages et les dossiers, eux, sont écrits par les API WebExtension (`messagesImport`,
+`messagesUpdate`, `messagesMove`, `messagesDelete`, `accountsFolders`), qui couvrent tous les comptes. Chaque écriture
+est limitée au compte de la boîte par `src/tb/mail-store.mjs`, qui vérifie le compte de chaque
+dossier et de chaque message avant d'y toucher.
 
 ## Autorisation demandée au moment voulu
 
@@ -50,6 +73,13 @@ valident chaque argument et ne sont acceptées que depuis la page d'arrière-pla
 (règle 11 de [SECURITE.md](SECURITE.md)). À l'installation, Thunderbird les annonce comme un accès
 complet et sans restriction à Thunderbird et à l'ordinateur : c'est la raison de leur taille
 minimale et de l'audit de chaque étape.
+
+## Politique de contenu
+
+Le manifeste fixe une politique stricte pour toutes les pages de l'extension :
+`default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`.
+Seuls les fichiers de l'extension elle-même peuvent être chargés, aucun formulaire ne part vers
+une adresse, et aucune page ne peut être intégrée ailleurs.
 
 ## Non demandées
 

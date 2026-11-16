@@ -11,7 +11,7 @@
 
 import { test, assert, eq, rejects } from "./harness.mjs";
 import { encodeUtf8 } from "../../src/core/utf8.mjs";
-import { messageIdOf } from "../../src/core/mime.mjs";
+import { messageIdOf, dateOf, fromAddressOf } from "../../src/core/mime.mjs";
 import { MailStore, MailStoreError } from "../../src/tb/mail-store.mjs";
 import { LocalEvents } from "../../src/tb/events.mjs";
 import { EchoRegistry } from "../../src/sync/echo.mjs";
@@ -50,7 +50,7 @@ export function fakeBrowser({ pageSize = 2 } = {}) {
   };
   const msgView = (id) => {
     const m = messages.get(id);
-    return { id, headerMessageId: m.headerMessageId, read: m.read, flagged: m.flagged, folder: folderView(m.folderId), tags: [] };
+    return { id, headerMessageId: m.headerMessageId, read: m.read, flagged: m.flagged, folder: folderView(m.folderId), tags: [], date: new Date(m.date ?? 0), author: m.author ?? "" };
   };
   const pageOf = (items) => {
     const first = items.slice(0, pageSize);
@@ -195,7 +195,24 @@ export function fakeBrowser({ pageSize = 2 } = {}) {
           throw new Error(`Error importing message: Destination folder already contains a message with id <${mid}>`);
         }
         const id = nextMsg++;
-        messages.set(id, { headerMessageId: mid, read: props.read, flagged: props.flagged, folderId });
+        // As Thunderbird 128+ does: the copy arrives unread and unflagged, then is marked (firing onUpdated).
+        messages.set(id, {
+          headerMessageId: browser.importReads?.(file.bytes) ?? mid,
+          read: false,
+          flagged: false,
+          folderId,
+          date: dateOf(file.bytes) ?? 0, // Thunderbird: the Date field (else when it got the message)
+          author: fromAddressOf(file.bytes) ?? "",
+        });
+        // Thunderbird 160 (messages.import): the copy is "new"; marked read to clear that, then unread again
+        // if it should be, then flagged if it should be; each mark fires onUpdated.
+        const mark = (k, value) => {
+          messages.get(id)[k] = value;
+          ev.messages.onUpdated.fire(msgView(id), { [k]: value }, {});
+        };
+        mark("read", true);
+        if (!props.read) mark("read", false);
+        if (props.flagged) mark("flagged", true);
         return msgView(id);
       },
     },
@@ -345,11 +362,9 @@ test("magasin : dossiers créés, renommés, déplacés sans écho résiduel ; d
   await rejects(store.renameFolder("/Inbox", "X"), (e) => e.code === "REFUSED");
   await rejects(store.moveFolder("/Trash", "/Projets"), (e) => e.code === "REFUSED");
   await rejects(store.moveFolder("/Projets", "/Projets/Pros"), (e) => e.code === "REFUSED");
-  await rejects(store.deleteFolder("/Projets/Pros"), (e) => e.code === "REFUSED", "hors corbeille");
   await rejects(store.createFolder("/", "a/b"), (e) => e.code === "REFUSED");
   await store.moveFolder("/Projets/Pros", "/Trash");
-  await store.deleteFolder("/Trash/Pros");
-  assert(!(await store.folderExists("/Trash/Pros")));
+  assert(await store.folderExists("/Trash/Pros"));
   await events.idle();
   eq(intents, []);
   eq(echo.size, 0);

@@ -12,10 +12,17 @@
 
 import { test, assert, eq, prng } from "./harness.mjs";
 import { el, encode, decode, text, toDebugString, WbxmlError, DEFAULT_LIMITS } from "../../src/core/wbxml.mjs";
-import { allTags } from "../../src/core/codepages.mjs";
+import { namespaceOf, tagOf } from "../../src/core/codepages.mjs";
 
 const H = [0x03, 0x01, 0x6a, 0x00];
-const TAGS = [...allTags()];
+// Every [page, namespace, tag, token] of the code pages, in page then token order.
+const TAGS = [];
+for (let page = 0; page < 256; page++) {
+  for (let token = 0; token < 256; token++) {
+    const tag = tagOf(page, token);
+    if (tag !== undefined) TAGS.push([page, namespaceOf(page), tag, token]);
+  }
+}
 const TAGS_BY_NS = new Map();
 for (const [, ns, tag] of TAGS) {
   if (!TAGS_BY_NS.has(ns)) TAGS_BY_NS.set(ns, []);

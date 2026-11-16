@@ -62,12 +62,25 @@ test("journal : les entrées survivent à un redémarrage (rien d'un identifiant
   const e = await j1.append({ kind: "delete", path: "/Inbox", messageId: "m1@x", id: 42 });
   eq(e.id, 1);
   await j1.append({ kind: "move", path: "/Inbox", toPath: "/Archives", messageId: "m2@x" });
+  await j1.flush(); // append() returns once in memory; the storage follows a moment later
   const j2 = new Journal({ records: records(area) });
   const list = await j2.list();
   eq(list.map((x) => [x.id, x.op, x.messageId]), [[1, "delete", "m1@x"], [2, "move", "m2@x"]]);
   assert(!("tbId" in list[0]) && list[0].id === 1);
   const e3 = await j2.append({ kind: "folderCreate", path: "/Nouveau" });
   eq(e3.id, 3, "les numéros continuent");
+});
+
+test("journal : rebind réécrit les ServerId d'un coup (échangés), ou les retire (l'entrée garde son dossier local)", async () => {
+  const area = memoryArea();
+  const j = new Journal({ records: records(area) });
+  await j.append({ kind: "flags", path: "/A", messageId: "a@x", flags: { read: true }, src: "8" });
+  await j.append({ kind: "move", path: "/B", toPath: "/A", messageId: "b@x", src: "9", dst: "8" });
+  await j.append({ kind: "delete", path: "/C", messageId: "c@x", src: "7" });
+  eq(await j.rebind(new Map([["8", "9"], ["9", null]])), 2);
+  await j.flush();
+  const list = await new Journal({ records: records(area) }).list();
+  eq(list.map((e) => [e.path, e.src ?? null, e.dst ?? null]), [["/A", "9", null], ["/B", null, "9"], ["/C", "7", null]]);
 });
 
 test("journal : une entrée ne part qu'après une réponse positive pour elle", async () => {
@@ -98,9 +111,10 @@ test("journal : écritures regroupées, aucune entrée perdue en rafale", async 
   const all = [];
   for (let n = 0; n < 200; n++) all.push(j.append({ kind: "flags", path: "/Inbox", messageId: `m${n}@x`, flags: { read: n % 2 === 0 } }));
   await Promise.all(all);
+  await j.flush();
   const again = new Journal({ records: records(area) });
   eq(await again.size(), 200);
-  assert(area.writes < 200, `écritures regroupées (${area.writes})`);
+  assert(area.writes < 20, `écritures regroupées (${area.writes})`);
 });
 
 test("journal : plein, une intention de plus est refusée et signalée", async () => {
@@ -114,11 +128,18 @@ test("journal : plein, une intention de plus est refusée et signalée", async (
 
 test("journal : enregistrement abîmé, entrées illisibles écartées", async () => {
   const area = memoryArea();
-  await area.set({ [`mb/${MB}/journal`]: { seq: 9, entries: [{ id: 4, op: "delete", path: "/A", messageId: "x@y" }, { id: "5", op: "delete" }, 7] } });
-  await area.set({ [`mb/${MB}/#names`]: ["journal"] });
+  await area.set({ [`mb/${MB}/journal`]: { v: 2, seq: 9 } });
+  await area.set({ [`mb/${MB}/journal:1`]: { entries: [{ id: 4, op: "delete", path: "/A", messageId: "x@y" }, { id: "5", op: "delete" }, 7, { id: 4, op: "delete", path: "/B", messageId: "doublon@y" }] } });
+  await area.set({ [`mb/${MB}/#names`]: ["journal", "journal:1"] });
   const j = new Journal({ records: records(area), log: { warn() {} } });
   eq((await j.list()).map((e) => e.id), [4]);
   eq((await j.append({ kind: "folderDelete", path: "/A" })).id, 10);
+});
+
+test("journal : identifiants de collection gardés avec les opérations sur les messages, invalides écartés", () => {
+  eq(checkIntent({ kind: "move", path: "/A", toPath: "/B", messageId: "m@x", src: "1", dst: "6" }), { op: "move", path: "/A", messageId: "m@x", src: "1", toPath: "/B", dst: "6" });
+  eq(checkIntent({ kind: "delete", path: "/A", messageId: "m@x", src: "a\u0000b" }), { op: "delete", path: "/A", messageId: "m@x" });
+  eq(checkIntent({ kind: "folderCreate", path: "/A", src: "1" }), { op: "folderCreate", path: "/A" });
 });
 
 test("journal : chemins des opérations de dossier en attente", async () => {

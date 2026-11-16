@@ -14,9 +14,14 @@ What it does, all in a throw-away profile (never your Thunderbird profile):
   1. builds a test extension with the real src/experiments/sync443Account and
      a test-only helper (creates accounts the extension does not own, forges
      marks, inspects accounts, folders, outgoing servers and logins);
-  2. phase 1, Thunderbird -headless: argument checks, creation and update of
-     accounts, refusals (Local Folders, unmarked accounts, accounts of
-     another extension), special uses, passwords, removal of one account,
+  2. phase 1, Thunderbird -headless, on a fresh profile (no Local Folders,
+     no outgoing server): Local Folders never taken for ours, the neutral
+     outgoing server never left as the default one; then argument checks,
+     creation and update of accounts, the send route (checkSendRoute,
+     automatic repairs, safe values), archive and junk settings, refusals
+     (Local Folders, unmarked accounts, accounts of another extension),
+     passwords,
+     files kept outside the profile's Mail folder, removal of one account,
      refusal of a page other than the background page;
   3. phase 2, Thunderbird started again on the same profile: what survived
      the restart, then removal of everything;
@@ -54,7 +59,6 @@ PHASE_TIMEOUT_S = 60
 OUR_MAILBOXES = ("a1b2c3d4e5f6", "0123456789ab")
 
 results = []
-notes = []  # facts worth knowing, neither PASS nor FAIL
 
 
 def check(cond, label, detail=None):
@@ -134,6 +138,21 @@ def collect(lines, phase, done, seconds):
             skip(f"[{phase}] {s.get('label')}", s.get("detail"))
 
 
+def plant_old_neutral(prefs, key):
+    """Rewrites the neutral server's host and port in prefs.js to the values of its first design (sync443.invalid:465)."""
+    if not key or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", key) or not prefs.is_file():
+        return False
+    text = prefs.read_text(encoding="utf-8")
+    host = f'user_pref("mail.smtpserver.{key}.hostname", "127.0.0.1");'
+    port = f'user_pref("mail.smtpserver.{key}.port", 1);'
+    if host not in text or port not in text:
+        return False
+    text = text.replace(host, f'user_pref("mail.smtpserver.{key}.hostname", "sync443.invalid");')
+    text = text.replace(port, f'user_pref("mail.smtpserver.{key}.port", 465);')
+    net.write_text(prefs, text)
+    return True
+
+
 def info_of(lines, key):
     for value in lines.get("INFO", []):
         if isinstance(value, dict) and key in value:
@@ -181,6 +200,10 @@ def main():
 
         # ── Phase 2 (only if phase 1 went through: it builds on its state)
         if done1:
+            # The neutral server's values of its first design, written while
+            # Thunderbird is stopped: no notification, checkSendRoute must see them.
+            planted = plant_old_neutral(profile / "prefs.js", info_of(lines1, "neutralKey"))
+            check(planted, "[prefs.js] anciennes valeurs du serveur neutre (sync443.invalid:465) plantées entre les phases")
             text2, done2, s2 = run_phase(thunderbird, profile, 2, log_path)
             lines2 = parse(text2)
             collect(lines2, 2, done2, s2)
@@ -213,13 +236,6 @@ def main():
                       "[logins.json] plus aucune entrée « Sync443 » ; l'entrée étrangère reste", realms)
             else:
                 skip("[logins.json] contrôle du fichier", "stockage des mots de passe ailleurs que dans logins.json")
-            after = info_of(lines2, "afterRestart") or {}
-            if after:
-                notes.append("après redémarrage, dossiers d'usage « sent » du compte : "
-                             f"{after.get('sentHolders')} ; /Sent avait perdu cet usage (setSpecialUse sur /Sent Items) : "
-                             "Thunderbird le lui rend d'après son nom au démarrage (dossiers spéciaux par défaut à la "
-                             "racine d'un compte local)")
-
             # ── Phase 3: the same profile, Thunderbird's Rust login store switched on
             if done2:
                 with open(profile / "user.js", "a", encoding="utf-8", newline="\n") as f:
@@ -247,10 +263,6 @@ def main():
     for status, label, detail in results:
         shown = str(detail).replace("\r", "\\r").replace("\n", "\\n") if detail not in (None, "") else ""
         print(f"  {status:4}  {label.ljust(width)}" + (f"   [{shown[:300]}]" if shown else ""))
-    if notes:
-        print("\nConstats :")
-        for note in notes:
-            print(f"  - {note}")
     fails = sum(1 for r in results if r[0] == "FAIL")
     passes = sum(1 for r in results if r[0] == "PASS")
     skips = sum(1 for r in results if r[0] == "SKIP")

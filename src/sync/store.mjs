@@ -16,6 +16,9 @@
  * outside string ever becomes a property name of a plain object.
  */
 
+import { MAILBOX_ID, ACCOUNT_KEY, DEVICE_ID, TLS_PIN, ORIGIN } from "../core/ids.mjs";
+import { toHex } from "../core/sha256.mjs";
+
 export const SCHEMA = 1;
 const MAILBOXES = "mailboxes";
 const NAMES = "#names";
@@ -27,7 +30,6 @@ export class StoreError extends Error {
   }
 }
 
-const ID = /^[a-f0-9]{12}$/;
 const RECORD = /^[a-z][a-zA-Z0-9]{0,40}(:[\x21-\x7e]{1,600})?$/; // e.g. "health", recordName("coll", serverId)
 
 /** Record name for one server object: "<kind>:<URI-encoded id>" (ids are validated, at most 64 characters). */
@@ -43,7 +45,6 @@ export function recordName(kind, id) {
  * Nothing that is not chosen is ever downloaded.
  */
 export const SYNC_KINDS = Object.freeze(["mail", "calendar", "contacts", "tasks"]);
-export const SYNC_ALL = Object.freeze({ mail: true, calendar: true, contacts: true, tasks: true });
 
 /** Fields of a mailbox, checked on every write. */
 export function checkMailbox(mb) {
@@ -51,20 +52,18 @@ export function checkMailbox(mb) {
     throw new StoreError(`boîte invalide : ${what}`);
   };
   if (!mb || typeof mb !== "object") fail("objet attendu");
-  if (typeof mb.id !== "string" || !ID.test(mb.id)) fail("id");
+  if (typeof mb.id !== "string" || !MAILBOX_ID.test(mb.id)) fail("id");
   if (typeof mb.email !== "string" || !mb.email.includes("@") || mb.email.length > 254) fail("adresse");
   if (typeof mb.username !== "string" || mb.username.length > 256) fail("identifiant");
   if (typeof mb.name !== "string" || mb.name.length > 256) fail("nom");
   // Origins come from parseServer: https, a host name or IP literal, an optional port. Nothing else.
-  if (typeof mb.origin !== "string" || !/^https:\/\/(?:[a-z0-9.-]{1,253}|\[[0-9a-f:]{2,39}\])(?::\d{1,5})?$/.test(mb.origin)) {
-    fail("origine");
-  }
-  if (typeof mb.deviceId !== "string" || !/^[A-Za-z0-9]{1,32}$/.test(mb.deviceId)) fail("identifiant d'appareil");
+  if (typeof mb.origin !== "string" || !ORIGIN.test(mb.origin)) fail("origine");
+  if (typeof mb.deviceId !== "string" || !DEVICE_ID.test(mb.deviceId)) fail("identifiant d'appareil");
   if (!Number.isInteger(mb.syncMinutes) || mb.syncMinutes < 0 || mb.syncMinutes > 1440) fail("intervalle");
-  if (!/^[0-8]$/.test(String(mb.filterType ?? ""))) fail("période");
-  if (mb.accountKey !== null && (typeof mb.accountKey !== "string" || !/^account\d{1,6}$/.test(mb.accountKey))) fail("compte");
-  if (!Array.isArray(mb.tlsPins) || mb.tlsPins.some((p) => typeof p !== "string" || !/^[0-9A-F]{64}$/.test(p))) fail("certificats");
-  const sync = mb.sync ?? SYNC_ALL; // a mailbox saved without the choice synchronises everything
+  if (!/^[0-5]$/.test(String(mb.filterType ?? ""))) fail("période"); // mail periods only (core/mail-codec.mjs MAIL_FILTER_TYPES)
+  if (mb.accountKey !== null && (typeof mb.accountKey !== "string" || !ACCOUNT_KEY.test(mb.accountKey))) fail("compte");
+  if (!Array.isArray(mb.tlsPins) || mb.tlsPins.some((p) => typeof p !== "string" || !TLS_PIN.test(p))) fail("certificats");
+  const sync = mb.sync;
   if (!sync || typeof sync !== "object" || SYNC_KINDS.some((k) => typeof sync[k] !== "boolean")) fail("éléments à synchroniser");
   if (!SYNC_KINDS.some((k) => sync[k])) fail("au moins un élément à synchroniser");
   return {
@@ -164,7 +163,7 @@ export class Store {
    * cannot bring part of it back).
    */
   deleteMailbox(id) {
-    if (typeof id !== "string" || !ID.test(id)) throw new StoreError("id de boîte invalide");
+    if (typeof id !== "string" || !MAILBOX_ID.test(id)) throw new StoreError("id de boîte invalide");
     this.#deleted.add(id);
     return this.#withLock(MAILBOXES, async () => {
       await this.set(MAILBOXES, (await this.listMailboxes()).filter((m) => m.id !== id));
@@ -191,9 +190,18 @@ export class Store {
 
   #deleted = new Set();
 
+  /**
+   * Record names known to be listed in `mb/<id>/#names`, per mailbox: a
+   * write of a record already listed then costs one storage write, not a
+   * read and a rewrite of the whole list (records written in small pieces,
+   * such as journal chunks, would otherwise cost the size of the list each).
+   */
+  #listed = new Map();
+
   #clearRecords(id) {
     const prefix = `mb/${id}/`;
     return this.#withLock(prefix + NAMES, async () => {
+      this.#listed.delete(id);
       const names = await this.get(prefix + NAMES, []);
       const keys = (Array.isArray(names) ? names : []).filter((n) => typeof n === "string" && RECORD.test(n)).map((n) => prefix + n);
       await this.remove([...keys, prefix + NAMES]);
@@ -201,7 +209,7 @@ export class Store {
   }
 
   mailbox(id) {
-    if (typeof id !== "string" || !ID.test(id)) throw new StoreError("id de boîte invalide");
+    if (typeof id !== "string" || !MAILBOX_ID.test(id)) throw new StoreError("id de boîte invalide");
     const prefix = `mb/${id}/`;
     const namesKey = prefix + NAMES;
     const checkName = (name) => {
@@ -213,14 +221,26 @@ export class Store {
     };
     // Writing a record and listing its name happen under one lock, so a
     // deletion running at the same time can never miss a record.
+    const listed = () => {
+      let set = this.#listed.get(id);
+      if (!set) {
+        set = new Set();
+        this.#listed.set(id, set);
+      }
+      return set;
+    };
     const write = (name, value) => {
       const key = checkName(name);
       return this.#withLock(namesKey, async () => {
         alive();
-        const names = new Set(await this.get(namesKey, []));
-        if (!names.has(name)) {
-          names.add(name);
-          await this.set(namesKey, [...names]);
+        const known = listed();
+        if (!known.has(name)) {
+          const names = new Set(await this.get(namesKey, []));
+          if (!names.has(name)) {
+            names.add(name);
+            await this.set(namesKey, [...names]);
+          }
+          known.add(name);
         }
         await this.set(key, value);
       });
@@ -229,15 +249,30 @@ export class Store {
       const key = checkName(name);
       return this.#withLock(namesKey, async () => {
         await this.remove(key);
+        listed().delete(name);
         const names = new Set(await this.get(namesKey, []));
         if (names.delete(name)) await this.set(namesKey, [...names]);
       });
     };
+    /** Several records removed under one lock, the list of names rewritten once. */
+    const eraseMany = (list) => {
+      const keys = list.map(checkName);
+      return this.#withLock(namesKey, async () => {
+        if (!keys.length) return;
+        await this.remove(keys);
+        const known = listed();
+        for (const n of list) known.delete(n);
+        const names = new Set(await this.get(namesKey, []));
+        let changed = false;
+        for (const n of list) changed = names.delete(n) || changed;
+        if (changed) await this.set(namesKey, [...names]);
+      });
+    };
     return {
-      id,
       get: (name, fallback = null) => this.get(checkName(name), fallback),
       set: (name, value) => write(name, value),
       remove: (name) => erase(name),
+      removeMany: (names) => eraseMany(Array.isArray(names) ? names : []),
       /** A Map record (stored as entries). A damaged record reads as an empty Map. */
       getMap: async (name) => toMap(await this.get(checkName(name), [])),
       setMap: (name, map) => write(name, fromMap(map)),
@@ -274,6 +309,5 @@ export function fromMap(map) {
 
 /** A new mailbox id (12 hex digits) and device id (32 letters/digits), from a CSPRNG. */
 export function newIds(random = (n) => globalThis.crypto.getRandomValues(new Uint8Array(n))) {
-  const hex = (bytes) => [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
-  return { mailboxId: hex(random(6)), deviceId: `S443${hex(random(14)).toUpperCase()}` };
+  return { mailboxId: toHex(random(6)), deviceId: `S443${toHex(random(14)).toUpperCase()}` };
 }

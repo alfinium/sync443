@@ -36,6 +36,8 @@
  * order of the user's actions.
  */
 
+import { errorCode } from "../log.mjs";
+
 const FLAG_FIELDS = ["read", "flagged"];
 const MAX_MESSAGES = 1_000_000; // messages read from one event, at most
 
@@ -77,12 +79,13 @@ export class LocalEvents {
     this.#on(f.onDeleted, (folder) => this.#folderDeleted(folder));
   }
 
+  /** Stop listening (tests). */
   stop() {
     for (const [event, fn] of this.#listeners) event.removeListener(fn);
     this.#listeners = [];
   }
 
-  /** Resolves once every event received so far has been handled (for tests and orderly shutdown). */
+  /** Resolves once every event received so far has been handled (tests). */
   idle() {
     return this.#queue;
   }
@@ -91,7 +94,7 @@ export class LocalEvents {
     if (!event?.addListener) return;
     const fn = (...args) => {
       this.#queue = this.#queue.then(() => handler(...args)).catch((e) => {
-        this.#log?.warn?.(`Événement local non traité (${String(e?.code ?? e?.name ?? "erreur").slice(0, 60)}).`);
+        this.#log?.warn?.(`Événement local non traité (${errorCode(e, 60)}).`);
       });
     };
     event.addListener(fn);
@@ -127,7 +130,28 @@ export class LocalEvents {
     const flags = {};
     for (const f of FLAG_FIELDS) if (typeof changed?.[f] === "boolean") flags[f] = changed[f];
     if (!Object.keys(flags).length) return; // tags, junk, "new": not synchronised
-    await this.#emit(key, { kind: "flags", path: message.folder.path, messageId: message.headerMessageId, flags });
+    const path = message.folder.path;
+    const mid = message.headerMessageId;
+    let guard = this.#echo?.guarded?.(key, path, mid);
+    if (guard) {
+      // Just imported by the engine: what counts is the message's state once the engine's writes are over,
+      // against the state accounted for.
+      await guard.ready;
+      guard = this.#echo.guarded(key, path, mid) ?? guard;
+      let now;
+      try {
+        now = await this.#browser.messages.get(message.id);
+      } catch {
+        now = message; // moved or deleted since: its state when the event fired
+      }
+      const rest = {};
+      for (const f of Object.keys(flags)) if (Boolean(now?.[f]) !== guard.state[f]) rest[f] = Boolean(now[f]);
+      if (!Object.keys(rest).length) return; // as accounted for: our own marks, or a change already undone
+      this.#echo.reguard(key, path, mid, { ...guard.state, ...rest }); // the user's change, accounted for from now on
+      await this.#emit(key, { kind: "flags", path, messageId: mid, flags: rest });
+      return;
+    }
+    await this.#emit(key, { kind: "flags", path, messageId: mid, flags });
   }
 
   async #moved(originalList, movedList) {

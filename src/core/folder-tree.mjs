@@ -8,7 +8,7 @@
  *
  *   applyChanges(folders, changes) → Map<ServerId, { parentId, name, type }>
  *   buildTree(folders, { kinds })  → { nodes: Map<ServerId, { parentId, name, type, depth }>, rejected }
- *   localPaths(tree)               → Map<ServerId, path>
+ *   localPaths(tree, { archives }) → Map<ServerId, path>
  *
  * Local paths are the paths of the WebExtension folder API of the
  * mailbox's local account: "/" then the folder names from the top, joined
@@ -38,16 +38,17 @@ export const MAX_DEPTH = 32;
 export const MAX_TREE_FOLDERS = 5000;
 /** Most folders applyChanges stores: new ones beyond are ignored (buildTree reports the excess over 5000). */
 export const MAX_STORED_FOLDERS = 10_000;
-/** Longest local folder name, in characters (code points). */
-export const MAX_NAME_LENGTH = 100;
+/**
+ * Longest local folder name, in UTF-16 code units: Thunderbird stores a
+ * longer name under a hashed file name, and the folder's path (what the
+ * WebExtension API gives) then no longer holds its name.
+ */
+export const MAX_NAME_LENGTH = 55;
 
-// Folder types of FolderSync ([MS-ASCMD] 2.2.3.186.3).
-export const MAIL_TYPES = new Set([1, 2, 3, 4, 5, 6, 12]);
-export const CALENDAR_TYPES = new Set([8, 13]);
-export const CONTACT_TYPES = new Set([9, 14]);
-export const TASK_TYPES = new Set([7, 15]);
+/** Folder types of FolderSync ([MS-ASCMD] 2.2.3.186.3) that the engine names. */
+export const FOLDER_TYPE = Object.freeze({ INBOX: 2, DRAFTS: 3, TRASH: 4, SENT: 5, OUTBOX: 6, USER_MAIL: 12 });
 
-// Private copies: the exported sets are for callers, and a caller changing one cannot change this module.
+// Kind of each folder type: mail 1-6 and 12, calendar 8 and 13, contacts 9 and 14, tasks 7 and 15.
 const KIND_OF_TYPE = new Map([
   ...[1, 2, 3, 4, 5, 6, 12].map((t) => [t, "mail"]),
   ...[8, 13].map((t) => [t, "calendar"]),
@@ -56,11 +57,11 @@ const KIND_OF_TYPE = new Map([
 ]);
 const KINDS = ["mail", "calendar", "contacts", "tasks"];
 const USE_OF_TYPE = new Map([
-  [2, "inbox"],
-  [3, "drafts"],
-  [4, "trash"],
-  [5, "sent"],
-  [6, "outbox"],
+  [FOLDER_TYPE.INBOX, "inbox"],
+  [FOLDER_TYPE.DRAFTS, "drafts"],
+  [FOLDER_TYPE.TRASH, "trash"],
+  [FOLDER_TYPE.SENT, "sent"],
+  [FOLDER_TYPE.OUTBOX, "outbox"],
 ]);
 
 /** Local path of each special use (see the header comment). */
@@ -71,7 +72,9 @@ export const SPECIAL_PATHS = new Map([
   ["sent", "/Sent"],
   ["outbox", "/Unsent Messages"],
 ]);
-/** Names no ordinary folder takes at the root (compared without regard to case). */
+/** The local account's archives folder (Thunderbird's "Archive" action), synchronised once bound (see localPaths). */
+export const ARCHIVES_PATH = "/Archives";
+/** Names no ordinary folder takes at the root (compared without regard to case, nor to look-alike letters). */
 export const RESERVED_ROOT_NAMES = Object.freeze(["Inbox", "Drafts", "Trash", "Sent", "Unsent Messages", "Templates", "Junk", "Archives"]);
 
 /** Special use of a folder type: 2 inbox, 3 drafts, 4 trash, 5 sent, 6 outbox, otherwise null. */
@@ -296,70 +299,94 @@ export function buildTree(folders, { kinds } = {}) {
 
 // ── Local names and paths ─────────────────────────────────────────────────
 
-// Characters Windows refuses in a file name, and the path separator.
-const FORBIDDEN = new Set(["/", "\\", ":", "*", "?", '"', "<", ">", "|"]);
+// Characters Windows refuses in a file name, the path separator, and the
+// characters for which Thunderbird hashes a folder's file name (";", "#").
+const FORBIDDEN = new Set(["/", "\\", ":", "*", "?", '"', "<", ">", "|", ";", "#"]);
+// Names of Thunderbird's own files next to a folder's ("Name.msf" index, "Name.sbd" subfolders).
+const STORAGE_SUFFIX = /\.(?:msf|sbd)$/i;
 // Device names of Windows, with or without an extension (superscript digits included).
 const SUPERSCRIPTS = String.fromCharCode(0xb9, 0xb2, 0xb3);
 const DEVICE = new RegExp(`^(?:CON|PRN|AUX|NUL|CONIN\\$|CONOUT\\$|COM[0-9${SUPERSCRIPTS}]|LPT[0-9${SUPERSCRIPTS}])$`, "i");
 
-/** At most `max` code points of `s`. */
-function cutCodePoints(s, max) {
-  let out = "";
-  let n = 0;
-  for (const c of s) {
-    if (n++ === max) break;
-    out += c;
-  }
-  return out;
-}
-
-const trimEnd = (s) => s.replace(/[. ]+$/, "");
+// Trailing dots and spaces (Windows drops them), and a trailing "~" (Thunderbird hashes such a name).
+const trimEnd = (s) => s.replace(/[. ]+$/, "").replace(/~$/, "_");
 
 /**
- * A folder name valid on Windows, macOS and Linux:
- *  - / \ : * ? " < > |, control characters and lone surrogates become "_";
- *  - trailing dots and spaces are removed;
+ * A folder name valid on Windows, macOS and Linux, that Thunderbird stores
+ * under the name itself (so the folder's path ends with it):
+ *  - / \ : * ? " < > | ; #, control characters and lone surrogates
+ *    become "_";
+ *  - a leading "." becomes "_" (hidden file, hashed by Thunderbird);
+ *  - trailing dots and spaces are removed, a trailing "~" becomes "_";
  *  - a Windows device name (CON, PRN, AUX, NUL, COM0-9, LPT0-9, CONIN$,
  *    CONOUT$), alone or before an extension, gets "_" after it ("NUL_",
  *    "con_.txt"), since Windows reads "NUL.txt" as the device too;
- *  - at most 100 characters;
+ *  - a name ending in ".msf" or ".sbd" (any case), the names of
+ *    Thunderbird's own files next to a folder's, gets "_" after it;
+ *  - at most MAX_NAME_LENGTH (55) UTF-16 code units;
  *  - nothing left: "_".
  */
 export function localFolderName(name) {
   const source = typeof name === "string" ? name.normalize("NFC") : "";
   let s = "";
-  let n = 0;
   for (const c of source) {
-    if (n++ === MAX_NAME_LENGTH) break;
+    if (s.length + c.length > MAX_NAME_LENGTH) break;
     const code = c.codePointAt(0);
     const bad = code < 0x20 || (code >= 0x7f && code <= 0x9f) || (code >= 0xd800 && code <= 0xdfff) || FORBIDDEN.has(c);
     s += bad ? "_" : c;
   }
+  if (s.startsWith(".")) s = `_${s.slice(1)}`;
   s = trimEnd(s);
   const dot = s.indexOf(".");
   const stem = (dot < 0 ? s : s.slice(0, dot)).replace(/ +$/, "");
-  if (DEVICE.test(stem)) s = trimEnd(cutCodePoints(`${stem}_${s.slice(stem.length)}`, MAX_NAME_LENGTH));
+  if (DEVICE.test(stem)) s = trimEnd(v.cut(`${stem}_${s.slice(stem.length)}`, MAX_NAME_LENGTH));
+  if (STORAGE_SUFFIX.test(s)) s = `${v.cut(s, MAX_NAME_LENGTH - 1)}_`;
   return s || "_";
 }
 
 /** Comparison key: names equal for a case-insensitive file system get the same key. */
-const keyOf = (name) => name.toUpperCase().toLowerCase().normalize("NFC");
+export const nameKey = (name) => name.toUpperCase().toLowerCase().normalize("NFC");
 
-const RESERVED_KEYS = RESERVED_ROOT_NAMES.map(keyOf);
-const SUFFIX_ROOM = 8; // " (99999)"
+// Letters of other scripts drawn like Latin ones (common look-alikes), and Latin letters drawn alike.
+const LOOKALIKES = new Map(
+  [
+    ["a", "\u0430\u03b1\u0251"], ["b", "\u0432\u044c\u03b2"], ["c", "\u0441\u03f2"], ["d", "\u0501"], ["e", "\u0435\u03b5\u0454"],
+    ["h", "\u04bb\u043d\u0570"], ["j", "\u0458\u03f3"], ["k", "\u043a\u03ba"], ["m", "\u043c"], ["n", "\u043f\u03b7\u0578"],
+    ["o", "\u043e\u03bf\u03c3\u0585\u0030"], ["p", "\u0440\u03c1"], ["q", "\u051b"], ["r", "\u0433"], ["s", "\u0455\u03c2"],
+    ["t", "\u0442\u03c4"], ["u", "\u03c5\u057d\u03bc"], ["v", "\u03bd"], ["w", "\u051d\u0461"], ["x", "\u0445\u03c7"],
+    ["y", "\u0443\u03b3"], ["l", "il1|\u0456\u03b9\u0131\u0269\u04cf\u0399\u0406"],
+  ].flatMap(([latin, others]) => [...others].map((c) => [c, latin])),
+);
+
+/**
+ * Look-alike key: names a reader may take for one another (case, width,
+ * accents, letters of other scripts drawn like Latin ones, I l 1 and 0 o)
+ * get the same key. Used against the reserved root names only.
+ */
+function lookalikeKey(name) {
+  let out = "";
+  for (const c of name.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase()) out += LOOKALIKES.get(c) ?? c;
+  return out;
+}
+
+const RESERVED_KEYS = RESERVED_ROOT_NAMES.map(nameKey);
+const RESERVED_LOOKALIKES = new Set(RESERVED_ROOT_NAMES.map(lookalikeKey));
+const SUFFIX_ROOM = 6; // " (999)"
 
 /**
  * Names for siblings given in ServerId order, unique without regard to case
  * and distinct from `reserved` keys. The first holder of a name keeps it;
  * the others get " (2)", " (3)"… (the first free one, shortening the name
- * to stay within 100 characters). A counter per name keeps the work linear.
+ * to stay within MAX_NAME_LENGTH). A counter per name keeps the work linear.
  */
-function uniqueNames(rawNames, reserved) {
+function uniqueNames(rawNames, reserved, { root = false } = {}) {
   const bases = rawNames.map(localFolderName);
   const used = new Set(reserved);
   const names = new Array(bases.length);
   bases.forEach((base, i) => {
-    const key = keyOf(base);
+    const key = nameKey(base);
+    // At the root, a name a reader may take for a reserved one ("Іnbox" in Cyrillic, "lnbox") is suffixed too.
+    if (root && RESERVED_LOOKALIKES.has(lookalikeKey(base))) return;
     if (!used.has(key)) {
       used.add(key);
       names[i] = base;
@@ -368,15 +395,15 @@ function uniqueNames(rawNames, reserved) {
   const counters = new Map();
   bases.forEach((base, i) => {
     if (names[i] !== undefined) return;
-    const counterKey = keyOf(cutCodePoints(base, MAX_NAME_LENGTH - SUFFIX_ROOM));
+    const counterKey = nameKey(v.cut(base, MAX_NAME_LENGTH - SUFFIX_ROOM));
     let k = counters.get(counterKey) ?? 2;
     let candidate;
     do {
       const suffix = ` (${k++})`;
-      candidate = cutCodePoints(base, MAX_NAME_LENGTH - suffix.length) + suffix;
-    } while (used.has(keyOf(candidate)));
+      candidate = v.cut(base, MAX_NAME_LENGTH - suffix.length) + suffix;
+    } while (used.has(nameKey(candidate)));
     counters.set(counterKey, k);
-    used.add(keyOf(candidate));
+    used.add(nameKey(candidate));
     names[i] = candidate;
   });
   return names;
@@ -418,8 +445,13 @@ export function specialFolders(tree) {
  *  - A folder that does not hang from the root through mail folders, or
  *    deeper than MAX_DEPTH, gets no path (never the case for a tree from
  *    buildTree).
+ *  - `archives` (optional): the ServerId of the folder the mailbox keeps
+ *    its archives in (created by the engine for Thunderbird's "Archive"
+ *    action, never chosen by name). Unless it is a special folder, it goes
+ *    to "/Archives", the local account's archives folder, with its
+ *    subfolders.
  */
-export function localPaths(tree) {
+export function localPaths(tree, { archives = null } = {}) {
   const nodes = tree instanceof Map ? tree : tree?.nodes;
   const paths = new Map();
   if (!(nodes instanceof Map)) return paths;
@@ -429,16 +461,18 @@ export function localPaths(tree) {
     if (n && typeof n === "object" && kindOf(n.type) === "mail" && typeof n.name === "string") mail.set(id, n);
   }
   const special = specialFolders(mail);
+  const pinned = new Map([...special].map(([id, use]) => [id, SPECIAL_PATHS.get(use)]));
+  if (typeof archives === "string" && mail.has(archives) && !special.has(archives)) pinned.set(archives, ARCHIVES_PATH);
   const children = new Map(); // parentId → ids in ServerId order
   for (const [id, n] of mail) {
-    if (special.has(id)) continue;
+    if (pinned.has(id)) continue;
     if (!children.has(n.parentId)) children.set(n.parentId, []);
     children.get(n.parentId).push(id);
   }
   const queue = [[ROOT_ID, "", 0, RESERVED_KEYS]];
-  for (const [id, use] of special) {
-    paths.set(id, SPECIAL_PATHS.get(use));
-    queue.push([id, SPECIAL_PATHS.get(use), 1, []]);
+  for (const [id, path] of pinned) {
+    paths.set(id, path);
+    queue.push([id, path, 1, []]);
   }
   for (let i = 0; i < queue.length; i++) {
     const [parentId, parentPath, depth, reserved] = queue[i];
@@ -448,6 +482,7 @@ export function localPaths(tree) {
     const names = uniqueNames(
       ids.map((id) => mail.get(id).name),
       reserved,
+      { root: parentId === ROOT_ID },
     );
     ids.forEach((id, k) => {
       const path = `${parentPath}/${names[k]}`;

@@ -44,7 +44,7 @@ export class WbxmlError extends Error {
   }
 }
 
-// ── Building ──────────────────────────────────────────────────────────────
+// ── Element tree ───────────────────────────────────────────────────────────
 
 /**
  * An element. `name` is "Namespace:Tag", or "Tag" to take the parent's
@@ -53,66 +53,76 @@ export class WbxmlError extends Error {
  * or nothing (empty element).
  */
 export function el(name, content) {
-  const i = name.indexOf(":");
-  const node = {
-    ns: i >= 0 ? name.slice(0, i) : null,
-    tag: i >= 0 ? name.slice(i + 1) : name,
-    children: [],
-    value: null,
-    opaque: false,
-  };
-  if (content === undefined || content === null) return node;
-  if (Array.isArray(content)) {
-    node.children = content.filter(Boolean);
-  } else if (content instanceof Uint8Array) {
-    node.value = content;
-    node.opaque = true;
-  } else if (typeof content === "string" || (typeof content === "number" && Number.isSafeInteger(content))) {
-    const s = String(content);
-    if (s.includes("\u0000")) throw new WbxmlError(`caractère NUL refusé dans <${name}>`);
-    node.value = encodeUtf8(s);
-  } else {
-    throw new WbxmlError(`contenu invalide pour <${name}>`);
+  const colon = name.indexOf(":");
+  const node = { ns: null, tag: name, children: [], value: null, opaque: false };
+  if (colon >= 0) {
+    node.ns = name.slice(0, colon);
+    node.tag = name.slice(colon + 1);
   }
+  if (content == null) return node; // empty element
+  if (content instanceof Uint8Array) {
+    node.opaque = true;
+    node.value = content;
+    return node;
+  }
+  if (Array.isArray(content)) {
+    for (const item of content) if (item) node.children.push(item);
+    return node;
+  }
+  const isText = typeof content === "string" || (typeof content === "number" && Number.isSafeInteger(content));
+  if (!isText) throw new WbxmlError(`contenu invalide pour <${name}>`);
+  const text = String(content);
+  if (text.includes("\u0000")) throw new WbxmlError(`caractère NUL refusé dans <${name}>`);
+  node.value = encodeUtf8(text);
   return node;
 }
 
-// ── Encoding ──────────────────────────────────────────────────────────────
+// ── Writing ────────────────────────────────────────────────────────────────
 
+/**
+ * Output collected as runs: single bytes gather in `pending` until a byte
+ * array (text, opaque data) arrives; result() joins the runs once.
+ */
 class Writer {
   constructor() {
-    this.buf = new Uint8Array(1024);
-    this.n = 0;
-  }
-  ensure(extra) {
-    if (this.n + extra <= this.buf.length) return;
-    let size = this.buf.length * 2;
-    while (size < this.n + extra) size *= 2;
-    const next = new Uint8Array(size);
-    next.set(this.buf.subarray(0, this.n));
-    this.buf = next;
+    this.runs = [];
+    this.pending = [];
+    this.length = 0;
   }
   byte(b) {
-    this.ensure(1);
-    this.buf[this.n++] = b;
+    this.pending.push(b);
   }
   bytes(arr) {
-    this.ensure(arr.length);
-    this.buf.set(arr, this.n);
-    this.n += arr.length;
+    this.#closeRun();
+    this.runs.push(arr);
+    this.length += arr.length;
   }
-  mbUInt32(value) {
+  #closeRun() {
+    if (!this.pending.length) return;
+    this.runs.push(this.pending);
+    this.length += this.pending.length;
+    this.pending = [];
+  }
+  /** Multi-byte integer: base-128 groups, most significant first, every group but the last flagged 0x80. */
+  multiByte(value) {
     if (!Number.isInteger(value) || value < 0 || value > 0xffffffff) throw new WbxmlError("entier hors limites");
-    const parts = [value & 0x7f];
-    let v = Math.floor(value / 128);
-    while (v > 0) {
-      parts.unshift((v & 0x7f) | 0x80);
-      v = Math.floor(v / 128);
-    }
-    for (const p of parts) this.byte(p);
+    const groups = [];
+    let rest = value;
+    do {
+      groups.push(rest % 128);
+      rest = (rest - (rest % 128)) / 128;
+    } while (rest > 0);
+    for (let k = groups.length - 1; k >= 0; k--) this.byte(k > 0 ? groups[k] | 0x80 : groups[k]);
   }
   result() {
-    return this.buf.slice(0, this.n);
+    this.#closeRun();
+    const out = new Uint8Array(this.length);
+    let at = 0;
+    for (const run of this.runs) {
+      out.set(run, at);
+      at += run.length;
+    }
+    return out;
   }
 }
 
@@ -151,7 +161,7 @@ export function encode(root) {
     if (node.value !== null) {
       if (node.opaque) {
         w.byte(OPAQUE);
-        w.mbUInt32(node.value.length);
+        w.multiByte(node.value.length);
         w.bytes(node.value);
       } else {
         if (node.value.includes(0)) throw new WbxmlError(`caractère NUL refusé dans <${ns}:${node.tag}>`);
@@ -166,7 +176,7 @@ export function encode(root) {
   return w.result();
 }
 
-// ── Decoding ──────────────────────────────────────────────────────────────
+// ── Parsing ────────────────────────────────────────────────────────────────
 
 /** Quick check before decoding: a WBXML 1.1-1.3 version byte (decode() checks the rest). */
 export function looksLikeWbxml(bytes) {
@@ -181,17 +191,19 @@ export function decode(bytes, limits = DEFAULT_LIMITS) {
   const maxDepth = limit(limits?.maxDepth, DEFAULT_LIMITS.maxDepth);
   if (!(bytes instanceof Uint8Array)) throw new WbxmlError("données invalides");
   if (bytes.length > maxBytes) throw new WbxmlError(`document trop volumineux (${bytes.length} octets)`);
-  let pos = 0;
+  let pos = 0; // next byte to read
 
-  const mbUInt32 = () => {
-    let value = 0;
-    for (let i = 0; i < 5; i++) {
+  // Multi-byte integer: at most five base-128 groups; a set high bit announces another group.
+  const readInt = () => {
+    let total = 0;
+    for (let groups = 1; groups <= 5; groups++) {
       if (pos >= bytes.length) throw new WbxmlError("document tronqué (entier)");
-      const b = bytes[pos++];
-      value = value * 128 + (b & 0x7f);
-      if (!(b & 0x80)) {
-        if (value > 0xffffffff) throw new WbxmlError("entier hors limites");
-        return value;
+      const octet = bytes[pos];
+      pos += 1;
+      total = total * 128 + (octet & 0x7f);
+      if ((octet & 0x80) === 0) {
+        if (total > 0xffffffff) throw new WbxmlError("entier hors limites");
+        return total;
       }
     }
     throw new WbxmlError("entier trop long");
@@ -200,10 +212,10 @@ export function decode(bytes, limits = DEFAULT_LIMITS) {
   if (bytes.length < 4) throw new WbxmlError("document tronqué (en-tête)");
   const version = bytes[pos++];
   if (version < 0x01 || version > 0x03) throw new WbxmlError(`version inconnue 0x${version.toString(16)}`);
-  if (mbUInt32() === 0) mbUInt32(); // public id given as a string table index
-  const charset = mbUInt32();
+  if (readInt() === 0) readInt(); // public id given as a string table index
+  const charset = readInt();
   if (charset !== CHARSET_UTF8) throw new WbxmlError(`jeu de caractères ${charset} non géré`);
-  const tableLength = mbUInt32();
+  const tableLength = readInt();
   if (tableLength > bytes.length - pos) throw new WbxmlError("document tronqué (table des chaînes)");
   pos += tableLength; // never referenced: STR_T is refused below
 
@@ -261,7 +273,7 @@ export function decode(bytes, limits = DEFAULT_LIMITS) {
     }
     if (b === OPAQUE) {
       if (stack.length <= 1) throw new WbxmlError("données hors élément");
-      const len = mbUInt32();
+      const len = readInt();
       if (len > bytes.length - pos) throw new WbxmlError("document tronqué (données opaques)");
       if (len > 0) {
         if (++nodes > maxNodes) throw new WbxmlError("trop d'éléments");
@@ -311,11 +323,6 @@ export function child(node, name) {
   if (!node) return null;
   for (const c of node.children) if (matches(c, name)) return c;
   return null;
-}
-
-/** Every child named `name`. */
-export function childrenNamed(node, name) {
-  return node ? node.children.filter((c) => matches(c, name)) : [];
 }
 
 /** Follow a path of child names; null if any step is missing. */

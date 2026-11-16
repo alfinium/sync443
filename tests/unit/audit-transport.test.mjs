@@ -42,6 +42,7 @@ const mailbox = (over = {}) => ({
   filterType: "5",
   accountKey: null,
   tlsPins: [],
+  sync: { mail: true, calendar: true, contacts: true, tasks: true },
   ...over,
 });
 

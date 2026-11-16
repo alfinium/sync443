@@ -3,12 +3,12 @@
 
 /**
  * Tests of the gate for untrusted values. Limits come from [MS-ASCMD]
- * (ids up to 64 characters), [MS-ASDTYPE] 2.3 (dateTime), [MS-ASPROV]
- * (policy key: unsigned 32-bit) and RFC 5321/5322 (addresses).
+ * (ids up to 64 characters), [MS-ASPROV] (policy key: unsigned 32-bit)
+ * and RFC 5321/5322 (addresses).
  */
 
 import { test, assert, eq } from "./harness.mjs";
-import { cleanText, itemId, syncKey, status, integer, flag, dateTime, emailAddress, folderName, policyKey } from "../../src/core/sanitize.mjs";
+import { cleanText, itemId, syncKey, status, integer, flag, emailAddress, folderName, policyKey } from "../../src/core/sanitize.mjs";
 
 const NOT_STRINGS = [null, undefined, 42, true, {}, [], ["a"], new String("a")];
 const BIDI = ["\u061c", "\u200e", "\u200f", "\u202a", "\u202b", "\u202c", "\u202d", "\u202e", "\u2066", "\u2067", "\u2068", "\u2069"];
@@ -117,58 +117,6 @@ test("policyKey : entier non signé de 32 bits écrit en décimal", () => {
   eq(policyKey("00000000001"), null, "11 chiffres");
   for (const bad of ["", "-1", "1.0", " 1", "1 ", "0x1", "abc", "１"]) eq(policyKey(bad), null, JSON.stringify(bad));
   for (const v of NOT_STRINGS) eq(policyKey(v), null);
-});
-
-// ── Dates ─────────────────────────────────────────────────────────────────
-
-test("dateTime : formes compacte et étendue, en UTC", () => {
-  const t = Date.UTC(2026, 10, 15, 14, 30, 0);
-  eq(dateTime("20261115T143000Z"), new Date(t), "compacte");
-  eq(dateTime("2026-11-15T14:30:00Z"), new Date(t), "étendue");
-  eq(dateTime("2026-11-15T14:30:00.000Z"), new Date(t), "étendue avec millisecondes nulles");
-  eq(dateTime("1601-01-01T00:00:00.000Z"), new Date(Date.UTC(1601, 0, 1)), "première date admise");
-  eq(dateTime("99991231T235959Z"), new Date(Date.UTC(9999, 11, 31, 23, 59, 59)), "dernière date admise");
-});
-
-test("dateTime : millisecondes de la forme étendue conservées", () => {
-  eq(dateTime("2026-11-15T14:30:00.123Z")?.getTime(), Date.UTC(2026, 10, 15, 14, 30, 0, 123));
-  eq(dateTime("2026-11-15T14:30:00.5Z")?.getTime(), Date.UTC(2026, 10, 15, 14, 30, 0, 500), "un chiffre = dixièmes");
-  eq(dateTime("2026-11-15T14:30:00.05Z")?.getTime(), Date.UTC(2026, 10, 15, 14, 30, 0, 50), "deux chiffres = centièmes");
-  eq(dateTime("2026-11-15T14:30:00.1234Z"), null, "quatre chiffres");
-  eq(dateTime("2026-11-15T14:30:00.Z"), null, "point sans chiffre");
-});
-
-test("dateTime : dates impossibles refusées (31 février, 29 février hors bissextile…)", () => {
-  eq(dateTime("20260231T000000Z"), null, "31 février");
-  eq(dateTime("20260230T000000Z"), null, "30 février");
-  eq(dateTime("20260229T000000Z"), null, "29 février 2026");
-  eq(dateTime("19000229T000000Z"), null, "29 février 1900");
-  eq(dateTime("20000229T000000Z")?.getTime(), Date.UTC(2000, 1, 29), "29 février 2000");
-  eq(dateTime("20240229T120000Z")?.getTime(), Date.UTC(2024, 1, 29, 12), "29 février 2024");
-  eq(dateTime("20260431T000000Z"), null, "31 avril");
-  for (const bad of ["20261315T000000Z", "20260015T000000Z", "20261100T000000Z", "20261132T000000Z", "20261115T240000Z", "20261115T236000Z", "20261115T235960Z"]) {
-    eq(dateTime(bad), null, bad);
-  }
-});
-
-test("dateTime : année hors 1601–9999 refusée", () => {
-  eq(dateTime("16001231T235959Z"), null, "1600");
-  eq(dateTime("0000-01-01T00:00:00Z"), null, "an 0");
-  eq(dateTime("0099-01-01T00:00:00Z"), null, "an 99 (Date.UTC le lirait 1999)");
-  eq(dateTime("10000-01-01T00:00:00Z"), null, "année sur 5 chiffres");
-  eq(dateTime("100000101T000000Z"), null, "forme compacte trop longue");
-});
-
-test("dateTime : formats inexacts refusés", () => {
-  for (const bad of [
-    "20261115T143000z", "20261115T143000", "20261115 143000Z", "2026-11-15T14:30:00+01:00", "2026-11-15 14:30:00Z",
-    "2026-11-15T14:30Z", "20261115T143000.000Z", "2026-1115T14:30:00Z", "2026-11-15T14:30:00Z\n", " 20261115T143000Z",
-    "2026-11-15", "١٢٣٤-11-15T14:30:00Z", "",
-  ]) {
-    eq(dateTime(bad), null, JSON.stringify(bad));
-  }
-  for (const v of NOT_STRINGS) eq(dateTime(v), null);
-  eq(dateTime(new Date()), null, "un objet Date n'est pas une chaîne");
 });
 
 // ── Addresses ─────────────────────────────────────────────────────────────
