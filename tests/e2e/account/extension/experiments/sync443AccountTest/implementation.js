@@ -154,7 +154,7 @@ var sync443AccountTest = (() => {
               server: server && {
                 key: server.key,
                 type: server.type,
-                hostname: server.hostname,
+                hostname: server.hostname ?? server.hostName, // hostName in Thunderbird 140
                 username: server.username,
                 marks: marks("mail.server", server.key),
                 accountKey: MailServices.accounts.findAccountForServer(server)?.key ?? null,
@@ -216,7 +216,7 @@ var sync443AccountTest = (() => {
               accountKey,
               serverKey: server.key,
               type: server.type,
-              hostname: server.hostname,
+              hostname: server.hostname ?? server.hostName, // hostName in Thunderbird 140
               username: server.username,
               prettyName: server.prettyName,
               marks: marks("mail.server", server.key),
@@ -285,6 +285,27 @@ var sync443AccountTest = (() => {
             identity.valid = true;
             accountByKey(accountKey).addIdentity(identity);
             return identity.key;
+          },
+
+          /**
+           * Preferences left under an outgoing server key no server has, as
+           * Thunderbird 140 leaves them when it deletes a server: the host
+           * name, and our mark when `owner` is given.
+           */
+          async leaveOutgoingPrefs(key, owner) {
+            const branch = Services.prefs.getBranch(`mail.smtpserver.${key}.`);
+            branch.setStringPref("hostname", "127.0.0.1");
+            if (owner) branch.setStringPref("sync443.owner", owner);
+          },
+
+          /** Names of the preferences under an outgoing server key. */
+          async outgoingPrefNames(key) {
+            return Services.prefs.getBranch(`mail.smtpserver.${key}.`).getChildList("").sort();
+          },
+
+          async clearOutgoingPrefs(key) {
+            const branch = Services.prefs.getBranch(`mail.smtpserver.${key}.`);
+            for (const name of branch.getChildList("")) branch.clearUserPref(name);
           },
 
           /** Edits an outgoing server's preferences, as a user (or anything else) might. */
@@ -452,22 +473,24 @@ var sync443AccountTest = (() => {
             const fail = (status) => async () => {
               throw Components.Exception("échec simulé", status);
             };
+            // Removal: the asynchronous method and its synchronous forerunner
+            // (Thunderbird 140 has only the latter).
             const overrides = {
-              locked: ["searchLoginsAsync", fail(Cr.NS_ERROR_ABORT)],
-              removeFails: ["removeLoginAsync", fail(Cr.NS_ERROR_FAILURE)],
-              noRemove: ["removeLoginAsync", undefined],
-              noSearch: ["searchLoginsAsync", undefined],
+              locked: [["searchLoginsAsync"], fail(Cr.NS_ERROR_ABORT)],
+              removeFails: [["removeLoginAsync", "removeLogin"], fail(Cr.NS_ERROR_FAILURE)],
+              noRemove: [["removeLoginAsync", "removeLogin"], undefined],
+              noSearch: [["searchLoginsAsync"], undefined],
             };
             let value = realLogins;
             if (mode !== "restore") {
-              const [name, replacement] = overrides[mode];
+              const [names, replacement] = overrides[mode];
               // An empty target: the real service's methods are fixed
               // properties, which a proxy over it could not report otherwise.
               value = new Proxy(
                 {},
                 {
                   get(_, property) {
-                    if (property === name) return replacement;
+                    if (names.includes(property)) return replacement;
                     const member = realLogins[property];
                     return typeof member === "function" ? member.bind(realLogins) : member;
                   },

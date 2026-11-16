@@ -10,6 +10,7 @@ de publication à son fichier `.xpi` dans les
 ## 0.1.0
 
 Première version utilisable : le **courrier** d'une boîte Exchange ActiveSync, dans les deux sens.
+Vérifiée sur Thunderbird 140.17 ESR et Thunderbird 160.
 
 ### Nouveautés
 

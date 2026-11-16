@@ -280,10 +280,10 @@ async function loginFaultChecks() {
   }
   await helper.breakLogins("restore");
   if (await helper.breakLogins("noRemove")) {
-    await expectCode("gestionnaire sans removeLoginAsync : removePassword", api.removePassword(ORIGIN, "bob"), "UNSUPPORTED");
+    await expectCode("gestionnaire sans removeLoginAsync ni removeLogin : removePassword", api.removePassword(ORIGIN, "bob"), "UNSUPPORTED");
     await expectCode("… setPassword refusé avant toute écriture", api.setPassword(ORIGIN, "dave", "x"), "UNSUPPORTED");
   } else {
-    await emit("SKIP", { label: "gestionnaire sans removeLoginAsync", detail: "remplacement impossible" });
+    await emit("SKIP", { label: "gestionnaire sans removeLoginAsync ni removeLogin", detail: "remplacement impossible" });
   }
   await helper.breakLogins("restore");
   if (await helper.breakLogins("noSearch")) {
@@ -360,6 +360,18 @@ async function sendRouteChecks(r1, r2, userSmtp) {
   info = await helper.inspect(r1.accountKey);
   await check("… aucune identité de nos comptes ne l'utilise", !info.identities.some((i) => i.smtpServerKey === reused));
   await check("… checkSendRoute → false", (await api.checkSendRoute()) === false);
+
+  // Thunderbird 140 keeps a deleted outgoing server's preferences, and gives
+  // its key to the next server made. Left by a neutral server deleted while
+  // the extension was not running: cleared. Left by a server of the user's:
+  // not touched.
+  await helper.leaveOutgoingPrefs("smtp71", EXT_ID);
+  await helper.leaveOutgoingPrefs("smtp72", "");
+  await api.checkSendRoute();
+  const left = [await helper.outgoingPrefNames("smtp71"), await helper.outgoingPrefNames("smtp72")];
+  await check("préférences restées d'un serveur neutre supprimé (Thunderbird 140) : effacées ; celles d'un serveur de l'utilisateur, intactes",
+    left[0].length === 0 && same(left[1], ["hostname"]), left);
+  await helper.clearOutgoingPrefs("smtp72");
 }
 
 /** removeAccount deletes files only inside the profile's Mail folder, in a folder that is the account's own. */

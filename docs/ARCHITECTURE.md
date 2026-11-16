@@ -88,11 +88,11 @@ les 15 combinaisons). La page de réglages le présente sous forme de cases à c
 | Étape | Contenu | État |
 |---|---|---|
 | **1. Fondations** | WBXML, validation, protocole, connexion vérifiée, HTTP/1.1, client ActiveSync, stockage, espacement des essais | **terminée** : 321 tests unitaires, 191 vérifications de bout en bout dans Thunderbird, [audit](audits/etape-1.md) fait et corrigé |
-| **2. Code privilégié** | comptes marqués, « Dossiers locaux » protégés, serveur d'envoi neutre, mots de passe, identité | **terminée** (API agenda reportée à l'étape 4) : 334 vérifications de bout en bout dans Thunderbird |
+| **2. Code privilégié** | comptes marqués, « Dossiers locaux » protégés, serveur d'envoi neutre, mots de passe, identité | **terminée** (API agenda reportée à l'étape 4) : 335 vérifications de bout en bout dans Thunderbird |
 | **3. Courrier** | identité des messages par Message-ID et empreinte, suppressions avec filet, seuil de suppression en masse, verrou par boîte, journal des modifications acquittées, envoi fermé, archives ; noms de dossiers valables sur Windows, macOS et Linux | **terminée** : 703 tests unitaires, 138 vérifications de bout en bout du courrier dans Thunderbird, [audit](audits/etape-2-3.md) fait et corrigé ; publiée en 0.1.0 |
 | **4. Agenda et tâches** | iCalendar écrit par l'extension, récurrence bornée, fuseaux, invitations confirmées | à faire |
 | **5. Contacts** | vCard écrit par l'extension, carnets marqués | à faire |
-| **6. Finition** | assistant, réglages avancés (dont l'épinglage d'une autorité privée), suppression des copies locales d'un élément décoché, validation sur serveurs réels et sur Thunderbird 140 ESR | à faire (page de réglages, cases à cocher et journal livrés dès la 0.1.0) |
+| **6. Finition** | assistant, réglages avancés (dont l'épinglage d'une autorité privée), suppression des copies locales d'un élément décoché, validation sur serveurs réels | à faire (page de réglages, cases à cocher et journal livrés dès la 0.1.0) |
 
 ## Méthode, à chaque étape
 

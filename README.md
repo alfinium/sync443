@@ -47,7 +47,7 @@ ni IMAP ni SMTP à configurer. Windows, macOS et Linux.
 
 ## Compatibilité
 
-- **Thunderbird :** 140 ESR et versions suivantes. Le développement se fait sur Thunderbird 160.
+- **Thunderbird :** 140 ESR et versions suivantes. Vérifiée sur Thunderbird 140.17 ESR et 160.
 - **Systèmes :** Windows, macOS et Linux.
 - **Serveurs :** tout serveur Exchange ActiveSync 12.1 à 14.1 qui accepte l'authentification par
   identifiant et mot de passe. Par exemple :

@@ -66,4 +66,4 @@
 - **Toute page de l'extension peut atteindre l'arrière-plan,** donc le module privilégié. La restriction à l'arrière-plan est une protection d'appoint : toutes les pages sont traitées comme également sensibles.
 - **Proxy exigeant sa propre authentification :** non pris en charge. L'extension le signale et n'envoie rien.
 - **Linux avec les autorités du système (p11-kit) :** comportement de « racine intégrée » à vérifier sur ces distributions.
-- **Thunderbird 140 ESR :** le module privilégié a été prouvé sur Thunderbird 160. Le test de bout en bout se relance sur 140 avec `THUNDERBIRD=<chemin>`.
+- **Thunderbird 140 ESR :** vérifié depuis, sur 140.17.0 ESR. Un certificat refusé y était signalé comme une connexion interrompue (connexion bien refusée, message trompeur) ; corrigé, voir [l'audit des étapes 2 et 3](etape-2-3.md#thunderbird-140-esr).

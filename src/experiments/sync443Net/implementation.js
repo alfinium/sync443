@@ -120,6 +120,15 @@ var sync443Net = (() => {
     return `0x${(status >>> 0).toString(16)}`;
   }
 
+  /** NSS error class of an XPCOM status (bad certificate or other), or null when it is not a TLS error. */
+  function errorClassOf(status) {
+    try {
+      return nssErrors.getErrorClass(status);
+    } catch {
+      return null;
+    }
+  }
+
   // ── Arguments ─────────────────────────────────────────────────────────
 
   const HOSTNAME = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/;
@@ -396,20 +405,20 @@ var sync443Net = (() => {
         return fail(viaProxy ? "PROXY" : "NETWORK", "connexion fermée par l'autre partie");
       }
       if (status === Cr.NS_ERROR_NET_TIMEOUT) return fail("TIMEOUT", "le serveur ne répond pas");
-      let errorClass = null;
+      let info = null;
       try {
-        errorClass = nssErrors.getErrorClass(status);
+        info = await this.transport?.tlsSocketControl?.asyncGetSecurityInfo();
       } catch {
-        errorClass = null; // not a TLS error
+        info = null;
+      }
+      let errorClass = errorClassOf(status);
+      // Thunderbird 140 reports a refused certificate as a reset connection;
+      // the TLS layer keeps the real error.
+      if (errorClass === null && info?.errorCode && nssErrors.isNSSErrorCode(info.errorCode)) {
+        errorClass = errorClassOf(nssErrors.getXPCOMFromNSSError(info.errorCode));
       }
       if (errorClass !== null) {
-        let code = "";
-        try {
-          const info = await this.transport?.tlsSocketControl?.asyncGetSecurityInfo();
-          code = /^[A-Z0-9_]{1,64}$/.test(info?.errorCodeString ?? "") ? info.errorCodeString : "";
-        } catch {
-          code = "";
-        }
+        const code = /^[A-Z0-9_]{1,64}$/.test(info?.errorCodeString ?? "") ? info.errorCodeString : "";
         const what =
           errorClass === Ci.nsINSSErrorsService.ERROR_CLASS_BAD_CERT
             ? "certificat du serveur refusé par Thunderbird"

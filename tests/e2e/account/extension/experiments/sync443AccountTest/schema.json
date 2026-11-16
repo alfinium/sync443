@@ -52,6 +52,17 @@
         ]
       },
       {
+        "name": "leaveOutgoingPrefs",
+        "type": "function",
+        "async": true,
+        "parameters": [
+          { "name": "key", "type": "string" },
+          { "name": "owner", "type": "string" }
+        ]
+      },
+      { "name": "outgoingPrefNames", "type": "function", "async": true, "parameters": [{ "name": "key", "type": "string" }] },
+      { "name": "clearOutgoingPrefs", "type": "function", "async": true, "parameters": [{ "name": "key", "type": "string" }] },
+      {
         "name": "editOutgoing",
         "type": "function",
         "async": true,

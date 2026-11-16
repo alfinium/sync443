@@ -166,7 +166,7 @@ var sync443MailTest = (() => {
             return {
               accountKey,
               type: server.type,
-              hostname: server.hostname,
+              hostname: server.hostname ?? server.hostName, // hostName in Thunderbird 140
               username: server.username,
               prettyName: server.prettyName,
               localPath,
@@ -197,7 +197,7 @@ var sync443MailTest = (() => {
             const server = key ? MailServices.accounts.allServers.find((s) => s.key === key) ?? null : null;
             return {
               key,
-              hostname: server ? String(server.hostname) : null,
+              hostname: server ? String(server.hostname ?? server.hostName) : null, // hostName in Thunderbird 140
               type: server ? server.type : null,
               owner: server ? Services.prefs.getBranch(`mail.server.${key}.`).getStringPref("sync443.owner", "") : null,
             };

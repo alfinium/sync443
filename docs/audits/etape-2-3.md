@@ -68,12 +68,23 @@
 | Moyenne | Dossiers renumérotés par le serveur (réinitialisation, migration) : deux dossiers qui échangent leurs numéros mélangeaient leurs copies locales | Sur une liste de dossiers reprise de zéro, chaque dossier est retrouvé d'abord par son emplacement, puis par son numéro |
 | Moyenne | Réponse vide du serveur (dossier sans changement, comme Exchange l'envoie) : la reconstruction d'un dossier vide ne se terminait jamais ; actions locales en attente sans fin, dix passages à chaque synchro | La réponse vide termine la reconstruction (jamais pour une première synchro) ; commandes non acquittées gardées |
 
+## Thunderbird 140 ESR
+
+Tous les tests de bout en bout ont été relancés sur Thunderbird 140.17.0 ESR. Trois différences avec la 160 sont apparues, toutes corrigées et couvertes par un test :
+
+| Gravité | Constat | Correction |
+|---|---|---|
+| Moyenne | Sous Thunderbird 140, un serveur d'envoi supprimé garde ses préférences, et le prochain serveur créé reprend sa clé. Un serveur de l'utilisateur créé après la suppression du serveur neutre héritait donc de la marque de Sync443 : il était pris pour le serveur neutre et réécrit vers 127.0.0.1, voire supprimé | Préférences du serveur neutre effacées dès sa suppression, qu'elle vienne de Sync443 ou de l'utilisateur ; au démarrage, celles d'un serveur neutre supprimé pendant que l'extension ne tournait pas |
+| Compatibilité | Nom d'hôte d'un serveur exposé sous un autre nom (`hostName`) : aucun compte Sync443 reconnu, « Dossiers locaux » introuvables, création de compte refusée | Les deux noms sont lus |
+| Compatibilité | Certificat refusé signalé comme une connexion interrompue : la connexion était bien refusée, mais avec un message trompeur | Erreur lue sur la couche TLS de la connexion |
+
 ## Points connus, à corriger dans une version suivante
 
-Trouvés par le dernier tour de vérification ; aucun ne supprime de message.
+Trouvés par le dernier tour de vérification et par les tests sur Thunderbird 140 ; aucun ne supprime de message.
 - **Chaîne de renommages vue lors d'une liste de dossiers reprise de zéro** (« Projets » renommé « Projets 2025 », puis « Projets 2026 » renommé « Projets ») : le dossier local passe au mauvais dossier du serveur, l'autre est retéléchargé. Sans reprise de zéro, le même enchaînement est suivi correctement.
 - **Serveur non conforme qui répond vide alors qu'il lui reste des éléments** au milieu d'une reconstruction : une suppression locale en attente peut être considérée comme faite sans avoir été envoyée.
 - **Élément redemandé (Fetch) auquel le serveur répond vide :** redemandé à chaque passage.
+- **Thunderbird 140, extension arrêtée :** si l'utilisateur supprime le serveur d'envoi neutre puis crée un serveur d'envoi avant que l'extension ne tourne de nouveau, ce serveur reprend la clé et la marque de l'ancien. Au retour de l'extension, il est pris pour le serveur neutre : l'envoi par ce serveur échoue, rien ne part ailleurs.
 
 ## Écarts acceptés
 
@@ -88,4 +99,4 @@ Trouvés par le dernier tour de vérification ; aucun ne supprime de message.
 - **Accusés de lecture (MDN) :** passeraient par le serveur d'envoi neutre, donc échouent.
 - **Autorité privée :** pas encore de réglage pour épingler un certificat.
 - **Publication :** la protection des étiquettes `v*` est un réglage du dépôt GitHub.
-- **Plateformes :** les tests unitaires tournent sous Windows, macOS et Linux. Les tests de bout en bout n'ont été lancés que sous macOS avec Thunderbird 160 ; Thunderbird 140 ESR reste à vérifier (`THUNDERBIRD=<chemin>`).
+- **Plateformes :** les tests unitaires tournent sous Windows, macOS et Linux. Les tests de bout en bout n'ont été lancés que sous macOS, avec Thunderbird 140.17.0 ESR et Thunderbird 160.

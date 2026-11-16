@@ -324,6 +324,12 @@ var sync443Account = (() => {
     return typeof k === "string" && PREF_KEY.test(k) ? Services.prefs.getBranch(`mail.smtpserver.${k}.`) : null;
   }
 
+  /** An incoming server's host name: `hostName` in Thunderbird 140, `hostname` in later versions. */
+  function hostOf(server) {
+    const name = server.hostname ?? server.hostName;
+    return typeof name === "string" ? name : "";
+  }
+
   /**
    * The mailboxId this server carries the marks of this extension for, or
    * null: type "none", our host name, user name = mailboxId, both marks.
@@ -331,7 +337,7 @@ var sync443Account = (() => {
    */
   function marksOf(server, extensionId) {
     try {
-      if (!server || server.type !== "none" || String(server.hostname).toLowerCase() !== HOST) return null;
+      if (!server || server.type !== "none" || hostOf(server).toLowerCase() !== HOST) return null;
       const branch = serverBranch(server);
       if (!branch || readPref(branch, OWNER) !== extensionId) return null;
       const mailboxId = readPref(branch, MAILBOX);
@@ -375,7 +381,7 @@ var sync443Account = (() => {
     const named = k === null ? null : (servers.find((s) => s.key === k) ?? null);
     if (named && !marksOf(named, extensionId)) return false;
     if (!named && !creating && !servers.some((s) => marksOf(s, extensionId))) return false;
-    const real = servers.find((s) => s.type === "none" && String(s.hostname) === "Local Folders" && !marksOf(s, extensionId));
+    const real = servers.find((s) => s.type === "none" && hostOf(s) === "Local Folders" && !marksOf(s, extensionId));
     if (real) Services.prefs.setCharPref(LOCAL_FOLDERS_PREF, real.key);
     else MailServices.accounts.createLocalMailAccount();
     const now = localFoldersKey();
@@ -552,18 +558,44 @@ var sync443Account = (() => {
     return MailServices.accounts.allIdentities.some((identity) => identity.smtpServerKey === serverKey);
   }
 
-  function deleteNeutral(service, server) {
+  function deleteNeutral(service, extensionId, server) {
     // Thunderbird's default outgoing server: let it pick another one.
     if (Services.prefs.getCharPref(DEFAULT_OUTGOING_PREF, "") === server.key) {
       Services.prefs.clearUserPref(DEFAULT_OUTGOING_PREF);
     }
+    const { key } = server;
     service.deleteServer(server);
+    clearDeletedNeutral(service, extensionId, key);
+  }
+
+  /**
+   * Clears the preferences left by a deleted neutral server. Thunderbird 140
+   * leaves a deleted outgoing server's preferences behind (later versions
+   * clear them): the next server made takes the free key, and would inherit
+   * our mark and values, then be taken for the neutral server and rewritten.
+   * Only a key no server has any more, and only if it carries our mark.
+   */
+  function clearDeletedNeutral(service, extensionId, key) {
+    if (typeof key !== "string" || !PREF_KEY.test(key)) return;
+    if ([...service.servers].some((s) => s.key === key)) return;
+    const branch = Services.prefs.getBranch(`mail.smtpserver.${key}.`);
+    if (readPref(branch, OWNER) !== extensionId) return;
+    for (const name of branch.getChildList("")) branch.clearUserPref(name);
+  }
+
+  /** The same for every such leftover (a neutral server deleted while the extension was not running). */
+  function clearAllDeletedNeutral(service, extensionId) {
+    const prefix = "mail.smtpserver.";
+    const suffix = `.${OWNER}`;
+    for (const name of Services.prefs.getChildList(prefix)) {
+      if (name.endsWith(suffix)) clearDeletedNeutral(service, extensionId, name.slice(prefix.length, -suffix.length));
+    }
   }
 
   /** Deletes every neutral server of this extension that no identity uses. */
   function dropUnusedNeutral(service, extensionId) {
     for (const server of neutralServers(service, extensionId)) {
-      if (!identityUses(server.key)) deleteNeutral(service, server);
+      if (!identityUses(server.key)) deleteNeutral(service, extensionId, server);
     }
   }
 
@@ -595,6 +627,7 @@ var sync443Account = (() => {
    */
   function checkSendRoute(extensionId, identityId = null) {
     const service = outgoingService();
+    clearAllDeletedNeutral(service, extensionId);
     const mine = ownAccounts(extensionId);
     const identities = [];
     for (const { account } of mine) {
@@ -785,7 +818,7 @@ var sync443Account = (() => {
     }
     if (found) return true;
     return MailServices.accounts.allServers.some(
-      (s) => String(s.hostname).toLowerCase() === HOST && String(s.username).toLowerCase() === mailboxId,
+      (s) => hostOf(s).toLowerCase() === HOST && String(s.username).toLowerCase() === mailboxId,
     );
   }
 
@@ -954,10 +987,9 @@ var sync443Account = (() => {
 
   /**
    * removeLoginAsync / modifyLoginAsync, or else their synchronous
-   * forerunners removeLogin / modifyLogin. Thunderbird 160 has only the
-   * asynchronous ones; Gecko 152 has both (the synchronous ones deprecated).
-   * Whether 140 ESR has the asynchronous ones is not verified, hence the
-   * fallback. Neither: UNSUPPORTED.
+   * forerunners removeLogin / modifyLogin. Thunderbird 140 ESR has only the
+   * synchronous ones, Thunderbird 160 only the asynchronous ones. Neither:
+   * UNSUPPORTED.
    */
   function loginMethod(manager, asyncName, syncName) {
     if (typeof manager[asyncName] === "function") return (...args) => manager[asyncName](...args);
@@ -1052,7 +1084,16 @@ var sync443Account = (() => {
       this.watcher = {
         QueryInterface: ChromeUtils.generateQI(["nsIObserver"]),
         observe(_subject, topic, data) {
-          if (topic === "nsPref:changed" && !WATCHED_PREF.test(String(data))) return;
+          if (topic === "message-smtpserver-removed") {
+            // At once: a server made right after the removal takes its key.
+            try {
+              clearDeletedNeutral(outgoingService(), extensionId, String(data));
+            } catch {
+              // checkSendRoute clears it on its next run
+            }
+          } else if (topic === "nsPref:changed" && !WATCHED_PREF.test(String(data))) {
+            return;
+          }
           repair();
         },
       };
