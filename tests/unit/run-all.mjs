@@ -51,6 +51,18 @@ import "./audit-transport.test.mjs";
 import "./audit-http.test.mjs";
 import "./audit-engine.test.mjs";
 
+// ── Calendar, tasks and meetings (stage 4) ───────────────────────────────
+import "./eas-timezone.test.mjs";
+import "./recurrence.test.mjs";
+import "./calendar-item.test.mjs";
+import "./task-item.test.mjs";
+import "./meeting-request.test.mjs";
+import "./itip.test.mjs";
+import "./confirm.test.mjs";
+import "./invitations.test.mjs";
+import "./scheduling.test.mjs";
+import "./pim.test.mjs";
+
 // ── Background page (loaded once, against a fake Thunderbird) ─────────────
 import "./background.test.mjs";
 

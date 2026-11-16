@@ -6,7 +6,9 @@
  *
  * A Ping waits on the server until one of the watched folders changes or
  * the heartbeat interval runs out. Only the folders of the chosen kinds are
- * watched (in this version: mail; never calendar, contacts or tasks).
+ * watched, each with its class: "Email" for mail folders, "Calendar" and
+ * "Tasks" for those of sync/pim.mjs (never contacts). A change in any of
+ * them starts a pass for the folders the server names.
  *
  * The heartbeat adapts in both directions:
  *  - it runs out with nothing new (status 1): the network kept the idle
@@ -94,6 +96,9 @@ export class Heartbeat {
   }
 }
 
+/** One watched collection as pingRequest takes it: { id, cls }. A bare CollectionId is a mail folder. */
+const watchedFolder = (f) => (typeof f === "string" ? { id: f, cls: "Email" } : { id: f?.id, cls: typeof f?.cls === "string" ? f.cls : "Email" });
+
 /** setTimeout-based sleep that ends early on abort. */
 function defaultSleep(ms, signal) {
   return new Promise((resolve) => {
@@ -123,7 +128,9 @@ export class PushLoop {
   /**
    * @param {object} o
    * @param {() => Promise<{command: Function}>} o.clientFactory
-   * @param {() => Promise<string[]>} o.folders        CollectionIds to watch (chosen kinds only)
+   * @param {() => Promise<Array<{id: string, cls: string}|string>>} o.folders
+   *        the collections to watch (chosen kinds only), each with its Ping class ("Email", "Calendar", "Tasks");
+   *        a bare CollectionId is a mail folder
    * @param {(ids: string[]|null) => Promise<any>} o.onChanges   sync these collections (null: everything)
    * @param {() => Promise<{ok: boolean, stop?: boolean, until?: number}>} [o.canPing]   mailbox health
    * @param {(e: Error) => Promise<void>} [o.onFatal]
@@ -192,8 +199,8 @@ export class PushLoop {
         await sleep(wait, signal);
         continue;
       }
-      let ids = (await folders()).slice(0, this.maxFolders);
-      if (!ids.length) {
+      const watched = (await folders()).slice(0, this.maxFolders).map(watchedFolder);
+      if (!watched.length) {
         // Nothing to watch yet: one full sync to learn the folders, then give up if there is still nothing.
         if (emptyRounds++ >= 1) {
           log?.info?.("Ping : aucun dossier à surveiller, surveillance arrêtée.");
@@ -208,7 +215,7 @@ export class PushLoop {
       const hb = this.heartbeat.value;
       try {
         const client = await clientFactory();
-        const doc = await client.command("Ping", pingRequest(hb, ids.map((id) => ({ id, cls: "Email" }))), {
+        const doc = await client.command("Ping", pingRequest(hb, watched), {
           signal,
           timeoutMs: hb * 1000 + settings.marginMs,
           maxBytes: settings.maxBytes,

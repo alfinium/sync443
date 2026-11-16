@@ -1,0 +1,20 @@
+[
+  {
+    "namespace": "sync443CalendarTest",
+    "description": "TEST ONLY, never shipped: helpers for the sync443Calendar end-to-end test and for the calendar scenario of the mail end-to-end runner. run(name, args) calls one of the helpers of the implementation (act on calendars as Thunderbird's interface does, read items back through Thunderbird's own API, create calendars the extension does not own, watch notifications and scheduling messages).",
+    "functions": [
+      { "name": "print", "type": "function", "async": true, "parameters": [{ "name": "line", "type": "string" }] },
+      { "name": "quit", "type": "function", "async": true, "parameters": [] },
+      { "name": "phase", "type": "function", "async": true, "parameters": [] },
+      {
+        "name": "run",
+        "type": "function",
+        "async": true,
+        "parameters": [
+          { "name": "name", "type": "string" },
+          { "name": "args", "type": "any", "optional": true }
+        ]
+      }
+    ]
+  }
+]

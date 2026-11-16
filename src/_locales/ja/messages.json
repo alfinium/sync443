@@ -90,7 +90,7 @@
     "message": "キャンセル"
   },
   "removeQuestion": {
-    "message": "メールボックス「$NAME$」を削除しますか？このメールボックスのアカウント、ローカルのフォルダー、パスワードが Thunderbird から削除されます。サーバー上では何も削除されません。",
+    "message": "メールボックス「$NAME$」を削除しますか？このメールボックスのアカウント、ローカルのフォルダー、パスワードが Thunderbird から削除されます。サーバー上では何も削除されません。サーバーにまだ送信されていない変更は失われます。",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -98,7 +98,39 @@
     }
   },
   "discardConfirm": {
-    "message": "サーバー上で行われた削除は適用されません。メッセージは Thunderbird に残り、該当するフォルダーはサーバーと再同期されます。サーバー上で削除されたフォルダーは、同期されないままここに残ります。"
+    "message": "サーバー上で行われた削除は適用されません。該当するメッセージ、予定、タスクは Thunderbird に残ります。該当するメールフォルダーはサーバーと再同期され、保持された予定とタスクはサーバーとのリンクがなくなります。サーバー上で削除されたフォルダーは、同期されないままここに残ります。"
+  },
+  "uncheckCalendarConfirm": {
+    "message": "「$NAME$」のカレンダーの同期を停止しますか？このメールボックスの予定が Thunderbird から削除されます。サーバー上では何も削除されません。サーバーにまだ送信されていない変更は失われます。",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "uncheckTasksConfirm": {
+    "message": "「$NAME$」のタスクの同期を停止しますか？このメールボックスのタスクが Thunderbird から削除されます。サーバー上では何も削除されません。サーバーにまだ送信されていない変更は失われます。",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "uncheckBothConfirm": {
+    "message": "「$NAME$」のカレンダーとタスクの同期を停止しますか？このメールボックスのカレンダーが、その予定とタスクとともに Thunderbird から削除されます。サーバー上では何も削除されません。サーバーにまだ送信されていない変更は失われます。",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "moveConfirm": {
+    "message": "「$NAME$」のサーバーまたはユーザー名を変更しますか？このメールボックスのカレンダーとタスクは Thunderbird から削除され、サーバーから再度同期されます。サーバーにまだ送信されていない変更は失われます。",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
   },
   "noAnswer": {
     "message": "拡張機能が応答しません。このページを再読み込みしてください。"
@@ -213,11 +245,20 @@
   "fieldPeriod": {
     "message": "メールの同期期間"
   },
+  "fieldCalendarPeriod": {
+    "message": "カレンダーの同期期間"
+  },
+  "calendarPeriodHint": {
+    "message": "この期間より前の予定は同期されません。今後の予定は常に同期されます。"
+  },
+  "fieldTaskFilter": {
+    "message": "同期するタスク"
+  },
   "fieldKinds": {
     "message": "同期する項目"
   },
   "kindsHint": {
-    "message": "このバージョンで同期されるのはメールのみです。その他の選択は今後のために保存されます。"
+    "message": "このバージョンでは、連絡先はまだ同期されません。この選択は今後のために保存されます。"
   },
   "soon": {
     "message": "近日対応"
@@ -268,11 +309,23 @@
   "period1Month": {
     "message": "1 か月"
   },
+  "period3Months": {
+    "message": "3 か月"
+  },
+  "period6Months": {
+    "message": "6 か月"
+  },
   "periodAll": {
     "message": "すべて"
   },
   "periodUnknown": {
     "message": "不明"
+  },
+  "taskFilterAll": {
+    "message": "すべてのタスク"
+  },
+  "taskFilterIncomplete": {
+    "message": "未完了のタスクのみ"
   },
   "kindMail": {
     "message": "メール"
@@ -336,6 +389,12 @@
   "choosePeriod": {
     "message": "メールの同期期間を選択してください。"
   },
+  "chooseCalendarPeriod": {
+    "message": "カレンダーの同期期間を選択してください。"
+  },
+  "chooseTaskFilter": {
+    "message": "同期するタスクを選択してください。"
+  },
   "chooseKind": {
     "message": "同期する項目を 1 つ以上選択してください。"
   },
@@ -382,7 +441,7 @@
     }
   },
   "statusMassDelete": {
-    "message": "同期を一時停止しました: サーバー上で $COUNT$ 件のメッセージが一度に削除されました。これらの削除は確認後にのみ適用されます。ローカルのコピーを保持することもできます。",
+    "message": "同期を一時停止しました: サーバー上で $COUNT$ 件の項目 (メッセージ、予定、タスク) が一度に削除されました。これらの削除は確認後にのみ適用されます。ローカルのコピーを保持することもできます。",
     "placeholders": {
       "count": {
         "content": "$1"
@@ -390,7 +449,7 @@
     }
   },
   "statusMassDeleteMany": {
-    "message": "同期を一時停止しました: サーバー上で多数のメッセージが一度に削除されました。これらの削除は確認後にのみ適用されます。ローカルのコピーを保持することもできます。"
+    "message": "同期を一時停止しました: サーバー上で多数の項目 (メッセージ、予定、タスク) が一度に削除されました。これらの削除は確認後にのみ適用されます。ローカルのコピーを保持することもできます。"
   },
   "statusBlocked": {
     "message": "停止しました: $REASON$自動的な再試行は行われません。再開するには「同期」をクリックしてください。",
@@ -446,6 +505,17 @@
   },
   "failedMany": {
     "message": "$COUNT$ 件のメッセージを取り込めませんでした。自動的に再試行されます。",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "failedCalendarOne": {
+    "message": "1 件の予定またはタスクを取り込めませんでした。"
+  },
+  "failedCalendarMany": {
+    "message": "$COUNT$ 件の予定またはタスクを取り込めませんでした。",
     "placeholders": {
       "count": {
         "content": "$1"
@@ -848,5 +918,335 @@
   },
   "sentLeftoverBoth": {
     "message": "メッセージは送信されましたが、下書きを削除できず、作成ウィンドウも閉じられませんでした。再送信しないでください。"
+  },
+  "confirmTitle": {
+    "message": "Sync443 – 送信の確認"
+  },
+  "confirmAskInvite": {
+    "message": "この会議の招待を送信しますか？"
+  },
+  "confirmAskUpdate": {
+    "message": "この会議の更新された招待を送信しますか？"
+  },
+  "confirmAskCancel": {
+    "message": "この会議のキャンセル通知を送信しますか？"
+  },
+  "confirmHint": {
+    "message": "変更は既に保存されています。このメッセージを送信しない場合、宛先には変更が通知されません。"
+  },
+  "confirmLabelEvent": {
+    "message": "予定"
+  },
+  "confirmLabelWhen": {
+    "message": "日時"
+  },
+  "confirmLabelFrom": {
+    "message": "差出人"
+  },
+  "confirmAllDay": {
+    "message": "$DATE$ (終日)",
+    "placeholders": {
+      "date": {
+        "content": "$1"
+      }
+    }
+  },
+  "confirmRecipientsOne": {
+    "message": "宛先 1 件"
+  },
+  "confirmRecipientsMany": {
+    "message": "宛先 $COUNT$ 件",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "confirmSend": {
+    "message": "送信"
+  },
+  "confirmDontSend": {
+    "message": "送信しない"
+  },
+  "confirmSending": {
+    "message": "送信中…"
+  },
+  "confirmClose": {
+    "message": "閉じる"
+  },
+  "confirmExpired": {
+    "message": "この確認は無効になりました。既に回答済みか、有効期限が切れています。"
+  },
+  "confirmNothingSent": {
+    "message": "このウィンドウからは何も送信されません。"
+  },
+  "confirmUncertain": {
+    "message": "Sync443 から応答がありませんでした。メッセージは送信されていない可能性があります。再送信する前に送信済みトレイを確認してください。"
+  },
+  "meetingSubjectInvite": {
+    "message": "招待: $SUMMARY$",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingSubjectUpdate": {
+    "message": "招待の更新: $SUMMARY$",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingSubjectCancel": {
+    "message": "キャンセル: $SUMMARY$",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingSubjectAccepted": {
+    "message": "承諾: $SUMMARY$",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingSubjectTentative": {
+    "message": "仮承諾: $SUMMARY$",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingSubjectDeclined": {
+    "message": "辞退: $SUMMARY$",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingTextWhen": {
+    "message": "日時: $WHEN$",
+    "placeholders": {
+      "when": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingTextWhere": {
+    "message": "場所: $LOCATION$",
+    "placeholders": {
+      "location": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingNoTitle": {
+    "message": "(件名なし)"
+  },
+  "calendarSendFailed": {
+    "message": "「$SUMMARY$」の会議メッセージは送信されませんでした: $REASON$予定は保存されていますが、参加者には通知されていません。",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      },
+      "reason": {
+        "content": "$2"
+      }
+    }
+  },
+  "calendarSendUncertain": {
+    "message": "「$SUMMARY$」の会議メッセージは送信されていない可能性があります: 接続が失われました。再送信する前に送信済みトレイを確認してください。",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarTooManyAttendees": {
+    "message": "「$SUMMARY$」の参加者が $MAX$ 人を超えているため、Sync443 は招待を送信できません。変更は元に戻されました。",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      },
+      "max": {
+        "content": "$2"
+      }
+    }
+  },
+  "calendarAnswerFailed": {
+    "message": "「$SUMMARY$」への返答を送信できませんでした: $REASON$予定は元の状態に戻されました。",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      },
+      "reason": {
+        "content": "$2"
+      }
+    }
+  },
+  "calendarAnswerNoInvitation": {
+    "message": "「$SUMMARY$」への返答を送信できませんでした: サーバー上に招待が見つかりません。予定は元の状態に戻されました。",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarAnswerNeedsMail": {
+    "message": "「$SUMMARY$」への返答を送信できませんでした: このサーバーで招待に返答するには、このメールボックスのメールを同期する必要があります。",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarChangeRefused": {
+    "message": "サーバーが「$SUMMARY$」の変更を拒否しました。サーバー上の内容に戻されました。",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarRecurrenceUnsupported": {
+    "message": "「$SUMMARY$」の繰り返し設定は ActiveSync サーバーに保存できません。変更は元に戻されました。",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarReadOnly": {
+    "message": "「$SUMMARY$」は Thunderbird から変更できません。変更は元に戻されました。",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarTooLarge": {
+    "message": "「$SUMMARY$」は大きすぎるため、サーバーに保存できません。変更は元に戻されました。",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarKeptLocal": {
+    "message": "「$SUMMARY$」をサーバーに保存できませんでした。同期されないローカルのコピーとして Thunderbird に残ります。",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarServerChanged": {
+    "message": "「$SUMMARY$」は、Thunderbird での変更が送信される前にサーバー上で変更されました。サーバー上の内容が表示され、Thunderbird での変更は送信されませんでした。",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarDetached": {
+    "message": "「$SUMMARY$」は、サーバー上で同じ項目ではなくなりました。Thunderbird 側の内容は、同期されないローカルのコピーとして Thunderbird に残ります。",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarRestoreUnsupported": {
+    "message": "「$SUMMARY$」の繰り返しのうち変更または削除された回は、ActiveSync サーバー上で元の繰り返しに戻せません。変更は元に戻されました。",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarOrganizerChanged": {
+    "message": "「$SUMMARY$」の主催者が Thunderbird で変更されたため、参加者にメッセージは送信されませんでした。",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarNotSentExpired": {
+    "message": "「$SUMMARY$」の会議メッセージは送信されませんでした: 確認の依頼に時間内の回答がありませんでした。予定は保存されていますが、参加者には通知されていません。",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarNotSentFull": {
+    "message": "「$SUMMARY$」の会議メッセージは送信されませんでした: 送信待ちのメッセージが多すぎます。予定は保存されていますが、参加者には通知されていません。",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarNotSentOld": {
+    "message": "「$SUMMARY$」の会議メッセージは送信されませんでした: 1 日以上送信待ちのままでした。予定は保存されていますが、参加者には通知されていません。",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarChangesDroppedOne": {
+    "message": "Thunderbird で行われた変更 1 件は送信されませんでした: 対象のカレンダーはサーバーと同期されなくなりました。新しい項目はローカルのコピーとして Thunderbird に残ります。"
+  },
+  "calendarChangesDroppedMany": {
+    "message": "Thunderbird で行われた変更 $COUNT$ 件は送信されませんでした: 対象のカレンダーはサーバーと同期されなくなりました。新しい項目はローカルのコピーとして Thunderbird に残ります。",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarReplyNotSent": {
+    "message": "「$SUMMARY$」への返答はカレンダーに保存されましたが、主催者への返信は送信されませんでした: このメールボックスに招待が見つかりません。",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarKeptLocalTooManyAttendees": {
+    "message": "「$SUMMARY$」の参加者が $MAX$ 人を超えているため、Sync443 は招待を送信できません。同期されないローカルのコピーとして Thunderbird に残ります。",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      },
+      "max": {
+        "content": "$2"
+      }
+    }
+  },
+  "calendarKeptLocalRecurrence": {
+    "message": "「$SUMMARY$」の繰り返し設定は ActiveSync サーバーに保存できません。同期されないローカルのコピーとして Thunderbird に残ります。",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarKeptLocalTooLarge": {
+    "message": "「$SUMMARY$」は大きすぎるため、サーバーに保存できません。同期されないローカルのコピーとして Thunderbird に残ります。",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
   }
 }

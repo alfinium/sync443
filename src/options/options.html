@@ -93,6 +93,21 @@
           <p id="sync-error" class="field-error" hidden></p>
         </fieldset>
 
+        <!-- Each one is shown only while its item is checked above (options.mjs); hidden, it keeps its value. -->
+        <div class="row">
+          <div id="calendarPeriod-field" class="field" hidden>
+            <label for="calendarPeriod" data-i18n="fieldCalendarPeriod"></label>
+            <select id="calendarPeriod" name="calendarPeriod" aria-describedby="calendarPeriod-hint calendarPeriod-error"></select>
+            <p id="calendarPeriod-hint" class="hint" data-i18n="calendarPeriodHint"></p>
+            <p id="calendarPeriod-error" class="field-error" hidden></p>
+          </div>
+          <div id="taskFilter-field" class="field" hidden>
+            <label for="taskFilter" data-i18n="fieldTaskFilter"></label>
+            <select id="taskFilter" name="taskFilter" aria-describedby="taskFilter-error"></select>
+            <p id="taskFilter-error" class="field-error" hidden></p>
+          </div>
+        </div>
+
         <div class="actions">
           <button type="submit" id="save" class="primary" data-i18n="save"></button>
           <button type="button" id="cancel" data-i18n="cancel"></button>

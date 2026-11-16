@@ -8,7 +8,11 @@
  * starting its usual syncs when the packaged test-config.json says
  * `scenario: true`, and calls
  *
- *   runScenario({ api, store, saveMailbox, removeMailbox, runSync, entries, echo, log, testConfig })
+ *   runScenario({ api, store, saveMailbox, removeMailbox, runSync, entries, echo, log, testConfig, meetings })
+ *
+ * (`entries.get(id).calendar` holds the calendar objects of a mailbox: { invitations, calendarStore,
+ * scheduler, pim }; `meetings` reads and answers the confirmation question of a meeting message without
+ * its window: current(), waiting(), answer(send), ask(mailboxId, question). See src/background.mjs.)
  *
  * The scenario acts as the settings page and as a user would: saveMailbox
  * and removeMailbox exactly as the page asks the background, runSync as the
@@ -24,6 +28,11 @@
  *      made right away hit the right server items, push resumes;
  *   3. removal of B, A still synchronised, mail period changed (1 month,
  *      all, 1 month, all on a server that starts over), mail unchecked for A.
+ *
+ * The calendar, the tasks and the meetings have their own scenario, in
+ * calendar-scenario.mjs (run by run_calendar_sync_test.py): when the
+ * packaged configuration says `e2e.suite: "calendar"`, runScenario hands the
+ * phase over to it, with this module's helpers.
  *
  * Output lines, in <profile>/sync443mail-e2e.txt:
  *   SYNC443MAIL-CHECK {label, ok, detail}    one check
@@ -473,8 +482,12 @@ async function phase1() {
   const leaked = paths.filter((p) => forbidden.includes(p.slice(p.lastIndexOf("/") + 1)));
   await check("aucun dossier d'agenda, de contacts, de tâches (ni la boîte d'envoi) créé, bien que cochés pour A", !leaked.length, leaked);
   const asked = await rpc("collections_requested", { login: E.alice.login, device_id: A.deviceId });
+  // Calendar and tasks, checked for A, are synchronised since stage 4 (their own scenario checks them): only
+  // the folders of the other classes (contacts, notes, journal) must never be named.
   const pim = E.pimFolders.alice;
-  await check("A ne demande jamais au serveur un dossier d'agenda, de contacts ou de tâches (Sync, Ping…)", !asked.some((id) => pim.includes(id)), { asked, pim });
+  const CALENDAR_AND_TASKS = [7, 8, 13, 15];
+  const never = (await serverFolders(E.alice.login)).filter((f) => pim.includes(f.server_id) && !CALENDAR_AND_TASKS.includes(f.type)).map((f) => f.server_id);
+  await check("A ne demande jamais au serveur un dossier de contacts, de notes ou de journal (Sync, Ping…)", never.length > 0 && !asked.some((id) => never.includes(id)), { asked, never });
 
   const inbox = await localMessages(A.accountKey, "/Inbox");
   const one = (subject) => withSubject(inbox, subject)[0] ?? null;
@@ -1028,15 +1041,25 @@ async function phase3() {
     await step("Courrier décoché pour A (agenda gardé)");
     const view = { ...A, server: `127.0.0.1:${E.port}` };
     const seqOff = await mock("last_seq");
+    const savedAt = Date.now() / 1000;
     const res = await ctx.saveMailbox(input(view, { sync: { mail: false, calendar: true, contacts: false, tasks: false } }), null);
     const A2 = await mailboxById(A.id);
     await check("A enregistrée sans le courrier (mot de passe gardé, non retapé)", res?.id === A.id && A2 && !A2.sync.mail && A2.sync.calendar, A2?.sync);
     await sleep(4000);
     await mock("add_message", [login, "Inbox"], { subject: S.mailOff });
     await sleep(25_000);
-    const reqs = (await rpc("requests", { since: seqOff, login, device_id: A.deviceId })).map((r) => r.cmd);
-    const pings = await mock("pings_waiting", [login, A.deviceId]);
-    await check("plus aucune synchro de courrier pour A (ni Sync, ni Ping, ni FolderSync ; seulement le contrôle Settings)", !reqs.some((c) => c === "Sync" || c === "FolderSync" || c === "MoveItems") && !pings.length, { reqs, pings: pings.length });
+    // The calendar, kept, goes on (FolderSync, its own Sync and Ping): no request may name a mail folder any more.
+    // (The Ping the engine was waiting on when the mailbox was saved, cut short by the save, is listed too: it
+    // began before.)
+    const mailIds = (await serverFolders(login)).filter((f) => !E.pimFolders.alice.includes(f.server_id)).map((f) => f.server_id);
+    const reqs = (await rpc("requests", { since: seqOff, login, device_id: A.deviceId })).filter((r) => r.cmd !== "Ping" || r.time >= savedAt);
+    const ofMail = reqs.filter((r) => r.cmd === "MoveItems" || (r.cmd === "Sync" && (r.collections ?? []).some(([cid]) => mailIds.includes(cid))) || (r.cmd === "Ping" && (r.ping_folders ?? []).some((id) => mailIds.includes(id))));
+    const pings = (await mock("pings_waiting", [login, A.deviceId])).filter((p) => (p.folders ?? []).some((id) => mailIds.includes(id)));
+    await check(
+      "plus aucune synchro de courrier pour A (ni Sync ni Ping d'un dossier de courrier, ni MoveItems ; l'agenda, gardé, continue)",
+      !ofMail.length && !pings.length,
+      { mail: ofMail.map((r) => [r.cmd, r.collections ?? r.ping_folders]), pings: pings.length, cmds: reqs.map((r) => r.cmd) },
+    );
     await check("… le nouveau message du serveur n'est pas importé", !withSubject(await localMessages(A.accountKey, "/Inbox"), S.mailOff).length);
     const stillAccount = await T.inspect(A.accountKey);
     if (stillAccount) {
@@ -1112,7 +1135,8 @@ async function periodChange(A) {
   };
   const diff = (local, server, after) => ({ local: changes(local, after[0]), server: changes(server, after[1]) });
   const syncsSince = async (seq) => (await rpc("requests", { since: seq, login, device_id: A.deviceId })).filter((r) => r.cmd === "Sync");
-  const periodsSent = (syncs) => syncs.flatMap((r) => (r.filters ?? []).map(([, ft]) => ft)).filter((ft) => ft !== null);
+  // The mail period, in the Sync requests of mail folders (those of the calendar and the tasks carry their own filter).
+  const periodsSent = (syncs) => syncs.flatMap((r) => (r.filters ?? []).filter(([cid]) => !E.pimFolders.alice.includes(cid)).map(([, ft]) => ft)).filter((ft) => ft !== null);
   const healthy = (h) => Boolean(h) && !h.blocked && (h.failures ?? 0) === 0;
   /** What the settings page does when the period is changed (password not typed again). */
   const setPeriod = async (filterType) => {
@@ -1220,7 +1244,12 @@ export async function runScenario(context) {
     if (E?.debugLog) await ctx.log.setDebugFor(3_600_000); // run_mail_test.py --debug-log (the log keeps its last entries only)
     await emit("START", { phase, at: Date.now(), version: (await browser.runtime.getBrowserInfo?.())?.version ?? null });
     if (!E) throw new Error("test-config.json sans e2e");
-    if (phase === 1) await phase1();
+    if (E.suite === "calendar") {
+      // Calendar, tasks and meetings: a scenario of its own (calendar-scenario.mjs), packaged by
+      // run_calendar_sync_test.py only. It reports through the helpers of this module.
+      const { runCalendarPhase } = await import("./calendar-scenario.mjs");
+      await runCalendarPhase({ ctx, E, T, phase, request: p, emit, check, info, gap, step, guard, rpc, mock, waitFor, errorOf, sleep, health, idle, input, mailboxById, sync443Logins });
+    } else if (phase === 1) await phase1();
     else if (phase === 2) await phase2(p.previous ?? null);
     else if (phase === 3) await phase3();
     else throw new Error(`phase inconnue : ${phase}`);

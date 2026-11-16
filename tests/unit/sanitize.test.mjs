@@ -8,7 +8,7 @@
  */
 
 import { test, assert, eq } from "./harness.mjs";
-import { cleanText, itemId, syncKey, status, integer, flag, emailAddress, folderName, policyKey } from "../../src/core/sanitize.mjs";
+import { cleanText, contentText, hasHidden, itemId, syncKey, status, integer, flag, emailAddress, folderName, policyKey } from "../../src/core/sanitize.mjs";
 
 const NOT_STRINGS = [null, undefined, 42, true, {}, [], ["a"], new String("a")];
 const BIDI = ["\u061c", "\u200e", "\u200f", "\u202a", "\u202b", "\u202c", "\u202d", "\u202e", "\u2066", "\u2067", "\u2068", "\u2069"];
@@ -181,4 +181,117 @@ test("folderName : 255 caractères au plus, paire de surrogates jamais coupée",
   const cut = folderName("😀".repeat(200));
   eq(cut.length, 254, "la demi-paire finale est retirée");
   assert(!hasLoneSurrogate(cut), "surrogate isolé");
+});
+
+// ── Content of calendar items and tasks ───────────────────────────────────
+
+// Characters are built here, never typed: no source file holds an invisible one.
+const at = (...codes) => String.fromCodePoint(...codes);
+const JOINERS = [0x200c, 0x200d];
+/** Every code point contentText removes besides controls, as [first, last] ranges. */
+const HIDDEN_RANGES = [
+  [0x00ad, 0x00ad], [0x061c, 0x061c], [0x180e, 0x180e], [0x200b, 0x200b], [0x200e, 0x200f], [0x202a, 0x202e], [0x2060, 0x2060], [0x2066, 0x2069],
+  [0xfeff, 0xfeff], [0xfff9, 0xfffb], [0xfffe, 0xffff], [0xe0000, 0xe007f],
+];
+const isHidden = (code) => HIDDEN_RANGES.some(([first, last]) => code >= first && code <= last);
+const isControl = (code) => (code < 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d) || (code >= 0x7f && code <= 0x9f);
+
+test("contentText: not a string is an empty text, and holds nothing hidden", () => {
+  for (const v of NOT_STRINGS) {
+    eq(contentText(v), "", String(v));
+    eq(hasHidden(v), false, String(v));
+  }
+});
+
+test("contentText: the zero-width joiner and non-joiner stay", () => {
+  const family = at(0x1f468, 0x200d, 0x1f469, 0x200d, 0x1f467);
+  const persian = at(0x0645, 0x06cc, 0x200c, 0x062e, 0x0648, 0x0627, 0x0647, 0x0645);
+  for (const text of [family, persian, `${family} ${persian}`, at(0x200c), at(0x200d)]) {
+    eq(contentText(text), text);
+    eq(contentText(text, { singleLine: true }), text);
+    eq(hasHidden(text), false);
+  }
+  // cleanText is what it was for its callers: with stripBidi the two joiners go, as every invisible character.
+  eq(cleanText(`a${at(0x200c)}b${at(0x200d)}c`, { stripBidi: true }), "abc");
+  eq(cleanText(`a${at(0x200c)}b${at(0x200d)}c`), `a${at(0x200c)}b${at(0x200d)}c`);
+});
+
+test("contentText: every code point is kept, or removed for one of two reasons", () => {
+  // The whole basic plane (but the surrogates), the tag block and its neighbours, and a few others.
+  const codes = [];
+  for (let code = 0; code <= 0xffff; code++) if (code < 0xd800 || code > 0xdfff) codes.push(code);
+  for (let code = 0xdfff0; code <= 0xe0100; code++) codes.push(code);
+  codes.push(0x10000, 0x1f600, 0x1f3f4, 0xe01ef, 0xf0000, 0x10ffff);
+  let hidden = 0;
+  for (const code of codes) {
+    const text = `a${at(code)}b`;
+    const label = `U+${code.toString(16)}`;
+    if (isHidden(code)) {
+      hidden++;
+      eq(contentText(text), "ab", `${label} is removed`);
+      eq(hasHidden(text), true, `${label} is said`);
+    } else if (isControl(code)) {
+      eq(contentText(text), "ab", `${label}, a control, is removed`);
+      eq(hasHidden(text), false, `${label}: no loss`);
+    } else if (code === 0x0d || code === 0x2028 || code === 0x2029) {
+      eq(contentText(text), "a\nb", `${label} is a line break`);
+      eq(hasHidden(text), false, label);
+    } else {
+      eq(contentText(text), text, `${label} is kept`);
+      eq(hasHidden(text), false, label);
+    }
+  }
+  eq(hidden, 1 + 1 + 1 + 1 + 2 + 5 + 1 + 4 + 1 + 3 + 2 + 128, "the documented set, and nothing else");
+  for (const code of JOINERS) assert(!isHidden(code));
+});
+
+test("contentText: lines, controls and bounds are those of cleanText", () => {
+  eq(contentText("a\r\nb\rc\nd"), "a\nb\nc\nd");
+  eq(contentText("a\tb"), "a\tb", "a tab stays in a text of several lines");
+  eq(contentText("a\n\nb\tc\r\nd", { singleLine: true }), "a b c d");
+  eq(contentText(`a${at(0x2028)}b${at(0x2029)}c`, { singleLine: true }), "a b c");
+  eq(contentText(`a${at(0)}${at(0x1b)}${at(0x7f)}${at(0x85)}b`), "ab");
+  eq(contentText("x".repeat(70_000)).length, 64 * 1024, "64 KiB by default");
+  eq(contentText("x".repeat(65), { max: 64 }), "x".repeat(64));
+  eq(contentText(`a${at(0x1f600)}`, { max: 2 }), "a", "never half a pair");
+  eq(contentText(`${at(0x202e).repeat(10)}abc`, { max: 3 }), "abc", "cut after cleaning");
+  eq(contentText("x", { max: Infinity }), "x");
+  // The same texts through both functions, where nothing hidden is involved.
+  for (const text of ["", "Budget 2026", "a\tb\r\nc", `a${at(0x07)}b`, `${at(0x0645)}${at(0x05d0)} mixed`, at(0x1f600).repeat(3)]) {
+    eq(contentText(text), cleanText(text), JSON.stringify(text));
+    eq(contentText(text, { singleLine: true }), cleanText(text, { singleLine: true, stripBidi: true }), JSON.stringify(text));
+  }
+});
+
+test("hasHidden: one character anywhere is enough, and every call answers the same", () => {
+  const hiddenOnes = [0x00ad, 0x200b, 0x200e, 0x202e, 0x2066, 0xfeff, 0xfffa, 0xffff, 0xe0001, 0xe007f];
+  for (const code of hiddenOnes) {
+    for (const text of [at(code), `${at(code)}abc`, `abc${at(code)}`, `${"x".repeat(5000)}${at(code)}${"y".repeat(5000)}`]) {
+      // Called several times in a row: no state is kept from one call to the next.
+      eq([hasHidden(text), hasHidden(text), hasHidden(text)], [true, true, true], `U+${code.toString(16)}`);
+      eq(contentText(text), text.split(at(code)).join(""));
+    }
+  }
+  eq(hasHidden(""), false);
+  eq(hasHidden("x".repeat(100_000)), false);
+});
+
+test("contentText, hasHidden: a lone surrogate is a loss, and hides nothing that follows it", () => {
+  // In JavaScriptCore a character class with the u flag misses some characters right after a lone surrogate.
+  const unit = (...codes) => String.fromCharCode(...codes);
+  const hiddenOnes = HIDDEN_RANGES.flatMap(([first, last]) => [first, last]);
+  for (const lone of [0xd800, 0xdbff, 0xdc00, 0xdfff]) {
+    eq(hasHidden(`a${unit(lone)}b`), true, "a lone surrogate is no text");
+    eq(contentText(`a${unit(lone)}b`), `a${unit(0xfffd)}b`);
+    for (const code of hiddenOnes) {
+      for (const text of [`${unit(lone)}${at(code)}`, `a${unit(lone)}${at(code)}b`, `${at(code)}${unit(lone)}`, `${unit(lone)}${at(code)}${unit(lone)}${at(code)}`]) {
+        const label = `U+${code.toString(16)} beside U+${lone.toString(16)}`;
+        eq(hasHidden(text), true, label);
+        eq(contentText(text), text.split(at(code)).join("").split(unit(lone)).join(unit(0xfffd)), label);
+        eq(contentText(text, { singleLine: true }).includes(at(code)), false, label);
+      }
+    }
+    eq(contentText(`${unit(lone)}${at(0x200d)}`), `${unit(0xfffd)}${at(0x200d)}`, "the joiner stays");
+  }
+  eq(hasHidden(at(0x1f600)), false, "a pair is a character");
 });

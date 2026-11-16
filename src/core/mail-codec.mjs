@@ -6,7 +6,7 @@
  * ApplicationData and what it writes back ([MS-ASEMAIL] for Read and Flag,
  * [MS-ASAIRS] for Body, [MS-ASCMD] for the Sync options).
  *
- *   readEmail(applicationData, { maxMimeBytes? }) → { read, flagged, mime, truncated }
+ *   readEmail(applicationData, { maxMimeBytes? }) → { read, flagged, mime, truncated, messageClass, meetingRequest }
  *   changeEmail({ read?, flagged? })             → ApplicationData children of a Change
  *   mailOptions({ filterType })                  → Options children of a Sync collection
  *
@@ -18,6 +18,7 @@
 import { el, child, text, bytes as rawBytes } from "./wbxml.mjs";
 import * as v from "./sanitize.mjs";
 import { ProtocolError } from "./protocol.mjs";
+import { readMeetingRequest } from "./meeting-request.mjs";
 
 /** Largest MIME message taken from a Sync response unless the caller says otherwise. */
 export const DEFAULT_MAX_MIME_BYTES = 64 * 1024 * 1024;
@@ -32,6 +33,12 @@ export const FLAG_TYPE = "for Follow Up";
 
 const BODY_MIME = 4; // AirSyncBase:Type of a full MIME body ([MS-ASAIRS] 2.2.2.22.1)
 const MIME_SUPPORT_ALL = "2"; // MIME for every message, not only S/MIME ones ([MS-ASCMD] 2.2.3.100.3)
+
+/**
+ * A message class ([MS-ASEMAIL] 2.2.2.49: "IPM.Note", "IPM.Schedule.Meeting.Request"…):
+ * 1 to 255 printable ASCII characters, without a blank at either end.
+ */
+const MESSAGE_CLASS = /^[\x21-\x7e](?:[\x20-\x7e]{0,253}[\x21-\x7e])?$/;
 
 const isElement = (node) => Boolean(node) && typeof node === "object" && Array.isArray(node.children);
 const isEmpty = (node) => node.children.length === 0 && !(node.value && node.value.length);
@@ -59,14 +66,24 @@ function flagState(flag) {
  *    null when there is none, it is empty, or it is larger than
  *    `maxMimeBytes` (default 64 MiB);
  *  - truncated: true when that Body says Truncated (mime then holds only
- *    the beginning of the message) or exceeds `maxMimeBytes` (mime null).
+ *    the beginning of the message) or exceeds `maxMimeBytes` (mime null);
+ *  - messageClass: the MessageClass as the server gives it, or null when
+ *    absent or not a plain class name (see MESSAGE_CLASS);
+ *  - meetingRequest: what the MeetingRequest element of an invitation says
+ *    (meeting-request.mjs, readMeetingRequest), or null when the item has
+ *    no such element.
  */
 export function readEmail(applicationData, { maxMimeBytes = DEFAULT_MAX_MIME_BYTES } = {}) {
   const cap = Number.isFinite(maxMimeBytes) && maxMimeBytes >= 0 ? maxMimeBytes : DEFAULT_MAX_MIME_BYTES;
-  const result = { read: null, flagged: null, mime: null, truncated: false };
+  const result = { read: null, flagged: null, mime: null, truncated: false, messageClass: null, meetingRequest: null };
   if (!isElement(applicationData)) return result;
   result.read = v.flag(text(applicationData, "Email:Read"));
   result.flagged = flagState(child(applicationData, "Email:Flag"));
+  const classNode = child(applicationData, "Email:MessageClass");
+  const messageClass = classNode?.value && classNode.value.length <= 255 ? text(classNode) : "";
+  result.messageClass = MESSAGE_CLASS.test(messageClass) ? messageClass : null;
+  const meeting = child(applicationData, "Email:MeetingRequest");
+  result.meetingRequest = meeting ? readMeetingRequest(meeting) : null;
   for (const body of applicationData.children) {
     if (body.ns !== "AirSyncBase" || body.tag !== "Body") continue;
     if (v.integer(text(body, "AirSyncBase:Type"), { min: 1, max: 255 }) !== BODY_MIME) continue;

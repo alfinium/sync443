@@ -3,9 +3,10 @@
 """Stateful Exchange ActiveSync 14.1 test server, Python standard library only.
 
 Written from the Microsoft specifications [MS-ASHTTP], [MS-ASCMD],
-[MS-ASWBXML], [MS-ASPROV], [MS-ASEMAIL] and [MS-ASAIRS]. It behaves like a
-strict real server, so that the end-to-end test fails when the client
-sends something a real server would refuse:
+[MS-ASWBXML], [MS-ASPROV], [MS-ASEMAIL], [MS-ASAIRS], [MS-ASCAL],
+[MS-ASTASK] and [MS-ASDTYPE]. It behaves like a strict real server, so that
+the end-to-end test fails when the client sends something a real server
+would refuse:
 
   - HTTPS only (certificate issued by a throw-away test authority, see
     ../net/testcerts.py), HTTP/1.1 requests framed by Content-Length;
@@ -19,7 +20,12 @@ sends something a real server would refuse:
     client Change/Delete/Add/Fetch, DeletesAsMoves, FilterType/SoftDelete,
     Status 3 and 12), MoveItems, Ping (long poll), SendMail (local delivery),
     Settings (UserInformation, DeviceInformation), GetItemEstimate,
-    ItemOperations (Fetch, EmptyFolderContents).
+    ItemOperations (Fetch, EmptyFolderContents);
+  - calendar and task classes ([MS-ASCAL], [MS-ASTASK]): typed items for the
+    negotiated version, client Add/Change/Delete validated as the
+    specifications require, Supported and ghosting, FilterType per class;
+  - meetings: invitation mails (MeetingRequest), MeetingResponse, and the
+    calendar parts of what SendMail received.
 
 Everything is driven in-process by the test, thread-safe:
 
@@ -70,7 +76,8 @@ import testcerts  # noqa: E402
 import wbxml  # noqa: E402
 from wbxml import Element, WbxmlError, el  # noqa: E402
 
-__all__ = ["MockEasServer", "ServerOptions", "FolderType", "make_mime", "DEFAULT_POLICY", "cert_material"]
+__all__ = ["MockEasServer", "ServerOptions", "FolderType", "make_mime", "DEFAULT_POLICY", "cert_material",
+           "make_timezone", "parse_timezone", "global_obj_id", "uid_of_global_obj_id"]
 
 EAS_PATH = "/Microsoft-Server-ActiveSync"
 WBXML_TYPE = "application/vnd.ms-sync.wbxml"
@@ -204,6 +211,19 @@ class ServerOptions:
     max_request_bytes: int = 64 * 1024 * 1024
     io_timeout: float = 30.0  # seconds, socket reads and writes
     server_version_header: str = "14.1"  # MS-Server-ActiveSync
+    # Meetings. An invitation also appears in the user's Calendar, not yet answered, as on Exchange
+    # (ResponseType 5 from 14.0); False: the calendar item appears only when the user answers.
+    invitation_in_calendar: bool = True
+    # What becomes of an invitation mail once answered with MeetingResponse (the specifications do not say):
+    # "deleted_items" (moved there, as Exchange does), "removed" (deleted for good) or "kept".
+    invitation_after_response: str = "deleted_items"
+    max_meeting_responses: int = 100  # Request elements per MeetingResponse ([MS-ASCMD] 3.1.5.10)
+    # One-shot: the next client Change of a calendar item is not applied and gets this Sync status
+    # (item status in Responses; 5 and 16, whose scope is global, as the collection's status). Then None again.
+    fail_next_calendar_change: object = None
+    # One-shot: the next MeetingResponse Request does nothing and gets this Status (3: mailbox error, 4: server
+    # error, [MS-ASCMD] 2.2.3.177.9). Then None again.
+    fail_next_meeting_response: object = None
 
 
 # ── Certificates ──────────────────────────────────────────────────────────
@@ -429,20 +449,913 @@ def _aware(when):
     return when.replace(tzinfo=datetime.timezone.utc)
 
 
+# ── Calendar, tasks, meetings: values ─────────────────────────────────────
+
+_COMPACT = re.compile(r"^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$")
+_DATETIME = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{3})?Z$")
+_UTC = datetime.timezone.utc
+
+
+def _parse_compact(text):
+    """Compact DateTime of [MS-ASDTYPE] 2.7.2 ("20261120T093000Z") -> aware datetime, or None."""
+    m = _COMPACT.match(text or "")
+    if not m:
+        return None
+    try:
+        return datetime.datetime(*(int(g) for g in m.groups()), tzinfo=_UTC)
+    except ValueError:
+        return None
+
+
+def _parse_datetime(text):
+    """dateTime of [MS-ASDTYPE] 2.3 ("2026-11-20T09:30:00.000Z", milliseconds optional) -> aware datetime, or None."""
+    m = _DATETIME.match(text or "")
+    if not m:
+        return None
+    y, mo, d, h, mi, sec = (int(g) for g in m.groups())
+    try:
+        if h == 24 and mi == 0 and sec == 0:  # hours go up to 24: midnight at the end of the day
+            return datetime.datetime(y, mo, d, tzinfo=_UTC) + datetime.timedelta(days=1)
+        return datetime.datetime(y, mo, d, h, mi, sec, tzinfo=_UTC)
+    except ValueError:
+        return None
+
+
+def compact_date(when):
+    return when.astimezone(_UTC).strftime("%Y%m%dT%H%M%SZ")
+
+
+def _plain_date(when):
+    """How the control API shows a date: "YYYY-MM-DDTHH:MM:SSZ" (None stays None)."""
+    return None if when is None else when.astimezone(_UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _to_date(value, name="date"):
+    """A date given to the control API -> aware UTC datetime (None stays None). Accepted: a datetime (naive: UTC),
+    "YYYY-MM-DDTHH:MM:SS[.mmm]Z", "YYYYMMDDTHHMMSSZ" or "YYYY-MM-DD" (midnight UTC)."""
+    if value is None:
+        return None
+    if isinstance(value, datetime.datetime):
+        return _aware(value).astimezone(_UTC).replace(microsecond=0)
+    if isinstance(value, str):
+        found = _parse_datetime(value) or _parse_compact(value)
+        if found is None and re.match(r"^\d{4}-\d{2}-\d{2}$", value):
+            found = _parse_datetime(value + "T00:00:00Z")
+        if found is not None:
+            return found
+    raise ValueError(f"{name} : date invalide {value!r}")
+
+
+# TimeZone structure of [MS-ASDTYPE] 2.7.6: Bias (LONG), StandardName (32 WCHAR), StandardDate (SYSTEMTIME),
+# StandardBias (LONG), DaylightName (32 WCHAR), DaylightDate (SYSTEMTIME), DaylightBias (LONG) = 172 bytes.
+TIMEZONE_BYTES = 172
+
+
+def _tz_name(text):
+    data = (text or "").encode("utf-16-le")
+    if len(data) > 64:
+        raise ValueError("nom de fuseau trop long (32 caractères UTF-16 au plus)")
+    return data + bytes(64 - len(data))
+
+
+def _tz_date(change):
+    """A yearly change {"month", "week" (1-5, 5: last), "weekday" (0: Sunday), "hour", "minute"} -> SYSTEMTIME."""
+    if not change:
+        return bytes(16)
+    words = (0, int(change["month"]), int(change.get("weekday", 0)), int(change.get("week", 1)),
+             int(change.get("hour", 0)), int(change.get("minute", 0)), 0, 0)
+    return b"".join(w.to_bytes(2, "little") for w in words)
+
+
+def make_timezone(bias=0, standard=None, daylight=None):
+    """The 172 bytes of a TimeZone structure. `bias`: minutes to add to local time to get UTC (-60 for UTC+1).
+    `standard`, `daylight`: {"name": "", "bias": 0, "change": {"month", "week", "weekday", "hour", "minute"}}
+    or None (no name, no bias, no change)."""
+    standard, daylight = standard or {}, daylight or {}
+    out = (int(bias).to_bytes(4, "little", signed=True)
+           + _tz_name(standard.get("name")) + _tz_date(standard.get("change"))
+           + int(standard.get("bias", 0)).to_bytes(4, "little", signed=True)
+           + _tz_name(daylight.get("name")) + _tz_date(daylight.get("change"))
+           + int(daylight.get("bias", 0)).to_bytes(4, "little", signed=True))
+    assert len(out) == TIMEZONE_BYTES
+    return out
+
+
+def parse_timezone(data):
+    """172 bytes (or their base64 text) -> {"bias", "standard": {"name", "bias", "change"}, "daylight": {…}}.
+    "change" is None when the SYSTEMTIME has no month; its "year" is kept when it is not 0."""
+    if isinstance(data, str):
+        data = base64.b64decode(data, validate=True)
+    if len(data) != TIMEZONE_BYTES:
+        raise ValueError(f"structure TimeZone de {len(data)} octets (172 attendus)")
+
+    def part(offset):
+        name = data[offset:offset + 64].decode("utf-16-le", "replace").split("\x00", 1)[0]
+        year, month, weekday, week, hour, minute, _, _ = (
+            int.from_bytes(data[offset + 64 + i:offset + 66 + i], "little") for i in range(0, 16, 2))
+        change = None
+        if month:
+            change = {"month": month, "week": week, "weekday": weekday, "hour": hour, "minute": minute}
+            if year:
+                change["year"] = year
+        return {"name": name, "bias": int.from_bytes(data[offset + 80:offset + 84], "little", signed=True),
+                "change": change}
+
+    return {"bias": int.from_bytes(data[:4], "little", signed=True), "standard": part(4), "daylight": part(88)}
+
+
+def _to_timezone(value):
+    """A time zone given to the control API -> 172 bytes or None. Accepted: bytes, base64 text, or the
+    keyword arguments of make_timezone as a dictionary."""
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return make_timezone(**value)
+    data = base64.b64decode(value, validate=True) if isinstance(value, str) else bytes(value)
+    if len(data) != TIMEZONE_BYTES:
+        raise ValueError(f"structure TimeZone de {len(data)} octets (172 attendus)")
+    return data
+
+
+def _client_timezone(text):
+    """The Timezone a client sent -> 172 bytes, or None when it is not a valid structure: base64 of exactly
+    172 bytes, and every WCHAR after the end of a name set to 0 ([MS-ASDTYPE] 2.7.6)."""
+    try:
+        data = base64.b64decode(text, validate=True)
+    except (binascii.Error, ValueError):
+        return None
+    if len(data) != TIMEZONE_BYTES:
+        return None
+    for offset in (4, 88):
+        chars = [data[offset + i:offset + i + 2] for i in range(0, 64, 2)]
+        if b"\x00\x00" in chars and any(c != b"\x00\x00" for c in chars[chars.index(b"\x00\x00"):]):
+            return None
+    return data
+
+
+# GlobalObjId of a meeting request ([MS-ASEMAIL] 2.2.2.37): CLASSID INSTDATE NOW RESERVED BYTECOUNT DATA.
+GLOBAL_OBJ_CLASSID = bytes.fromhex("040000008200E00074C5B7101A82E008")
+_VCAL_MARK = b"vCal-Uid" + bytes((1, 0, 0, 0))
+
+
+def global_obj_id(uid):
+    """The GlobalObjId (bytes) of a meeting UID. A UID that is itself the hexadecimal form of a GlobalObjId
+    (as Outlook writes them) is taken as such; any other UID is wrapped in the vCal-Uid form.
+    INSTDATE, NOW and RESERVED are zero, so that the same UID always gives the same value."""
+    if re.match(r"^(?:[0-9A-Fa-f]{2}){40,}$", uid) and bytes.fromhex(uid[:32]) == GLOBAL_OBJ_CLASSID:
+        raw = bytes.fromhex(uid)
+        if int.from_bytes(raw[36:40], "little") == len(raw) - 40:
+            return raw
+    data = _VCAL_MARK + uid.encode("utf-8") + b"\x00"
+    return GLOBAL_OBJ_CLASSID + bytes(4) + bytes(8) + bytes(8) + len(data).to_bytes(4, "little") + data
+
+
+def uid_of_global_obj_id(data):
+    """The meeting UID of a GlobalObjId (bytes or base64 text); raises ValueError if it is not well formed."""
+    if isinstance(data, str):
+        data = base64.b64decode(data, validate=True)
+    if len(data) < 40 or data[:16] != GLOBAL_OBJ_CLASSID:
+        raise ValueError("GlobalObjId : CLASSID absent")
+    body = data[40:]
+    if int.from_bytes(data[36:40], "little") != len(body):
+        raise ValueError("GlobalObjId : BYTECOUNT ne correspond pas aux données")
+    if body.startswith(_VCAL_MARK):
+        if len(body) <= len(_VCAL_MARK) or not body.endswith(b"\x00"):
+            raise ValueError("GlobalObjId : UID vCal sans octet nul final")
+        return body[len(_VCAL_MARK):-1].decode("utf-8")
+    return (data[:16] + bytes(4) + data[20:]).hex().upper()  # the UID of an instance is the one of its series
+
+
+# iCalendar text of an invitation (RFC 5545, RFC 5546).
+
+def _ical_text(value):
+    return (value.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,")
+            .replace("\r\n", "\\n").replace("\n", "\\n").replace("\r", "\\n"))
+
+
+def _ical_param(value):
+    return '"' + re.sub(r'[\x00-\x1f\x7f"]', "", value) + '"'
+
+
+def _ical_fold(line):
+    """Lines of at most 75 octets, cut between characters; continuation lines start with a space."""
+    out, current, size = [], "", 0
+    for ch in line:
+        width = len(ch.encode("utf-8"))
+        if size + width > 75:
+            out.append(current)
+            current, size = " ", 1
+        current += ch
+        size += width
+    out.append(current)
+    return "\r\n".join(out)
+
+
+_ICAL_DAYS = ((1, "SU"), (2, "MO"), (4, "TU"), (8, "WE"), (16, "TH"), (32, "FR"), (64, "SA"))
+
+
+def _ical_rrule(rec, all_day):
+    """RRULE of an ActiveSync recurrence ([MS-ASCAL] 2.2.2.37.1)."""
+    kind = rec["type"]
+    days = ",".join(name for bit, name in _ICAL_DAYS if (rec.get("day_of_week") or 0) & bit)
+    parts = []
+    if kind == 0 and not days:
+        parts.append("FREQ=DAILY")
+    elif kind in (0, 1):
+        parts += ["FREQ=WEEKLY", f"BYDAY={days}"]
+    elif kind == 2:
+        parts += ["FREQ=MONTHLY", f"BYMONTHDAY={rec['day_of_month']}"]
+    elif kind == 5:
+        parts += ["FREQ=YEARLY", f"BYMONTH={rec['month_of_year']}", f"BYMONTHDAY={rec['day_of_month']}"]
+    else:
+        parts.append("FREQ=MONTHLY" if kind == 3 else "FREQ=YEARLY")
+        if kind == 6:
+            parts.append(f"BYMONTH={rec['month_of_year']}")
+        week = rec["week_of_month"]
+        if (rec.get("day_of_week") or 0) == 127 and week == 5:
+            parts.append("BYMONTHDAY=-1")
+        else:
+            parts += [f"BYDAY={days}", f"BYSETPOS={-1 if week == 5 else week}"]
+    if (rec.get("interval") or 1) > 1:
+        parts.append(f"INTERVAL={rec['interval']}")
+    if rec.get("occurrences"):
+        parts.append(f"COUNT={rec['occurrences']}")
+    elif rec.get("until"):
+        parts.append("UNTIL=" + (rec["until"].strftime("%Y%m%d") if all_day else compact_date(rec["until"])))
+    if rec.get("first_day_of_week") is not None:
+        parts.append("WKST=" + _ICAL_DAYS[rec["first_day_of_week"]][1])
+    return ";".join(parts)
+
+
+def _invitation_ics(inv, method="REQUEST"):
+    """The VCALENDAR of an invitation, times in UTC (dates in the meeting's own zone for an all-day event)."""
+    def local_day(when):
+        bias = parse_timezone(inv["timezone"])["bias"] if inv.get("timezone") else 0
+        return (when - datetime.timedelta(minutes=bias)).strftime("%Y%m%d")
+
+    lines = ["BEGIN:VCALENDAR", "PRODID:-//Sync443//Mock EAS//FR", "VERSION:2.0", f"METHOD:{method}", "BEGIN:VEVENT",
+             "UID:" + _ical_text(inv["uid"]), "DTSTAMP:" + compact_date(inv["dtstamp"])]
+    if inv.get("all_day"):
+        lines += ["DTSTART;VALUE=DATE:" + local_day(inv["start"]), "DTEND;VALUE=DATE:" + local_day(inv["end"])]
+    else:
+        lines += ["DTSTART:" + compact_date(inv["start"]), "DTEND:" + compact_date(inv["end"])]
+    lines.append("SUMMARY:" + _ical_text(inv.get("subject") or ""))
+    if inv.get("location"):
+        lines.append("LOCATION:" + _ical_text(inv["location"]))
+    if inv.get("body"):
+        lines.append("DESCRIPTION:" + _ical_text(inv["body"]))
+    lines.append(f"ORGANIZER;CN={_ical_param(inv.get('organizer_name') or inv['organizer_email'])}"
+                 f":mailto:{inv['organizer_email']}")
+    rsvp = "TRUE" if inv.get("response_requested") else "FALSE"
+    for a in inv.get("attendees") or []:
+        role = {2: "OPT-PARTICIPANT", 3: "NON-PARTICIPANT"}.get(a.get("type"), "REQ-PARTICIPANT")
+        kind = "RESOURCE" if a.get("type") == 3 else "INDIVIDUAL"
+        lines.append(f"ATTENDEE;CUTYPE={kind};ROLE={role};PARTSTAT=NEEDS-ACTION;RSVP={rsvp}"
+                     f";CN={_ical_param(a.get('name') or a['email'])}:mailto:{a['email']}")
+    if inv.get("recurrence"):
+        lines.append("RRULE:" + _ical_rrule(inv["recurrence"], inv.get("all_day")))
+    lines += [f"SEQUENCE:{int(inv.get('sequence') or 0)}", "STATUS:CONFIRMED",
+              "TRANSP:" + ("TRANSPARENT" if inv.get("busy_status") == 0 else "OPAQUE"),
+              "CLASS:" + {2: "PRIVATE", 3: "CONFIDENTIAL"}.get(inv.get("sensitivity"), "PUBLIC"),
+              "END:VEVENT", "END:VCALENDAR"]
+    return "\r\n".join(_ical_fold(line) for line in lines) + "\r\n"
+
+
+def _calendar_parts(mime):
+    """[{"method", "text"}] of the text/calendar parts of a message (method: the Content-Type parameter)."""
+    out = []
+    try:
+        msg = email.message_from_bytes(mime, policy=email.policy.default)
+        for part in msg.walk():
+            if part.get_content_type() != "text/calendar":
+                continue
+            method = part.get_param("method")
+            raw = part.get_payload(decode=True) or b""
+            charset = part.get_content_charset() or "utf-8"
+            try:
+                text = raw.decode(charset)
+            except (LookupError, UnicodeDecodeError):
+                text = raw.decode("utf-8", "replace")
+            out.append({"method": str(method) if method is not None else None, "text": text})
+    except Exception:  # noqa: BLE001 - a message that cannot be read has no calendar part
+        return []
+    return out
+
+
+# Calendar class ([MS-ASCAL] 2.2.2). (element, field, first protocol version)
+CAL_TOP = (
+    ("Timezone", "timezone", "12.1"), ("AllDayEvent", "all_day", "12.1"), ("BusyStatus", "busy_status", "12.1"),
+    ("OrganizerName", "organizer_name", "12.1"), ("OrganizerEmail", "organizer_email", "12.1"),
+    ("DtStamp", "dtstamp", "12.1"), ("EndTime", "end", "12.1"), ("Location", "location", "12.1"),
+    ("Reminder", "reminder", "12.1"), ("Sensitivity", "sensitivity", "12.1"), ("Subject", "subject", "12.1"),
+    ("StartTime", "start", "12.1"), ("UID", "uid", "12.1"), ("MeetingStatus", "meeting_status", "12.1"),
+    ("Attendees", "attendees", "12.1"), ("Categories", "categories", "12.1"), ("Recurrence", "recurrence", "12.1"),
+    ("Exceptions", "exceptions", "12.1"), ("DisallowNewTimeProposal", "disallow_new_time", "14.0"),
+    ("ResponseRequested", "response_requested", "14.0"),
+)
+CAL_FIELD = {name: field for name, field, _ in CAL_TOP}
+CAL_SINCE = {name: since for name, _, since in CAL_TOP}
+# Elements a request must never carry (2.2.2.2, 2.2.2.33, 2.2.2.34, 2.2.2.40), or that only 16.x defines (2.2.2.13).
+CAL_NEVER_IN_REQUEST = {"AppointmentReplyTime": "le client ne doit pas l'envoyer",
+                        "ResponseType": "le client ne doit pas l'envoyer",
+                        "OnlineMeetingConfLink": "le client ne doit pas l'envoyer",
+                        "OnlineMeetingExternalLink": "le client ne doit pas l'envoyer",
+                        "ClientUid": "défini à partir de la version 16.0"}
+# Children of Supported for the Calendar class ([MS-ASCMD] 2.2.3.179): the required ones, then the optional ones.
+SUPPORTED_REQUIRED = ("DtStamp", "Categories", "Sensitivity", "BusyStatus", "UID", "Timezone", "StartTime", "Subject",
+                      "Location", "EndTime", "Recurrence", "AllDayEvent", "Reminder", "Exceptions")
+SUPPORTED_OPTIONAL = ("Attendees", "OrganizerName", "OrganizerEmail", "MeetingStatus", "ResponseRequested",
+                      "DisallowNewTimeProposal")
+EXCEPTION_FIELDS = (("Subject", "subject"), ("StartTime", "start"), ("EndTime", "end"), ("Location", "location"),
+                    ("Categories", "categories"), ("Sensitivity", "sensitivity"), ("BusyStatus", "busy_status"),
+                    ("AllDayEvent", "all_day"), ("Reminder", "reminder"), ("DtStamp", "dtstamp"),
+                    ("MeetingStatus", "meeting_status"), ("Attendees", "attendees"))
+MEETING_STATUSES = frozenset({0, 1, 3, 5, 7, 9, 11, 13, 15})
+ATTENDEE_STATUSES = {"unknown": 0, "tentative": 2, "accepted": 3, "declined": 4, "not-responded": 5}
+RECURRENCE_TYPES = frozenset({0, 1, 2, 3, 5, 6})
+# CalendarType values a request must not use ([MS-ASCAL] 3.2.5.3; [MS-ASTASK] 2.2.2.4 has no 13, 21, 22 either).
+CALENDAR_TYPES_REFUSED = frozenset({13, 16, 17, 18, 19, 21, 22, 23})
+EVENT_KEYS = ("uid", "subject", "location", "body", "start", "end", "all_day", "timezone", "dtstamp", "busy_status",
+              "sensitivity", "reminder", "categories", "organizer_name", "organizer_email", "attendees",
+              "meeting_status", "response_requested", "disallow_new_time", "response_type", "reply_time",
+              "recurrence", "exceptions")
+EVENT_DATES = ("start", "end", "dtstamp", "reply_time")
+RECURRENCE_KEYS = ("type", "interval", "occurrences", "until", "day_of_week", "day_of_month", "week_of_month",
+                   "month_of_year", "calendar_type", "is_leap_month", "first_day_of_week")
+TASK_KEYS = ("subject", "body", "importance", "start_date", "utc_start_date", "due_date", "utc_due_date",
+             "categories", "complete", "date_completed", "sensitivity", "reminder_set", "reminder_time", "recurrence")
+TASK_DATES = ("start_date", "utc_start_date", "due_date", "utc_due_date", "date_completed", "reminder_time")
+TASK_RECURRENCE_KEYS = ("type", "start", "until", "occurrences", "interval", "day_of_week", "day_of_month",
+                        "week_of_month", "month_of_year", "regenerate", "dead_occur", "calendar_type",
+                        "is_leap_month", "first_day_of_week")
+
+
+def _at_least(version, wanted):
+    return float(version) >= float(wanted)
+
+
+class _Refused(Exception):
+    """An item the client sent is refused. `violation`: the client broke a rule of the protocol (an element it
+    must not send, or that its version does not define), which is also recorded as a protocol error."""
+
+    def __init__(self, reason, violation=False):
+        super().__init__(reason)
+        self.reason = reason
+        self.violation = violation
+
+
+def _only(parent, allowed_ns, what):
+    """{name: element} of the children of `parent`; refuses another namespace, and an element given twice."""
+    out = {}
+    for c in parent.children:
+        if c.ns not in allowed_ns:
+            raise _Refused(f"{what} : élément {c.name} étranger à la classe", violation=True)
+        key = c.tag if c.ns == allowed_ns[0] else c.name
+        if key in out:
+            raise _Refused(f"{what} : élément {c.name} en double")
+        out[key] = c
+    return out
+
+
+def _text_of(node):
+    """Text of a leaf element (strings travel as inline strings, [MS-ASDTYPE] 2.7)."""
+    if node.children:
+        raise _Refused(f"<{node.name}> : éléments à la place d'une valeur")
+    if node.opaque and node.value:
+        raise _Refused(f"<{node.name}> : données opaques à la place d'un texte", violation=True)
+    return node.text()
+
+
+def _number(node, low, high):
+    text = _text_of(node)
+    if not re.match(r"^\d{1,10}$", text) or not low <= int(text) <= high:
+        raise _Refused(f"<{node.name}> : valeur {text[:20]!r} hors de {low}-{high}")
+    return int(text)
+
+
+def _flag(node):
+    text = _text_of(node)
+    if text not in ("0", "1"):
+        raise _Refused(f"<{node.name}> : valeur {text[:20]!r} (0 ou 1 attendu)")
+    return text == "1"
+
+
+def _one_of(node, allowed):
+    text = _text_of(node)
+    if not re.match(r"^\d{1,3}$", text) or int(text) not in allowed:
+        raise _Refused(f"<{node.name}> : valeur {text[:20]!r} non admise")
+    return int(text)
+
+
+def _compact_of(node):
+    found = _parse_compact(_text_of(node))
+    if found is None:
+        raise _Refused(f"<{node.name}> : date compacte invalide")
+    return found
+
+
+def _datetime_of(node):
+    found = _parse_datetime(_text_of(node))
+    if found is None:
+        raise _Refused(f"<{node.name}> : date invalide")
+    return found
+
+
+def _body_of(node):
+    """airsyncbase:Body of a request ([MS-ASAIRS] 2.2.2.9) -> plain text. Type first, then the optional
+    EstimatedDataSize, Truncated (ignored) and Data. The mock keeps plain text: an HTML body loses its tags."""
+    order = [c.tag for c in node.children]
+    if any(c.ns != "AirSyncBase" for c in node.children) or order[:1] != ["Type"] or len(set(order)) != len(order):
+        raise _Refused("Body : Type attendu en premier, chaque élément une seule fois")
+    if [t for t in order if t not in ("Type", "EstimatedDataSize", "Truncated", "Data")]:
+        raise _Refused("Body : élément inattendu")
+    wanted = [t for t in ("Type", "EstimatedDataSize", "Truncated", "Data") if t in order]
+    if order != wanted:
+        raise _Refused("Body : éléments dans le désordre")
+    kind = _text_of(node.child("Type"))
+    if kind not in ("1", "2"):
+        raise _Refused(f"Body : Type {kind[:10]!r} non pris en charge par le serveur de test (1 ou 2)")
+    data = node.child("Data")
+    try:
+        text = data.text() if data is not None else ""
+    except WbxmlError:
+        raise _Refused("Body : texte UTF-8 invalide") from None
+    if kind == "2":
+        text = html.unescape(re.sub(r"<[^>]*>", "", text))
+    return text
+
+
+def _categories_of(node, ns):
+    names = []
+    for c in node.children:
+        if c.name != f"{ns}:Category":
+            raise _Refused(f"Categories : élément {c.name} inattendu", violation=True)
+        names.append(_text_of(c))
+    if len(names) > 300:
+        raise _Refused("Categories : plus de 300 catégories")
+    return names
+
+
+def _recurrence_children(node, ns, version, names):
+    """{name: element} of a Recurrence, after the checks common to events and tasks."""
+    seen = {}
+    for c in node.children:
+        if c.ns != ns or c.tag not in names:
+            raise _Refused(f"Recurrence : élément {c.name} inattendu", violation=True)
+        if c.tag in seen:
+            raise _Refused(f"Recurrence : élément {c.tag} en double")
+        seen[c.tag] = c
+    for name, since in (("CalendarType", "14.0"), ("IsLeapMonth", "14.0"), ("FirstDayOfWeek", "14.1")):
+        if name in seen and not _at_least(version, since):
+            raise _Refused(f"Recurrence : {name} n'existe pas en version {version}", violation=True)
+    return seen
+
+
+def _event_end_of_series(event):
+    """When a calendar item stops mattering for FilterType: None (never: an endless series), else a datetime.
+    Without expanding the series: Until, or the start plus one period per occurrence (never too early)."""
+    rec = event.get("recurrence")
+    last = event.get("end") or event.get("start")
+    if not rec or last is None:
+        return last
+    if rec.get("occurrences"):
+        weekly = rec["type"] == 1 or (rec["type"] == 0 and rec.get("day_of_week"))
+        days = {2: 31, 3: 31, 5: 366, 6: 366}.get(rec["type"], 7 if weekly else 1)
+        return last + datetime.timedelta(days=days * (rec.get("interval") or 1) * rec["occurrences"])
+    if rec.get("until"):
+        return max(last, rec["until"] + datetime.timedelta(days=1))
+    return None
+
+
+def _half_hour_after(now):
+    """The current time moved to the next half hour, as in the example of [MS-ASCAL] 3.2.4.4 (18:03 -> 18:30)."""
+    base = now.replace(second=0, microsecond=0)
+    if base.minute in (0, 30) and base == now.replace(microsecond=0):
+        return base
+    return base.replace(minute=0) + datetime.timedelta(minutes=30 if base.minute < 30 else 60)
+
+
+def _plain(value):
+    """Fields as the control API shows them: dates as "YYYY-MM-DDTHH:MM:SSZ", bytes as base64 text."""
+    if isinstance(value, datetime.datetime):
+        return _plain_date(value)
+    if isinstance(value, (bytes, bytearray)):
+        return base64.b64encode(bytes(value)).decode("ascii")
+    if isinstance(value, dict):
+        return {k: _plain(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_plain(v) for v in value]
+    return value
+
+
+# What the control API is given, as stored fields.
+
+def _attendee_fields(value):
+    unknown = set(value) - {"email", "name", "status", "type"}
+    if unknown or not value.get("email"):
+        raise TypeError(f"participant invalide : {value!r}")
+    status = value.get("status")
+    if isinstance(status, str):
+        status = ATTENDEE_STATUSES[status]
+    return {"email": str(value["email"]), "name": str(value.get("name") or value["email"]),
+            "status": None if status is None else int(status),
+            "type": None if value.get("type") is None else int(value["type"])}
+
+
+def _recurrence_fields(value, keys, dates):
+    if value is None:
+        return None
+    unknown = set(value) - set(keys)
+    if unknown or value.get("type") not in RECURRENCE_TYPES:
+        raise TypeError(f"récurrence invalide : {value!r}")
+    out = {k: None for k in keys}
+    for key, v in value.items():
+        out[key] = _to_date(v, key) if key in dates else (None if v is None else int(v))
+    return out
+
+
+def _exception_fields(value):
+    allowed = {"exception_start", "deleted", "body", "response_type", "reply_time"} | {f for _, f in EXCEPTION_FIELDS}
+    unknown = set(value) - allowed
+    if unknown or value.get("exception_start") is None:
+        raise TypeError(f"exception invalide : {value!r}")
+    out = {}
+    for key, v in value.items():
+        if key in ("exception_start", "start", "end", "dtstamp", "reply_time"):
+            v = _to_date(v, key)
+        elif key == "attendees":
+            v = [_attendee_fields(a) for a in v or []]
+        elif key == "categories":
+            v = [str(c) for c in v or []]
+        elif key == "deleted":
+            v = bool(v)
+        out[key] = v
+    out.setdefault("deleted", False)
+    return out
+
+
+def _event_fields(fields, base=None):
+    unknown = set(fields) - set(EVENT_KEYS)
+    if unknown:
+        raise TypeError(f"champ d'événement inconnu : {sorted(unknown)}")
+    out = dict(base or {})
+    for key, value in fields.items():
+        if key in EVENT_DATES:
+            value = _to_date(value, key)
+        elif key == "timezone":
+            value = _to_timezone(value)
+        elif key == "attendees":
+            value = [_attendee_fields(a) for a in value or []]
+        elif key == "categories":
+            value = [str(c) for c in value or []]
+        elif key == "recurrence":
+            value = _recurrence_fields(value, RECURRENCE_KEYS, ("until",))
+        elif key == "exceptions":
+            value = [_exception_fields(x) for x in value or []]
+        elif key in ("subject", "location", "body", "organizer_name", "organizer_email", "uid"):
+            value = None if value in (None, "") else str(value)
+        elif key in ("all_day", "response_requested", "disallow_new_time"):
+            value = None if value is None else bool(value)
+        elif value is not None:
+            value = int(value)
+        out[key] = value
+    return out
+
+
+def _task_fields(fields, base=None):
+    unknown = set(fields) - set(TASK_KEYS)
+    if unknown:
+        raise TypeError(f"champ de tâche inconnu : {sorted(unknown)}")
+    out = dict(base or {})
+    for key, value in fields.items():
+        if key in TASK_DATES:
+            value = _to_date(value, key)
+        elif key == "categories":
+            value = [str(c) for c in value or []]
+        elif key == "recurrence":
+            value = _recurrence_fields(value, TASK_RECURRENCE_KEYS, ("start", "until"))
+            if value is not None and value["start"] is None:
+                raise TypeError("récurrence de tâche sans start")
+        elif key in ("subject", "body"):
+            value = None if value in (None, "") else str(value)
+        elif key in ("complete", "reminder_set"):
+            value = None if value is None else bool(value)
+        elif value is not None:
+            value = int(value)
+        out[key] = value
+    return out
+
+
+# What a client sends, as stored fields. Only the elements present are returned: the caller decides what an
+# absent element means (nothing for an Add, ghosting for a Change).
+
+def _read_attendees(node, where="Attendees"):
+    out = []
+    for a in node.children:
+        if a.name != "Calendar:Attendee":
+            raise _Refused(f"{where} : élément {a.name} inattendu", violation=True)
+        parts = {}
+        for c in a.children:
+            if c.ns != "Calendar" or c.tag not in ("Email", "Name", "AttendeeStatus", "AttendeeType"):
+                raise _Refused(f"Attendee : élément {c.name} inattendu", violation=True)
+            if c.tag in parts:
+                raise _Refused(f"Attendee : élément {c.tag} en double")
+            parts[c.tag] = c
+        if "Email" not in parts or "Name" not in parts:
+            raise _Refused("Attendee sans Email ou sans Name")  # [MS-ASCAL] 2.2.2.3: both are required
+        out.append({"email": _text_of(parts["Email"]), "name": _text_of(parts["Name"]),
+                    "status": _one_of(parts["AttendeeStatus"], (0, 2, 3, 4, 5)) if "AttendeeStatus" in parts else None,
+                    "type": _one_of(parts["AttendeeType"], (1, 2, 3)) if "AttendeeType" in parts else None})
+    return out
+
+
+def _read_cal_recurrence(node, version):
+    """Recurrence of an event, with the refusals of [MS-ASCAL] 3.2.5.3 (Status 6)."""
+    names = ("Type", "Occurrences", "Interval", "WeekOfMonth", "DayOfWeek", "MonthOfYear", "Until", "DayOfMonth",
+             "CalendarType", "IsLeapMonth", "FirstDayOfWeek")
+    if not node.children:
+        raise _Refused("Recurrence vide")
+    kinds = [c for c in node.children if c.name == "Calendar:CalendarType"]
+    if len(kinds) > 1:  # 3.2.5.3: more than one CalendarType (the rule names the types 2, 3, 5 and 6)
+        raise _Refused("Recurrence : plusieurs CalendarType")
+    parts = _recurrence_children(node, "Calendar", version, names)
+    if "Type" not in parts:  # 2.2.2.45: required up to 14.1
+        raise _Refused("Recurrence sans Type")
+    kind = _one_of(parts["Type"], RECURRENCE_TYPES)
+    # 3.2.5.3: a child that does not go with the Type.
+    for name, allowed in (("DayOfMonth", (2, 5)), ("DayOfWeek", (0, 1, 3, 6)), ("MonthOfYear", (5, 6)),
+                          ("WeekOfMonth", (3, 6))):
+        if name in parts and kind not in allowed:
+            raise _Refused(f"Recurrence : {name} avec Type {kind}")
+    # 2.2.2.37.1: the children each Type requires.
+    for name in {1: ("DayOfWeek",), 2: ("DayOfMonth",), 3: ("WeekOfMonth", "DayOfWeek"),
+                 5: ("DayOfMonth", "MonthOfYear"), 6: ("WeekOfMonth", "MonthOfYear")}.get(kind, ()):
+        if name not in parts:
+            raise _Refused(f"Recurrence : {name} absent pour le Type {kind}")
+    out = {k: None for k in RECURRENCE_KEYS}
+    out["type"] = kind
+    if "Interval" in parts:
+        out["interval"] = _number(parts["Interval"], 0, 999) or 1  # 0: as 1, like Exchange 2010 SP1 and later
+    if "Occurrences" in parts:
+        out["occurrences"] = _number(parts["Occurrences"], 1, 999)
+    if "Until" in parts and "Occurrences" not in parts:  # 3.2.5.3: Occurrences wins, Until is ignored
+        out["until"] = _compact_of(parts["Until"])
+    elif "Until" in parts:
+        _compact_of(parts["Until"])
+    if "WeekOfMonth" in parts:
+        out["week_of_month"] = _number(parts["WeekOfMonth"], 1, 5)
+    if "DayOfWeek" in parts:
+        out["day_of_week"] = _number(parts["DayOfWeek"], 1, 127)
+    if "MonthOfYear" in parts:
+        out["month_of_year"] = _number(parts["MonthOfYear"], 1, 12)
+    if "DayOfMonth" in parts:
+        out["day_of_month"] = _number(parts["DayOfMonth"], 1, 31)
+    if "CalendarType" in parts:
+        out["calendar_type"] = _number(parts["CalendarType"], 0, 23)
+        if out["calendar_type"] in CALENDAR_TYPES_REFUSED:  # 3.2.5.3
+            raise _Refused(f"Recurrence : CalendarType {out['calendar_type']} interdit")
+    if "IsLeapMonth" in parts:
+        out["is_leap_month"] = int(_flag(parts["IsLeapMonth"]))
+    if "FirstDayOfWeek" in parts:
+        out["first_day_of_week"] = _number(parts["FirstDayOfWeek"], 0, 6)  # 3.2.5.3: outside 0-6
+    return out
+
+
+def _read_exceptions(node, version):
+    out = []
+    for x in node.children:
+        if x.name != "Calendar:Exception":
+            raise _Refused(f"Exceptions : élément {x.name} inattendu", violation=True)
+        parts = {}
+        for c in x.children:
+            key = c.tag if c.ns == "Calendar" else c.name
+            if key in parts:
+                raise _Refused(f"Exception : élément {key} en double")
+            parts[key] = c
+        allowed = {"Deleted", "ExceptionStartTime", "AirSyncBase:Body"} | {name for name, _ in EXCEPTION_FIELDS}
+        for key, c in parts.items():
+            if key in ("AppointmentReplyTime", "ResponseType", "OnlineMeetingConfLink", "OnlineMeetingExternalLink"):
+                raise _Refused(f"Exception : {key}, que le client ne doit pas envoyer", violation=True)
+            if key not in allowed:
+                raise _Refused(f"Exception : élément {c.name} inattendu", violation=True)
+        if "Attendees" in parts and not _at_least(version, "14.0"):  # [MS-ASCAL] 2.2.2.4
+            raise _Refused(f"Exception : Attendees n'existe pas en version {version}", violation=True)
+        if "ExceptionStartTime" not in parts:  # 2.2.2.23: required
+            raise _Refused("Exception sans ExceptionStartTime")
+        item = {"exception_start": _compact_of(parts["ExceptionStartTime"]), "deleted": False}
+        if "Deleted" in parts:
+            item["deleted"] = _flag(parts["Deleted"])
+        # An empty element removes the value inherited from the series ([MS-ASCAL] 3.1.5.3.1).
+        for name, field in (("Subject", "subject"), ("Location", "location")):
+            if name in parts:
+                item[field] = _text_of(parts[name])
+        for name, field in (("StartTime", "start"), ("EndTime", "end"), ("DtStamp", "dtstamp")):
+            if name in parts:
+                item[field] = _compact_of(parts[name])
+        if "AirSyncBase:Body" in parts:
+            item["body"] = _body_of(parts["AirSyncBase:Body"]) if parts["AirSyncBase:Body"].children else ""
+        if "Categories" in parts:
+            item["categories"] = _categories_of(parts["Categories"], "Calendar")
+        if "Sensitivity" in parts:
+            item["sensitivity"] = _number(parts["Sensitivity"], 0, 3)
+        if "BusyStatus" in parts:
+            item["busy_status"] = _number(parts["BusyStatus"], 0, 3)
+        if "AllDayEvent" in parts:
+            item["all_day"] = _flag(parts["AllDayEvent"])
+        if "Reminder" in parts:
+            item["reminder"] = _reminder_of(parts["Reminder"], version)
+        if "MeetingStatus" in parts:
+            item["meeting_status"] = _one_of(parts["MeetingStatus"], MEETING_STATUSES)
+        if "Attendees" in parts:
+            item["attendees"] = _read_attendees(parts["Attendees"], "Exception/Attendees")
+        if "end" in item and "start" in item and item["end"] < item["start"]:
+            raise _Refused("Exception : EndTime avant StartTime")
+        out.append(item)
+    if len(out) > 256:  # [MS-ASCAL] 2.2.2.21
+        raise _Refused("Exceptions : plus de 256 exceptions")
+    starts = [x["exception_start"] for x in out]
+    if len(set(starts)) != len(starts):
+        raise _Refused("Exceptions : deux exceptions pour la même occurrence")
+    return out
+
+
+def _reminder_of(node, version):
+    """Minutes, or None for the empty element, which only 14.1 allows here ([MS-ASCAL] 2.2.2.38)."""
+    if node.value in (None, b"") and not node.children:
+        if not _at_least(version, "14.1"):
+            raise _Refused(f"Reminder vide en version {version}")
+        return None
+    return _number(node, 0, 4294967295)
+
+
+def _read_event(data, version):
+    """Calendar ApplicationData of an Add or a Change -> {field: value} for the elements present."""
+    parts = _only(data, ("Calendar", "AirSyncBase"), "événement")
+    given = {}
+    for key, node in parts.items():
+        if key in CAL_NEVER_IN_REQUEST:
+            raise _Refused(f"élément {key} : {CAL_NEVER_IN_REQUEST[key]}", violation=True)
+        if key in ("AirSyncBase:Body", "AirSyncBase:NativeBodyType"):
+            continue
+        if key not in CAL_FIELD:
+            raise _Refused(f"élément {node.name} étranger à la classe Calendar", violation=True)
+        if not _at_least(version, CAL_SINCE[key]):
+            raise _Refused(f"élément {key} : n'existe pas en version {version}", violation=True)
+    if "EndTime" in parts and "StartTime" not in parts:  # [MS-ASCAL] 3.2.5.3
+        raise _Refused("EndTime sans StartTime")
+    if "Timezone" in parts:
+        given["timezone"] = _client_timezone(_text_of(parts["Timezone"]))
+        if given["timezone"] is None:
+            raise _Refused("Timezone : structure invalide (172 octets en base64 attendus)")
+    for name in ("AllDayEvent", "ResponseRequested", "DisallowNewTimeProposal"):
+        if name in parts:
+            given[CAL_FIELD[name]] = _flag(parts[name])
+    if "BusyStatus" in parts:  # [MS-ASCAL] 2.2.2.9: 4 does not exist up to 14.1
+        given["busy_status"] = _number(parts["BusyStatus"], 0, 3)
+    if "Sensitivity" in parts:
+        given["sensitivity"] = _number(parts["Sensitivity"], 0, 3)
+    if "MeetingStatus" in parts:
+        given["meeting_status"] = _one_of(parts["MeetingStatus"], MEETING_STATUSES)
+    if "Reminder" in parts:
+        given["reminder"] = _reminder_of(parts["Reminder"], version)
+    for name in ("DtStamp", "StartTime", "EndTime"):
+        if name in parts:
+            given[CAL_FIELD[name]] = _compact_of(parts[name])
+    for name in ("Subject", "Location", "OrganizerName", "OrganizerEmail", "UID"):
+        if name in parts:
+            given[CAL_FIELD[name]] = _text_of(parts[name]) or None
+    if given.get("organizer_email") and not re.match(r"^[^@\s]+@[^@\s]+$", given["organizer_email"]):
+        raise _Refused("OrganizerEmail : adresse invalide")  # [MS-ASCAL] 2.2.2.35, [MS-ASDTYPE] 2.7.3
+    if len(given.get("uid") or "") > 300:  # [MS-ASCAL] 2.2.2.46
+        raise _Refused("UID de plus de 300 caractères")
+    if "Attendees" in parts:
+        given["attendees"] = _read_attendees(parts["Attendees"])
+    if "Categories" in parts:
+        given["categories"] = _categories_of(parts["Categories"], "Calendar")
+    if "Recurrence" in parts:
+        given["recurrence"] = _read_cal_recurrence(parts["Recurrence"], version)
+    if "Exceptions" in parts:
+        given["exceptions"] = _read_exceptions(parts["Exceptions"], version)
+    if "AirSyncBase:Body" in parts:
+        given["body"] = _body_of(parts["AirSyncBase:Body"]) or None
+    if "AirSyncBase:NativeBodyType" in parts:
+        _one_of(parts["AirSyncBase:NativeBodyType"], (1, 2, 3))
+    return given
+
+
+def _read_task_recurrence(node, version):
+    """Recurrence of a task, with the refusals [MS-ASTASK] states (Status 6)."""
+    names = ("Type", "Start", "Until", "Occurrences", "Interval", "DayOfWeek", "DayOfMonth", "WeekOfMonth",
+             "MonthOfYear", "Regenerate", "DeadOccur", "CalendarType", "IsLeapMonth", "FirstDayOfWeek")
+    parts = _recurrence_children(node, "Tasks", version, names)
+    if "Type" not in parts:  # [MS-ASTASK] 2.2.2.29
+        raise _Refused("Recurrence sans Type")
+    if "Start" not in parts:  # [MS-ASTASK] 3.2.5.3.3
+        raise _Refused("Recurrence sans Start")
+    kind = _one_of(parts["Type"], RECURRENCE_TYPES)
+    if "CalendarType" in parts and kind not in (2, 3, 5, 6):  # 2.2.2.4
+        raise _Refused(f"Recurrence : CalendarType avec Type {kind}")
+    if "DayOfMonth" in parts and kind not in (2, 5):  # 2.2.2.9
+        raise _Refused(f"Recurrence : DayOfMonth avec Type {kind}")
+    if "DayOfWeek" in parts and kind in (2, 5):  # 2.2.2.10
+        raise _Refused(f"Recurrence : DayOfWeek avec Type {kind}")
+    if "WeekOfMonth" in parts and kind not in (3, 6):  # 2.2.2.33
+        raise _Refused(f"Recurrence : WeekOfMonth avec Type {kind}")
+    # The children each Type needs at least once (2.2.2.9, 2.2.2.10, 2.2.2.17, 2.2.2.33).
+    for name in {1: ("DayOfWeek",), 2: ("DayOfMonth",), 3: ("DayOfWeek", "WeekOfMonth"),
+                 5: ("DayOfMonth", "MonthOfYear"), 6: ("DayOfWeek", "WeekOfMonth", "MonthOfYear")}.get(kind, ()):
+        if name not in parts:
+            raise _Refused(f"Recurrence : {name} absent pour le Type {kind}")
+    out = {k: None for k in TASK_RECURRENCE_KEYS}
+    out["type"] = kind
+    out["start"] = _datetime_of(parts["Start"])
+    if "Occurrences" in parts:
+        out["occurrences"] = _number(parts["Occurrences"], 1, 255)
+    if "Until" in parts:
+        until = _datetime_of(parts["Until"])
+        if "Occurrences" not in parts:  # [MS-ASTASK] 3.2.5.3.4: Occurrences wins
+            out["until"] = until
+    if "Interval" in parts:
+        out["interval"] = _number(parts["Interval"], 0, 999) or 1
+    if "DayOfWeek" in parts:
+        out["day_of_week"] = _number(parts["DayOfWeek"], 1, 127)
+    if "DayOfMonth" in parts:
+        out["day_of_month"] = _number(parts["DayOfMonth"], 1, 31)
+    if "WeekOfMonth" in parts:
+        out["week_of_month"] = _number(parts["WeekOfMonth"], 1, 5)
+    if "MonthOfYear" in parts:
+        out["month_of_year"] = _number(parts["MonthOfYear"], 1, 12)
+    if "Regenerate" in parts:
+        out["regenerate"] = int(_flag(parts["Regenerate"]))
+    if "DeadOccur" in parts:
+        out["dead_occur"] = _number(parts["DeadOccur"], 0, 255)
+    if "CalendarType" in parts:
+        out["calendar_type"] = _number(parts["CalendarType"], 0, 23)
+        if out["calendar_type"] in CALENDAR_TYPES_REFUSED:
+            raise _Refused(f"Recurrence : CalendarType {out['calendar_type']} interdit")
+    if "IsLeapMonth" in parts:
+        out["is_leap_month"] = int(_flag(parts["IsLeapMonth"]))
+    if "FirstDayOfWeek" in parts:  # 2.2.2.13: a value outside the table is Status 6
+        out["first_day_of_week"] = _number(parts["FirstDayOfWeek"], 0, 6)
+    return out
+
+
+TASK_FIELD = {"Subject": "subject", "Importance": "importance", "UtcStartDate": "utc_start_date",
+              "StartDate": "start_date", "UtcDueDate": "utc_due_date", "DueDate": "due_date",
+              "Categories": "categories", "Recurrence": "recurrence", "Complete": "complete",
+              "DateCompleted": "date_completed", "Sensitivity": "sensitivity", "ReminderTime": "reminder_time",
+              "ReminderSet": "reminder_set"}
+
+
+def _read_task(data, version):
+    """Tasks ApplicationData of an Add or a Change -> {field: value} for the elements present."""
+    parts = _only(data, ("Tasks", "AirSyncBase"), "tâche")
+    given = {}
+    for key, node in parts.items():
+        if key not in TASK_FIELD and key not in ("AirSyncBase:Body", "AirSyncBase:NativeBodyType"):
+            raise _Refused(f"élément {node.name} étranger à la classe Tasks", violation=True)
+    if "Complete" not in parts:  # [MS-ASTASK] 2.2.2.7: required
+        raise _Refused("tâche sans Complete")
+    given["complete"] = _flag(parts["Complete"])
+    if "Subject" in parts:
+        given["subject"] = _text_of(parts["Subject"]) or None
+    if "Importance" in parts:  # 2.2.2.14: any value is accepted and returned
+        given["importance"] = _number(parts["Importance"], 0, 255)
+    if "Sensitivity" in parts:
+        given["sensitivity"] = _number(parts["Sensitivity"], 0, 3)
+    if "ReminderSet" in parts:  # 2.2.2.22: anything but 0 or 1 is Status 6
+        given["reminder_set"] = _flag(parts["ReminderSet"])
+    for name in ("UtcStartDate", "StartDate", "UtcDueDate", "DueDate", "DateCompleted", "ReminderTime"):
+        if name in parts:
+            given[TASK_FIELD[name]] = _datetime_of(parts[name])
+    if "Categories" in parts:
+        given["categories"] = _categories_of(parts["Categories"], "Tasks")
+    if "Recurrence" in parts:
+        given["recurrence"] = _read_task_recurrence(parts["Recurrence"], version)
+    if "AirSyncBase:Body" in parts:
+        given["body"] = _body_of(parts["AirSyncBase:Body"]) or None
+    if "AirSyncBase:NativeBodyType" in parts:
+        _one_of(parts["AirSyncBase:NativeBodyType"], (1, 2, 3))
+    return given
+
+
 # ── Data model ────────────────────────────────────────────────────────────
 
 
 class Item:
-    """A message (mime set) or another item (raw ApplicationData children)."""
+    """A message (mime set), an event or a task (pim set: its fields), or another item (raw ApplicationData
+    children). A message that is an invitation also has `invitation`: the fields of its MeetingRequest."""
 
     _seq = 0
 
-    def __init__(self, server_id, *, mime=None, raw=None, cls="Email", read=False, flag=0, date=None):
+    def __init__(self, server_id, *, mime=None, raw=None, pim=None, cls="Email", read=False, flag=0, date=None):
         Item._seq += 1
         self.seq = Item._seq
         self.server_id = server_id
         self.mime = mime
         self.raw = raw
+        self.pim = pim
+        self.invitation = None
         self.cls = cls
         self.read = bool(read)
         self.flag = int(flag)  # 0 none, 1 complete, 2 flagged ([MS-ASEMAIL] FlagStatus)
@@ -465,6 +1378,8 @@ class Item:
             s = self.summary
             out.update(mime=self.mime, subject=s.subject, sender=s.sender, to=s.to,
                        message_id=s.message_id.strip("<>"))
+        if self.invitation is not None:
+            out["invitation"] = _plain(self.invitation)
         return out
 
 
@@ -528,6 +1443,7 @@ class CollectionState(_KeyedState):
         self.collection_id = collection_id
         self.uuid = str(uuid.uuid4()).upper()
         self.options = {}
+        self.supported = None  # None: no Supported element; else the names it listed (empty: all ghosted)
 
     def key_of(self, counter):
         return f"{{{self.uuid}}}{counter}"
@@ -656,6 +1572,7 @@ class MockEasServer:
         self._requests = []
         self._actions = []
         self._sent = []
+        self._meeting_responses = []
         self._protocol_errors = []
         self._internal_errors = []
         self._faults = []
@@ -764,7 +1681,8 @@ class MockEasServer:
     def add_user(self, login, password, email_address=None, display_name=None, *, default_folders=True,
                  pim_samples=True):
         """A mailbox. Default folders: Inbox, Drafts, Deleted Items, Sent Items, Outbox, Junk Email (mail),
-        Calendar, Contacts, Tasks, Notes, Journal; with pim_samples, one event, contact and task in them."""
+        Calendar, Contacts, Tasks, Notes, Journal; with pim_samples, one event, contact and task in them
+        (the event and the task as typed items, see events() and tasks())."""
         address = email_address or (login if "@" in login else f"{login}@example.test")
         with self._cond:
             if login in self._users:
@@ -854,7 +1772,8 @@ class MockEasServer:
         return self.add_message(login, FolderType.INBOX, mime)
 
     def add_raw_item(self, login, folder, application_data, cls=None):
-        """A non-mail item: `application_data` is a list of Elements (children of ApplicationData)."""
+        """A non-mail item sent as it is: `application_data` is a list of Elements (children of ApplicationData).
+        For events and tasks, add_event and add_task make items the server understands."""
         with self._cond:
             user = self._user(login)
             f = self._folder(user, folder)
@@ -940,6 +1859,234 @@ class MockEasServer:
             self._changed()
             return ids
 
+    # ── Calendar and tasks (control API) ─────────────────────────────────
+    #
+    # Dates are given as datetime (naive: UTC) or text ("2026-11-20T09:30:00Z", "20261120T093000Z",
+    # "2026-11-20") and read back as "YYYY-MM-DDTHH:MM:SSZ". A time zone is given as its 172 bytes, their
+    # base64 text or the arguments of make_timezone, and read back as base64 text ("timezone") and decoded
+    # ("zone"). Everything else is plain numbers, texts, lists and dictionaries, so that it travels as JSON.
+
+    def add_event(self, login, folder=FolderType.CALENDAR, **fields):
+        """An event stored on the server (devices get an Add). -> ServerId
+        Fields, all optional: uid, subject, location, body (plain text), start, end (default: tomorrow, one
+        hour), all_day, timezone (default: UTC), dtstamp, busy_status (0-3), sensitivity (0-3), reminder (minutes),
+        categories, organizer_name, organizer_email, attendees ([{email, name, status, type}]), meeting_status
+        (default: 0, or with attendees 1 when the organizer is the user and 3 otherwise), response_requested,
+        disallow_new_time, response_type, reply_time, recurrence ({type, interval, occurrences, until,
+        day_of_week, day_of_month, week_of_month, month_of_year, calendar_type, is_leap_month, first_day_of_week}),
+        exceptions ([{exception_start, deleted, subject, start, end, location, body, categories, sensitivity,
+        busy_status, all_day, reminder, dtstamp, meeting_status, attendees, response_type, reply_time}]; in an
+        exception, an empty text or list means "not inherited from the series")."""
+        with self._cond:
+            user = self._user(login)
+            f = self._folder(user, folder)
+            if f.cls != "Calendar":
+                raise TypeError(f"le dossier {f.name} n'est pas un agenda")
+            item = Item(f.new_item_id(), pim=self._new_event(user, _event_fields(fields)), cls="Calendar")
+            f.items[item.server_id] = item
+            self._changed()
+            return item.server_id
+
+    def change_event(self, login, folder, server_id, **fields):
+        """Change fields of an event on the server (same fields as add_event; the others stay). Devices get a
+        Change. DtStamp becomes the current time unless given."""
+        with self._cond:
+            item = self._pim_item(login, folder, server_id, "Calendar")
+            changed = _event_fields(fields, item.pim)
+            if "dtstamp" not in fields:
+                changed["dtstamp"] = _utcnow().replace(microsecond=0)
+            if not changed.get("recurrence"):
+                changed["exceptions"] = []
+            item.pim = changed
+            item.version += 1
+            self._changed()
+
+    def delete_event(self, login, folder, server_id):
+        """Delete an event on the server (devices get a Delete)."""
+        with self._cond:
+            item = self._pim_item(login, folder, server_id, "Calendar")
+            del self._folder(self._user(login), folder).items[item.server_id]
+            self._changed()
+
+    def events(self, login, folder=FolderType.CALENDAR):
+        """What a calendar folder holds: one dictionary per item, with server_id, folder_id, version and the
+        fields of add_event (an item added with add_raw_item has "raw": True instead of fields)."""
+        with self._lock:
+            f = self._folder(self._user(login), folder)
+            return [self._pim_view(i, f) for i in f.items.values()]
+
+    def event(self, login, folder, server_id):
+        with self._lock:
+            f = self._folder(self._user(login), folder)
+            item = f.items.get(server_id)
+            return self._pim_view(item, f) if item is not None else None
+
+    def find_events(self, login, *, uid=None, subject=None):
+        """Events of every calendar folder of a user, by UID and/or subject."""
+        with self._lock:
+            out = []
+            for f in self._user(login).folders.values():
+                for item in f.items.values():
+                    if f.cls != "Calendar" or item.pim is None:
+                        continue
+                    if (uid is None or item.pim.get("uid") == uid) and (
+                            subject is None or item.pim.get("subject") == subject):
+                        out.append(self._pim_view(item, f))
+            return out
+
+    def set_attendee_status(self, login, folder, server_id, email_address, status):
+        """Record an attendee's answer in the organizer's event, as when a reply arrives. `status`: 0 unknown,
+        2 tentative, 3 accepted, 4 declined, 5 not responded (or these names). Devices get a Change."""
+        code = ATTENDEE_STATUSES[status] if isinstance(status, str) else int(status)
+        if code not in ATTENDEE_STATUSES.values():
+            raise ValueError(f"statut de participant invalide : {status!r}")
+        with self._cond:
+            item = self._pim_item(login, folder, server_id, "Calendar")
+            found = [a for a in item.pim.get("attendees") or [] if a["email"].lower() == email_address.lower()]
+            if not found:
+                raise KeyError(f"participant inconnu : {email_address}")
+            for a in found:
+                a["status"] = code
+            item.pim["dtstamp"] = _utcnow().replace(microsecond=0)
+            item.version += 1
+            self._changed()
+
+    def cancel_meeting(self, login, folder, server_id):
+        """Mark a meeting as cancelled (MeetingStatus 5 for its organizer, 7 for an attendee), as when the
+        cancellation is processed. Devices get a Change."""
+        with self._cond:
+            item = self._pim_item(login, folder, server_id, "Calendar")
+            status = item.pim.get("meeting_status") or 0
+            if not status & 1:
+                raise ValueError("cet événement n'est pas une réunion")
+            item.pim["meeting_status"] = status | 4
+            item.pim["dtstamp"] = _utcnow().replace(microsecond=0)
+            item.version += 1
+            self._changed()
+
+    def add_task(self, login, folder=FolderType.TASKS, **fields):
+        """A task stored on the server (devices get an Add). -> ServerId
+        Fields, all optional: subject, body (plain text), importance (0-2, default 1), start_date,
+        utc_start_date, due_date, utc_due_date, categories, complete, date_completed (default: now when
+        complete), sensitivity (0-3), reminder_set, reminder_time, recurrence ({type, start, until, occurrences,
+        interval, day_of_week, day_of_month, week_of_month, month_of_year, regenerate, dead_occur,
+        calendar_type, is_leap_month, first_day_of_week})."""
+        with self._cond:
+            f = self._folder(self._user(login), folder)
+            if f.cls != "Tasks":
+                raise TypeError(f"le dossier {f.name} n'est pas un dossier de tâches")
+            task = {"importance": 1, "complete": False, "sensitivity": 0, "reminder_set": False}
+            item = Item(f.new_item_id(), pim=self._settled_task(_task_fields(fields, task)), cls="Tasks")
+            f.items[item.server_id] = item
+            self._changed()
+            return item.server_id
+
+    def change_task(self, login, folder, server_id, **fields):
+        """Change fields of a task on the server (same fields as add_task; the others stay)."""
+        with self._cond:
+            item = self._pim_item(login, folder, server_id, "Tasks")
+            item.pim = self._settled_task(_task_fields(fields, item.pim))
+            item.version += 1
+            self._changed()
+
+    def delete_task(self, login, folder, server_id):
+        """Delete a task on the server (devices get a Delete)."""
+        with self._cond:
+            item = self._pim_item(login, folder, server_id, "Tasks")
+            del self._folder(self._user(login), folder).items[item.server_id]
+            self._changed()
+
+    def tasks(self, login, folder=FolderType.TASKS):
+        """What a task folder holds: one dictionary per item, with server_id, folder_id, version and the
+        fields of add_task."""
+        with self._lock:
+            f = self._folder(self._user(login), folder)
+            return [self._pim_view(i, f) for i in f.items.values()]
+
+    def task(self, login, folder, server_id):
+        with self._lock:
+            f = self._folder(self._user(login), folder)
+            item = f.items.get(server_id)
+            return self._pim_view(item, f) if item is not None else None
+
+    def find_tasks(self, login, *, subject=None):
+        """Tasks of every task folder of a user, by subject."""
+        with self._lock:
+            return [self._pim_view(item, f) for f in self._user(login).folders.values() for item in f.items.values()
+                    if f.cls == "Tasks" and item.pim is not None
+                    and (subject is None or item.pim.get("subject") == subject)]
+
+    # ── Meetings (control API) ───────────────────────────────────────────
+
+    def deliver_invitation(self, login, *, organizer, subject="Réunion de test", start=None, end=None, uid=None,
+                           organizer_name=None, location=None, body=None, all_day=False, timezone=None,
+                           attendees=None, response_requested=True, recurrence=None, sensitivity=0, busy_status=2,
+                           reminder=15, message_type=1, disallow_new_time=False, sequence=0, dtstamp=None,
+                           date=None, read=False):
+        """An invitation from `organizer` (an address) arrives for a user: a mail in the Inbox whose
+        MessageClass is IPM.Schedule.Meeting.Request, with the MeetingRequest element ([MS-ASEMAIL] 2.2.2.48,
+        GlobalObjId built from the UID) and a MIME body carrying a text/calendar; method=REQUEST part. With the
+        option invitation_in_calendar, the meeting is also put in the user's Calendar, not yet answered; an
+        invitation whose UID is already there updates that item.
+        attendees: [{email, name, type}] (default: the user alone); message_type: MeetingMessageType (14.1).
+        -> {"uid", "mail_id", "collection_id" (the Inbox), "calendar_id" (None without the calendar copy)}"""
+        with self._cond:
+            user = self._user(login)
+            inbox = self._folder(user, FolderType.INBOX)
+            now = _utcnow().replace(microsecond=0)
+            begin = _to_date(start, "start") or (now.replace(minute=0, second=0) + datetime.timedelta(days=1))
+            inv = {
+                "uid": uid or uuid.uuid4().hex.upper(), "subject": subject, "location": location or None,
+                "body": body or None, "start": begin,
+                "end": _to_date(end, "end") or begin + datetime.timedelta(hours=1), "all_day": bool(all_day),
+                "timezone": _to_timezone(timezone) or make_timezone(), "dtstamp": _to_date(dtstamp, "dtstamp") or now,
+                "organizer_email": organizer, "organizer_name": organizer_name or organizer.split("@")[0],
+                "attendees": [_attendee_fields(a) for a in attendees or [{"email": user.email,
+                                                                           "name": user.display_name, "type": 1}]],
+                "response_requested": bool(response_requested),
+                "recurrence": _recurrence_fields(recurrence, RECURRENCE_KEYS, ("until",)),
+                "sensitivity": int(sensitivity), "busy_status": int(busy_status),
+                "reminder": None if reminder is None else int(reminder), "message_type": int(message_type),
+                "disallow_new_time": bool(disallow_new_time), "sequence": int(sequence),
+            }
+            if organizer.lower() == user.email.lower():
+                raise ValueError("une invitation vient d'un autre organisateur que l'utilisateur")
+            item = Item(inbox.new_item_id(), mime=self._invitation_mime(user, inv, date), read=read, date=date)
+            item.invitation = inv
+            inbox.items[item.server_id] = item
+            calendar_id = None
+            if self.options.invitation_in_calendar:
+                calendar_id = self._meeting_to_calendar(user, inv, response_type=5, busy_status=1, replied=None)
+            self._changed()
+            return {"uid": inv["uid"], "mail_id": item.server_id, "collection_id": inbox.server_id,
+                    "calendar_id": calendar_id}
+
+    def meeting_responses(self, login=None, since=0):
+        """MeetingResponse requests received, one dictionary per Request: seq, time, user, device, response
+        (1 accept, 2 tentative, 3 decline), answer ("accepted", "tentative", "declined"), collection_id,
+        request_id, instance_id, source ("mail" or "calendar"), uid and organizer (of the meeting, when found),
+        status (as answered) and calendar_id."""
+        with self._lock:
+            return [dict(r) for r in self._meeting_responses
+                    if r["seq"] > since and (login is None or r["user"] == login)]
+
+    def sent_calendar_parts(self, login=None, since=0):
+        """The calendar parts of what users sent with SendMail: one dictionary per accepted message that has
+        a text/calendar part, with seq, user, client_id, sender, to, cc, bcc (lists of addresses), subject and
+        parts: [{"method" (the Content-Type parameter, as sent), "text" (decoded)}]."""
+        out = []
+        for m in self.sent_mails(login):
+            if m["seq"] <= since or m["status"] != "1":
+                continue
+            parts = _calendar_parts(m["mime"])
+            if not parts:
+                continue
+            s = Summary(m["mime"])
+            out.append({"seq": m["seq"], "user": m["user"], "client_id": m["client_id"], "sender": s.sender,
+                        "to": s.addresses("to"), "cc": s.addresses("cc"), "bcc": s.addresses("bcc"),
+                        "subject": s.subject, "parts": parts})
+        return out
+
     # ── Devices ───────────────────────────────────────────────────────────
 
     def set_remote_wipe(self, login, device_id, on=True, account_only=False):
@@ -991,7 +2138,8 @@ class MockEasServer:
                 "ack_status": dev.ack_status, "wipe": dev.wipe, "wipe_notified": dev.wipe_notified,
                 "wipe_ack": dev.wipe_ack,
                 "hierarchy_key": h.key if h else None, "known_folders": dict(h.known) if h else {},
-                "collections": {cid: {"key": s.key, "known": dict(s.known), "options": dict(s.options)}
+                "collections": {cid: {"key": s.key, "known": dict(s.known), "options": dict(s.options),
+                                      "supported": None if s.supported is None else sorted(s.supported)}
                                 for cid, s in dev.collections.items()},
                 "last_ping": dev.last_ping,
             }
@@ -1052,7 +2200,8 @@ class MockEasServer:
     def actions(self, kind=None, login=None, device_id=None, since=0):
         """What the client asked the server to do, one dict per operation. Kinds: provision, wipe_ack,
         sync_change, sync_delete, sync_add, sync_fetch, move, folder_create, folder_update, folder_delete,
-        send_mail, empty_folder, settings."""
+        send_mail, empty_folder, settings, meeting_response. A calendar or task sync_add has "fields" and a
+        sync_change "changes" (what the client sent, as in events()); a refused one has "reason"."""
         with self._lock:
             return [dict(a) for a in self._actions
                     if a["seq"] > since and (kind is None or a["kind"] == kind)
@@ -1214,31 +2363,592 @@ class MockEasServer:
         return dev.hierarchy is None or dev.hierarchy.known != self._hierarchy_snapshot(user)
 
     def _add_pim_samples(self, user):
-        start = _utcnow().replace(minute=0, second=0, microsecond=0) + datetime.timedelta(days=1)
-        stamp = start.strftime("%Y%m%dT%H%M%SZ")
-        end = (start + datetime.timedelta(hours=1)).strftime("%Y%m%dT%H%M%SZ")
-        tz = base64.b64encode(bytes(172)).decode("ascii")
-        event = [el("Calendar:TimeZone", tz), el("Calendar:DtStamp", stamp), el("Calendar:StartTime", stamp),
-                 el("Calendar:Subject", "Réunion de test"), el("Calendar:UID", uuid.uuid4().hex),
-                 el("Calendar:EndTime", end), el("Calendar:Sensitivity", "0"), el("Calendar:BusyStatus", "2"),
-                 el("Calendar:AllDayEvent", "0"), el("Calendar:MeetingStatus", "0")]
         contact = [el("Contacts:FileAs", "Martin, Claire"), el("Contacts:FirstName", "Claire"),
                    el("Contacts:LastName", "Martin"), el("Contacts:Email1Address", "claire.martin@example.test")]
-        task = [el("Tasks:Subject", "Tâche de test"), el("Tasks:Importance", "1"), el("Tasks:Complete", "0"),
-                el("Tasks:Sensitivity", "0"), el("Tasks:ReminderSet", "0")]
-        for type_, data in ((8, event), (9, contact), (7, task)):
+        event = self._new_event(user, _event_fields({"subject": "Réunion de test"}))
+        task = self._settled_task(_task_fields({"subject": "Tâche de test", "importance": 1, "sensitivity": 0,
+                                                "reminder_set": False}))
+        for type_, kind, data in ((8, "pim", event), (9, "raw", contact), (7, "pim", task)):
             f = self._folder(user, type_)
-            item = Item(f.new_item_id(), raw=data, cls=f.cls)
+            item = Item(f.new_item_id(), cls=f.cls, **{kind: data})
             f.items[item.server_id] = item
+
+    # ── Internals: events, tasks, invitations ────────────────────────────
+
+    def _pim_item(self, login, folder, server_id, cls):
+        f = self._folder(self._user(login), folder)
+        item = f.items.get(server_id)
+        if item is None:
+            raise KeyError(f"élément inconnu : {server_id}")
+        if item.pim is None or item.cls != cls:
+            raise TypeError(f"l'élément {server_id} n'est pas de la classe {cls}")
+        return item
+
+    def _pim_view(self, item, folder):
+        out = {"server_id": item.server_id, "folder_id": folder.server_id, "class": item.cls,
+               "version": item.version}
+        if item.pim is None:
+            out["raw"] = True
+            return out
+        out.update(_plain(item.pim))
+        if item.cls == "Calendar":
+            out["zone"] = parse_timezone(item.pim["timezone"]) if item.pim.get("timezone") else None
+        return out
+
+    @staticmethod
+    def _blank_event():
+        event = {k: None for k in EVENT_KEYS}
+        event.update(categories=[], attendees=[], exceptions=[])
+        return event
+
+    def _new_event(self, user, fields):
+        """A complete event from what the test gave, with the values a server would have."""
+        now = _utcnow().replace(microsecond=0)
+        event = self._blank_event()
+        event.update({k: v for k, v in fields.items() if v is not None})
+        event["uid"] = event["uid"] or uuid.uuid4().hex.upper()
+        if event["start"] is None:
+            event["start"] = now.replace(minute=0, second=0) + datetime.timedelta(days=1)
+        if event["end"] is None:
+            event["end"] = event["start"] + datetime.timedelta(hours=1)
+        event["dtstamp"] = event["dtstamp"] or now
+        if "timezone" not in fields:
+            event["timezone"] = make_timezone()
+        for key, default in (("busy_status", 2), ("sensitivity", 0), ("all_day", False)):
+            if event[key] is None:
+                event[key] = default
+        mine = (event["organizer_email"] or user.email).lower() == user.email.lower()
+        if event["attendees"] and event["organizer_email"] is None:
+            event["organizer_email"], event["organizer_name"] = user.email, user.display_name
+        if event["meeting_status"] is None:
+            event["meeting_status"] = (1 if mine else 3) if event["attendees"] or not mine else 0
+        self._settle_response(event)
+        if not event["recurrence"]:
+            event["exceptions"] = []
+        return event
+
+    @staticmethod
+    def _settle_response(event):
+        """ResponseType is the server's: 1 for the organizer, 5 until an attendee answers, none for an appointment."""
+        status = event.get("meeting_status") or 0
+        if not status & 1:
+            event["response_type"] = event["reply_time"] = None
+        elif event.get("response_type") is None:
+            event["response_type"] = 5 if status & 2 else 1
+
+    @staticmethod
+    def _settled_task(task):
+        out = {k: None for k in TASK_KEYS}
+        out.update(task)
+        out["categories"] = list(out["categories"] or [])
+        out["complete"] = bool(out["complete"])
+        if not out["complete"]:
+            out["date_completed"] = None
+        elif out["date_completed"] is None:  # [MS-ASTASK] 2.2.2.8: sent whenever Complete is 1
+            out["date_completed"] = _utcnow().replace(microsecond=0)
+        return out
+
+    def _invitation_mime(self, user, inv, date):
+        """The message of an invitation: multipart/alternative, a plain text and a text/calendar; method=REQUEST
+        part, both in UTF-8 and 8bit. Written by hand, so that its bytes are exactly known."""
+        from email.headerregistry import Address
+        from email.message import EmailMessage
+        msg = EmailMessage(policy=email.policy.SMTP)
+        msg["From"] = Address(inv["organizer_name"], addr_spec=inv["organizer_email"])
+        msg["To"] = [Address(a["name"], addr_spec=a["email"]) for a in inv["attendees"]]
+        msg["Subject"] = inv["subject"]
+        msg["Date"] = email.utils.format_datetime(_aware(date) or _utcnow())
+        msg["Message-ID"] = email.utils.make_msgid(domain="mock-eas.test")
+        msg["MIME-Version"] = "1.0"
+        head = _split_mime(msg.as_bytes())[0]
+        boundary = b"=_mock-eas_" + uuid.uuid4().hex[:16].encode("ascii")
+        text = inv["body"] or f"Invitation : {inv['subject']}\nDébut : {_plain_date(inv['start'])}\n"
+        text = "\r\n".join(text.splitlines()) + "\r\n"
+        body = b""
+        for kind, data in ((b'text/plain; charset="utf-8"', text),
+                           (b'text/calendar; method=REQUEST; charset="utf-8"', _invitation_ics(inv))):
+            body += (b"--" + boundary + b"\r\nContent-Type: " + kind + b"\r\nContent-Transfer-Encoding: 8bit\r\n\r\n"
+                     + data.encode("utf-8") + b"\r\n")
+        return (head + b'\r\nContent-Type: multipart/alternative; boundary="' + boundary + b'"\r\n\r\n'
+                + body + b"--" + boundary + b"--\r\n")
+
+    @staticmethod
+    def _calendar_item_of(user, uid):
+        """(folder, item) of the user's calendar item for a meeting UID (default Calendar first), or None."""
+        if not uid:
+            return None
+        folders = sorted((f for f in user.folders.values() if f.cls == "Calendar"),
+                         key=lambda f: f.type != FolderType.CALENDAR)
+        for f in folders:
+            for item in f.items.values():
+                if item.pim is not None and item.pim.get("uid") == uid:
+                    return f, item
+        return None
+
+    def _meeting_to_calendar(self, user, inv, response_type, busy_status, replied):
+        """Create the attendee's calendar item of an invitation, or refresh the one with the same UID. -> ServerId"""
+        fields = {"uid": inv["uid"], "subject": inv["subject"], "location": inv["location"], "body": inv["body"],
+                  "start": inv["start"], "end": inv["end"], "all_day": inv["all_day"], "timezone": inv["timezone"],
+                  "dtstamp": inv["dtstamp"], "busy_status": busy_status, "sensitivity": inv["sensitivity"],
+                  "reminder": inv["reminder"], "organizer_name": inv["organizer_name"],
+                  "organizer_email": inv["organizer_email"], "attendees": [dict(a) for a in inv["attendees"]],
+                  "meeting_status": 3, "response_requested": inv["response_requested"],
+                  "disallow_new_time": inv["disallow_new_time"], "response_type": response_type,
+                  "reply_time": replied, "recurrence": dict(inv["recurrence"]) if inv["recurrence"] else None}
+        found = self._calendar_item_of(user, inv["uid"])
+        if found is not None:
+            item = found[1]
+            item.pim.update(fields)
+            if not item.pim["recurrence"]:
+                item.pim["exceptions"] = []
+            item.version += 1
+            return item.server_id
+        cal = next((f for f in user.folders.values() if f.type == FolderType.CALENDAR), None)
+        if cal is None:
+            return None
+        event = self._blank_event()
+        event.update(fields)
+        item = Item(cal.new_item_id(), pim=event, cls="Calendar")
+        cal.items[item.server_id] = item
+        return item.server_id
+
+    # ── Internals: calendar and task ApplicationData ─────────────────────
+
+    def _pim_body(self, text, options):
+        """airsyncbase:Body of an event or a task ([MS-ASAIRS] 2.2.2.9), stored as plain text: the first
+        BodyPreference of type 1 (plain text) or 2 (HTML) decides, with its TruncationSize; AllOrNone passes to
+        the next one when the text is too long ([MS-ASAIRS] 2.2.2.3.2). No preference: plain text, whole."""
+        text = text or ""
+        prefs = [p for p in options.get("body_prefs") or [] if p["type"] in (1, 2)]
+        prefs = prefs or [{"type": 1, "truncation": None, "all_or_none": False, "preview": None}]
+        for n, pref in enumerate(prefs):
+            shown = text if pref["type"] == 1 else "<html><body><pre>" + html.escape(text) + "</pre></body></html>"
+            data = shown.encode("utf-8")
+            full, limit = len(data), pref["truncation"]
+            truncated = limit is not None and full > limit
+            if truncated and pref["all_or_none"]:
+                if n + 1 < len(prefs):
+                    continue
+                data = b""
+            elif truncated:
+                data = data[:limit].decode("utf-8", "ignore").encode("utf-8")
+            children = [el("AirSyncBase:Type", pref["type"]), el("AirSyncBase:EstimatedDataSize", full)]
+            if truncated:
+                children.append(el("AirSyncBase:Truncated", "1"))
+            if data or not truncated:
+                children.append(el("AirSyncBase:Data", data,
+                                   opaque=self.options.body_data_opaque or b"\x00" in data))
+            if pref["preview"]:
+                children.append(el("AirSyncBase:Preview", " ".join(text.split())[:pref["preview"]]))
+            return el("AirSyncBase:Body", children)
+
+    @staticmethod
+    def _attendees_el(attendees):
+        return el("Calendar:Attendees", [el("Attendee", [
+            el("Email", a["email"]), el("Name", a["name"]),
+            el("AttendeeStatus", a["status"]) if a.get("status") is not None else None,
+            el("AttendeeType", a["type"]) if a.get("type") is not None else None]) for a in attendees])
+
+    @staticmethod
+    def _recurrence_el(ns, rec, version, date_text):
+        """Recurrence of an event (ns Calendar) or of a meeting request (ns Email; CalendarType, IsLeapMonth
+        and FirstDayOfWeek then live in Email2)."""
+        late = "Email2" if ns == "Email" else ns
+        out = [el(f"{ns}:Type", rec["type"])]
+        if rec.get("interval") is not None or ns == "Email":  # required in a meeting request
+            out.append(el(f"{ns}:Interval", rec.get("interval") or 1))
+        if rec.get("occurrences") is not None:
+            out.append(el(f"{ns}:Occurrences", rec["occurrences"]))
+        elif rec.get("until") is not None:
+            out.append(el(f"{ns}:Until", date_text(rec["until"])))
+        for name, key in (("WeekOfMonth", "week_of_month"), ("DayOfMonth", "day_of_month"),
+                          ("DayOfWeek", "day_of_week"), ("MonthOfYear", "month_of_year")):
+            if rec.get(key) is not None:
+                out.append(el(f"{ns}:{name}", rec[key]))
+        if _at_least(version, "14.0"):
+            # A response has a CalendarType whenever the Type is 2, 3, 5 or 6 ([MS-ASCAL] 2.2.2.10).
+            if rec.get("calendar_type") is not None or rec["type"] in (2, 3, 5, 6):
+                out.append(el(f"{late}:CalendarType", rec.get("calendar_type") or 0))
+            if rec.get("is_leap_month") is not None:
+                out.append(el(f"{late}:IsLeapMonth", rec["is_leap_month"]))
+        if _at_least(version, "14.1") and rec.get("first_day_of_week") is not None:
+            out.append(el(f"{late}:FirstDayOfWeek", rec["first_day_of_week"]))
+        return el(f"{ns}:Recurrence", out)
+
+    def _exception_el(self, exc, options, version):
+        """An Exception: only what differs from the series; an empty element where the series' value does not
+        apply ([MS-ASCAL] 3.2.5.3.2)."""
+        out = []
+        if exc.get("deleted"):
+            out.append(el("Calendar:Deleted", "1"))
+        out.append(el("Calendar:ExceptionStartTime", compact_date(exc["exception_start"])))
+        if exc.get("deleted"):
+            return el("Calendar:Exception", out)
+        for name, key in (("Subject", "subject"), ("StartTime", "start"), ("EndTime", "end")):
+            if key in exc:
+                value = exc[key]
+                out.append(el(f"Calendar:{name}", (compact_date(value) if key != "subject" else value) or None))
+        if "body" in exc:
+            out.append(self._pim_body(exc["body"], options))
+        if "location" in exc:
+            out.append(el("Calendar:Location", exc["location"] or None))
+        if "categories" in exc:
+            out.append(el("Calendar:Categories", [el("Category", c) for c in exc["categories"]] or None))
+        for name, key in (("Sensitivity", "sensitivity"), ("BusyStatus", "busy_status")):
+            if exc.get(key) is not None:
+                out.append(el(f"Calendar:{name}", exc[key]))
+        if exc.get("all_day") is not None:
+            out.append(el("Calendar:AllDayEvent", "1" if exc["all_day"] else "0"))
+        if "reminder" in exc:
+            if exc["reminder"] is not None:
+                out.append(el("Calendar:Reminder", exc["reminder"]))
+            elif _at_least(version, "14.1"):  # the empty element exists from 14.1 only ([MS-ASCAL] 2.2.2.38)
+                out.append(el("Calendar:Reminder"))
+        if exc.get("dtstamp") is not None:
+            out.append(el("Calendar:DtStamp", compact_date(exc["dtstamp"])))
+        if exc.get("meeting_status") is not None:
+            out.append(el("Calendar:MeetingStatus", exc["meeting_status"]))
+        if _at_least(version, "14.0"):
+            if "attendees" in exc:
+                out.append(self._attendees_el(exc["attendees"]) if exc["attendees"] else el("Calendar:Attendees"))
+            if exc.get("reply_time") is not None:
+                out.append(el("Calendar:AppointmentReplyTime", compact_date(exc["reply_time"])))
+            if exc.get("response_type") is not None:
+                out.append(el("Calendar:ResponseType", exc["response_type"]))
+        return el("Calendar:Exception", out)
+
+    def _event_data(self, event, options, version):
+        """Calendar ApplicationData for the protocol version ([MS-ASCAL] 2.2.2), in the order of the examples
+        of [MS-ASCMD] 4.16.4.2 and [MS-ASCAL] 4.2. The whole item, for an Add as for a Change."""
+        v14 = _at_least(version, "14.0")
+        out = []
+
+        def add(name, value):
+            if value is not None:
+                out.append(el(f"Calendar:{name}", value))
+
+        if event.get("timezone") is not None:
+            add("Timezone", base64.b64encode(event["timezone"]).decode("ascii"))
+        add("DtStamp", compact_date(event["dtstamp"]) if event.get("dtstamp") else None)
+        add("StartTime", compact_date(event["start"]))
+        add("Subject", event.get("subject"))
+        add("UID", event.get("uid"))
+        add("OrganizerName", event.get("organizer_name"))
+        add("OrganizerEmail", event.get("organizer_email"))
+        if event.get("attendees"):
+            out.append(self._attendees_el(event["attendees"]))
+        add("Location", event.get("location"))
+        add("EndTime", compact_date(event["end"]))
+        if event.get("recurrence"):
+            out.append(self._recurrence_el("Calendar", event["recurrence"], version, compact_date))
+        out.append(self._pim_body(event.get("body"), options))
+        add("Sensitivity", event.get("sensitivity"))
+        add("BusyStatus", event.get("busy_status"))
+        if event.get("all_day") is not None:
+            add("AllDayEvent", "1" if event["all_day"] else "0")
+        add("Reminder", event.get("reminder"))
+        if event.get("recurrence") and event.get("exceptions"):
+            out.append(el("Calendar:Exceptions", [self._exception_el(x, options, version)
+                                                  for x in event["exceptions"]]))
+        add("MeetingStatus", event.get("meeting_status"))
+        out.append(el("AirSyncBase:NativeBodyType", "1"))
+        if v14:  # [MS-ASCAL] 2.2.2.39, 2.2.2.2, 2.2.2.40, 2.2.2.17: from 14.0
+            if event.get("response_requested") is not None:
+                add("ResponseRequested", "1" if event["response_requested"] else "0")
+            add("AppointmentReplyTime", compact_date(event["reply_time"]) if event.get("reply_time") else None)
+            add("ResponseType", event.get("response_type"))
+            if event.get("disallow_new_time") is not None:
+                add("DisallowNewTimeProposal", "1" if event["disallow_new_time"] else "0")
+        if event.get("categories"):
+            out.append(el("Calendar:Categories", [el("Category", c) for c in event["categories"]]))
+        return out
+
+    def _task_data(self, task, options, version):
+        """Tasks ApplicationData for the protocol version ([MS-ASTASK] 2.2.2)."""
+        out = [self._pim_body(task.get("body"), options)]
+
+        def add(name, value):
+            if value is not None:
+                out.append(el(f"Tasks:{name}", value))
+
+        add("Subject", task.get("subject"))
+        add("Importance", task.get("importance"))
+        for name, key in (("UtcStartDate", "utc_start_date"), ("StartDate", "start_date"),
+                          ("UtcDueDate", "utc_due_date"), ("DueDate", "due_date")):
+            add(name, eas_date(task[key]) if task.get(key) else None)
+        if task.get("categories"):
+            out.append(el("Tasks:Categories", [el("Category", c) for c in task["categories"]]))
+        rec = task.get("recurrence")
+        if rec:
+            parts = [el("Tasks:Type", rec["type"]), el("Tasks:Start", eas_date(rec["start"]))]
+            if rec.get("occurrences") is not None:
+                parts.append(el("Tasks:Occurrences", rec["occurrences"]))
+            elif rec.get("until") is not None:
+                parts.append(el("Tasks:Until", eas_date(rec["until"])))
+            for name, key in (("Interval", "interval"), ("DayOfWeek", "day_of_week"),
+                              ("DayOfMonth", "day_of_month"), ("WeekOfMonth", "week_of_month"),
+                              ("MonthOfYear", "month_of_year"), ("Regenerate", "regenerate"),
+                              ("DeadOccur", "dead_occur")):
+                if rec.get(key) is not None:
+                    parts.append(el(f"Tasks:{name}", rec[key]))
+            if _at_least(version, "14.0"):
+                if rec.get("calendar_type") is not None or rec["type"] in (2, 3, 5, 6):  # [MS-ASTASK] 2.2.2.4
+                    parts.append(el("Tasks:CalendarType", rec.get("calendar_type") or 0))
+                if rec.get("is_leap_month") is not None:
+                    parts.append(el("Tasks:IsLeapMonth", rec["is_leap_month"]))
+            if _at_least(version, "14.1") and (rec.get("first_day_of_week") is not None or rec["type"] == 1):
+                # [MS-ASTASK] 2.2.2.13: always returned for a weekly recurrence (Sunday when the client gave none)
+                parts.append(el("Tasks:FirstDayOfWeek", rec.get("first_day_of_week") or 0))
+            out.append(el("Tasks:Recurrence", parts))
+        add("Complete", "1" if task.get("complete") else "0")
+        add("DateCompleted", eas_date(task["date_completed"]) if task.get("date_completed") else None)
+        add("Sensitivity", task.get("sensitivity"))
+        add("ReminderTime", eas_date(task["reminder_time"]) if task.get("reminder_time") else None)
+        if task.get("reminder_set") is not None:
+            add("ReminderSet", "1" if task["reminder_set"] else "0")
+        out.append(el("AirSyncBase:NativeBodyType", "1"))
+        return out
+
+    def _meeting_request_el(self, inv, version):
+        """MeetingRequest of an invitation mail, children in the order of the schema ([MS-ASEMAIL] 2.2.2.48, 6.1)."""
+        name = inv["organizer_name"].replace('"', "")
+        organizer = f'"{name}" <{inv["organizer_email"]}>'
+        out = [el("Email:AllDayEvent", "1" if inv["all_day"] else "0"),
+               el("Email:StartTime", eas_date(inv["start"])), el("Email:DtStamp", eas_date(inv["dtstamp"])),
+               el("Email:EndTime", eas_date(inv["end"])),
+               el("Email:InstanceType", "1" if inv["recurrence"] else "0")]
+        if inv["location"]:
+            out.append(el("Email:Location", inv["location"]))
+        out.append(el("Email:Organizer", organizer))
+        if inv["reminder"] is not None:
+            out.append(el("Email:Reminder", inv["reminder"] * 60))  # seconds here ([MS-ASEMAIL] 2.2.2.63)
+        out.append(el("Email:ResponseRequested", "1" if inv["response_requested"] else "0"))
+        if inv["recurrence"]:
+            out.append(el("Email:Recurrences", [self._recurrence_el("Email", inv["recurrence"], version,
+                                                                    compact_date)]))
+        out += [el("Email:Sensitivity", inv["sensitivity"]), el("Email:BusyStatus", inv["busy_status"]),
+                el("Email:TimeZone", base64.b64encode(inv["timezone"]).decode("ascii")),
+                el("Email:GlobalObjId", base64.b64encode(global_obj_id(inv["uid"])).decode("ascii"))]
+        if _at_least(version, "14.0"):  # [MS-ASEMAIL] 2.2.2.27
+            out.append(el("Email:DisallowNewTimeProposal", "1" if inv["disallow_new_time"] else "0"))
+        if _at_least(version, "14.1"):  # [MS-ASEMAIL] 2.2.2.47
+            out.append(el("Email2:MeetingMessageType", inv["message_type"]))
+        return el("Email:MeetingRequest", out)
+
+    # ── Internals: what a client's Add or Change does to an event or a task ──
+
+    def _client_event_add(self, given):
+        """The event a client's Add creates ([MS-ASCAL] 3.2.4.4 for missing times)."""
+        now = _utcnow().replace(microsecond=0)
+        event = self._blank_event()
+        event.update(given)
+        start, end = given.get("start"), given.get("end")
+        if start is None:  # and no EndTime either: EndTime without StartTime was refused (3.2.5.3)
+            start = _half_hour_after(now)
+            end = start + datetime.timedelta(minutes=30)
+        elif end is None:
+            if start > now:
+                raise _Refused("StartTime dans le futur sans EndTime")
+            end = _half_hour_after(now) + datetime.timedelta(minutes=30)
+        if end < start:
+            raise _Refused("EndTime avant StartTime")
+        event.update(start=start, end=end)
+        event["uid"] = event["uid"] or uuid.uuid4().hex.upper()  # [MS-ASCAL] 2.2.2.46: the server may create it
+        event["dtstamp"] = event["dtstamp"] or now
+        if event["exceptions"] and not event["recurrence"]:
+            raise _Refused("Exceptions sans Recurrence")
+        self._settle_response(event)
+        return event
+
+    def _client_event_change(self, event, given, supported, version):
+        """The event after a client's Change.
+
+        An element present replaces the value. For an element absent:
+          - [MS-ASCMD] 2.2.3.179. Without Supported in the collection's first Sync, no element is ghosted; with
+            a Supported that has children, only the elements it names are not ghosted; with an empty Supported,
+            every element that can be ghosted is. A ghosted element absent from a Change keeps its value.
+            "If the element is not ghosted, any existing value for that element is deleted."
+          - [MS-ASCAL] 2.2.2.27: Location cannot be ghosted, so it is deleted whenever it is absent.
+          - [MS-ASCMD] 2.2.3.24 and [MS-ASCAL] 3.2.5.3.1: Exceptions absent leaves every exception as it is, even
+            if Supported named Exceptions; an Exception absent leaves that exception as it is. A Body absent
+            leaves the body as it is.
+          - ResponseType and AppointmentReplyTime are the server's (a request never has them): untouched.
+          - An element the protocol version does not define cannot be sent, so it is untouched.
+        The mock cannot keep an event without StartTime or EndTime: when one is absent and not ghosted, the
+        Change is refused (Status 6). A DtStamp deleted this way becomes the time of the change."""
+        new = dict(event)
+
+        def ghosted(name):
+            return name != "Location" and supported is not None and name not in supported
+
+        for name, field, since in CAL_TOP:
+            if name == "Exceptions":
+                continue
+            if field in given:
+                new[field] = given[field]
+            elif not _at_least(version, since) or ghosted(name):
+                continue
+            elif name in ("StartTime", "EndTime"):
+                raise _Refused(f"{name} absent d'un Change alors qu'il n'est pas fantôme")
+            else:
+                new[field] = [] if field in ("attendees", "categories") else None
+        if "body" in given:
+            new["body"] = given["body"]
+        if new["dtstamp"] is None:
+            new["dtstamp"] = _utcnow().replace(microsecond=0)
+        if "exceptions" in given:
+            if not new["recurrence"]:
+                raise _Refused("Exceptions sans Recurrence")
+            kept = {x["exception_start"]: x for x in event["exceptions"]}
+            kept.update({x["exception_start"]: x for x in given["exceptions"]})
+            new["exceptions"] = list(kept.values())
+        if not new["recurrence"]:
+            new["exceptions"] = []
+        if new["end"] < new["start"]:
+            raise _Refused("EndTime avant StartTime")
+        self._settle_response(new)
+        return new
+
+    def _client_task_add(self, given):
+        task = {"importance": 1, "sensitivity": 0, "reminder_set": False}  # the defaults of [MS-ASTASK] 2.2.2
+        task.update(given)
+        return self._settled_task(task)
+
+    def _client_task_change(self, task, given):
+        """The task after a client's Change. Tasks have no ghosting: an element absent is deleted
+        ([MS-ASCMD] 2.2.3.24), except Importance and ReminderSet, which keep their value ([MS-ASTASK] 3.2.5.3.1,
+        3.2.5.3.2), and the Body ([MS-ASCMD] 2.2.3.24). A completed task keeps its completion date."""
+        new = dict(task)
+        for name, field in TASK_FIELD.items():
+            if field in given:
+                new[field] = given[field]
+            elif name not in ("Importance", "ReminderSet", "DateCompleted"):
+                new[field] = [] if field == "categories" else None
+        if "body" in given:
+            new["body"] = given["body"]
+        return self._settled_task(new)
+
+    def _pim_add(self, ctx, folder, data, working, entry):
+        """Client Add in a calendar or task folder. -> (status, new ServerId or None)"""
+        try:
+            if folder.cls == "Calendar":
+                given = _read_event(data, ctx.version)
+                pim = self._client_event_add(given)
+            else:
+                given = _read_task(data, ctx.version)
+                pim = self._client_task_add(given)
+        except (_Refused, WbxmlError) as e:
+            self._refused(ctx, entry, e, f"Add {folder.cls}")
+            return "6", None
+        entry["fields"] = _plain(given)
+        item = Item(folder.new_item_id(), pim=pim, cls=folder.cls)
+        folder.items[item.server_id] = item
+        working[item.server_id] = item.version
+        return "1", item.server_id
+
+    def _pim_change(self, ctx, folder, state, item, data, working, entry):
+        """Client Change of an event or a task. -> status"""
+        fail = self.options.fail_next_calendar_change
+        if fail is not None and item.cls == "Calendar":
+            self.options.fail_next_calendar_change = None
+            entry["injected"] = str(fail)
+            return str(fail)
+        if working.get(item.server_id) != item.version:
+            # Changed on the server since this device last saw it ([MS-ASCMD] 2.2.3.34): the server's object
+            # stays and the client's is discarded (Status 7), unless Conflict is 0.
+            entry["conflict"] = True
+            if state.options.get("conflict", 1) == 1:
+                return "7"
+        try:
+            if item.cls == "Calendar":
+                given = _read_event(data, ctx.version)
+                new = self._client_event_change(item.pim, given, state.supported, ctx.version)
+            else:
+                given = _read_task(data, ctx.version)
+                new = self._client_task_change(item.pim, given)
+        except (_Refused, WbxmlError) as e:
+            self._refused(ctx, entry, e, f"Change {item.cls}")
+            return "6"
+        entry["changes"] = _plain(given)
+        if new != item.pim:
+            item.pim = new
+            item.version += 1
+        working[item.server_id] = item.version
+        return "1"
+
+    def _refused(self, ctx, entry, error, what):
+        reason = error.reason if isinstance(error, _Refused) else str(error)
+        entry["reason"] = reason
+        if not isinstance(error, _Refused) or error.violation:
+            self._protocol_error(ctx, f"{what} : {reason}")
+
+    def _in_window(self, item, options, now):
+        """Is the item within the collection's FilterType ([MS-ASCMD] 2.2.3.68.2)?"""
+        chosen = options.get("filter_type", 0)
+        if item.pim is not None and item.cls == "Tasks":
+            return chosen != 8 or not item.pim.get("complete")  # 8: incomplete tasks only
+        days = FILTER_DAYS.get(chosen)
+        if days is None:
+            return True
+        cutoff = now - datetime.timedelta(days=days)
+        if item.pim is None:
+            return item.date >= cutoff
+        # Calendar: what is in the future, and a series without an end, are sent whatever the period.
+        last = _event_end_of_series(item.pim)
+        return last is None or last >= cutoff
+
+    def _supported(self, ctx, coll, folder, key):
+        """The Supported element of a calendar or task collection ([MS-ASCMD] 2.2.3.179), and the order of
+        the Collection's children ([MS-ASCMD] 2.2.3.29.2), which is strictly enforced.
+        -> (names or None, problem or None)"""
+        order = ("SyncKey", "CollectionId", "Supported", "DeletesAsMoves", "GetChanges", "WindowSize",
+                 "ConversationMode", "Options", "Commands")
+        last = -1
+        for c in coll.children:
+            if c.ns == "AirSync" and c.tag == "Class" and ctx.version.startswith("12."):
+                continue  # [MS-ASCMD] 2.2.3.27.6: a child of Collection up to 12.1 only
+            if c.ns != "AirSync" or c.tag not in order:
+                return None, f"élément {c.name} inattendu dans Collection"
+            rank = order.index(c.tag)
+            if rank < last or (rank == last and c.tag != "Options"):
+                return None, f"élément {c.tag} mal placé dans Collection (ordre imposé)"
+            last = rank
+        sup = coll.child("Supported")
+        if sup is None:
+            return None, None
+        if key != "0":
+            # Not an error for the specification, which has the server ignore it: the first list stays.
+            self._protocol_error(ctx, "Supported avec une SyncKey non nulle : ignoré")
+            return None, None
+        names = []
+        for c in sup.children:
+            if c.ns != folder.cls or c.children or c.value:
+                return None, f"Supported : {c.name} inattendu ou non vide"
+            names.append(c.tag)
+        if len(set(names)) != len(names):
+            return None, "Supported : élément en double"
+        if folder.cls == "Tasks":
+            if names:  # only calendar and contact elements can be ghosted
+                return None, "Supported : la classe Tasks n'a pas d'élément fantôme"
+            return frozenset(), None
+        allowed = set(SUPPORTED_REQUIRED) | set(SUPPORTED_OPTIONAL)
+        if not _at_least(ctx.version, "14.0"):
+            allowed -= {"ResponseRequested", "DisallowNewTimeProposal"}
+        unknown = [n for n in names if n not in allowed]
+        if unknown:
+            return None, f"Supported : {unknown[0]} non admis en version {ctx.version}"
+        missing = [n for n in SUPPORTED_REQUIRED if n not in names]
+        if names and missing:
+            return None, f"Supported : élément obligatoire absent ({missing[0]})"
+        return frozenset(names), None
 
     # ── Internals: change computation ─────────────────────────────────────
 
     def _view(self, folder, options):
-        days = FILTER_DAYS.get(options.get("filter_type", 0))
-        if days is None:
+        if not options.get("filter_type", 0):
             return folder.items
-        cutoff = _utcnow() - datetime.timedelta(days=days)
-        return {sid: i for sid, i in folder.items.items() if i.date >= cutoff}
+        now = _utcnow()
+        return {sid: i for sid, i in folder.items.items() if self._in_window(i, options, now)}
 
     def _pending(self, folder, options, known):
         """[(op, ServerId)] the device must receive: deletes, soft deletes, changes, adds (newest first)."""
@@ -1991,10 +3701,15 @@ class MockEasServer:
                                      el("Tasks:DateCompleted", done)])
         return el("Email:Flag")
 
-    def _application_data(self, item, options, full=True):
-        """ApplicationData children: everything for an Add or Fetch, the changeable properties for a Change."""
+    def _application_data(self, item, options, full=True, version="14.1"):
+        """ApplicationData children: everything for an Add or Fetch, the changeable properties for a Change
+        (an event or a task is always sent whole)."""
         if item.raw is not None:
             return list(item.raw)
+        if item.pim is not None:
+            if item.cls == "Calendar":
+                return self._event_data(item.pim, options, version)
+            return self._task_data(item.pim, options, version)
         if not full:
             out = [el("Email:Read", "1" if item.read else "0"), self._flag_element(item)]
             if item.categories:
@@ -2013,9 +3728,16 @@ class MockEasServer:
             out.append(el("Email:ReplyTo", s.reply_to))
         out += [el("Email:DateReceived", eas_date(item.date)), el("Email:DisplayTo", s.display_to),
                 el("Email:ThreadTopic", topic), el("Email:Importance", s.importance),
-                el("Email:Read", "1" if item.read else "0"), body, el("Email:MessageClass", "IPM.Note"),
-                el("Email:InternetCPID", "65001"), self._flag_element(item),
-                el("Email:ContentClass", "urn:content-classes:message"), el("AirSyncBase:NativeBodyType", native),
+                el("Email:Read", "1" if item.read else "0"), body]
+        if item.invitation is not None:  # [MS-ASCMD] 3.1.5.6, example 4.16.3.2
+            out += [el("Email:MessageClass", "IPM.Schedule.Meeting.Request"),
+                    self._meeting_request_el(item.invitation, version)]
+            content_class = "urn:content-classes:calendarmessage"
+        else:
+            out.append(el("Email:MessageClass", "IPM.Note"))
+            content_class = "urn:content-classes:message"
+        out += [el("Email:InternetCPID", "65001"), self._flag_element(item),
+                el("Email:ContentClass", content_class), el("AirSyncBase:NativeBodyType", native),
                 el("Email2:ConversationId", hashlib.md5(topic.lower().encode("utf-8")).digest()),
                 el("Email2:ConversationIndex", int(item.date.timestamp()).to_bytes(5, "big", signed=False))]
         if item.categories:
@@ -2068,6 +3790,9 @@ class MockEasServer:
                 elif item.raw is not None:
                     item.raw = list(data.children)
                     status = "1"
+                elif item.pim is not None:
+                    entry["class"] = item.cls
+                    status = self._pim_change(ctx, folder, state, item, data, working, entry)
                 else:
                     base = working.get(sid)
                     before = (item.read, item.flag, list(item.categories))
@@ -2109,6 +3834,9 @@ class MockEasServer:
                     status, new_id = "6", None
                 elif folder.cls == "Email":
                     status, new_id = "6", None  # [MS-ASCMD]: no email Add before protocol 16.0
+                elif folder.cls in ("Calendar", "Tasks"):
+                    entry["class"] = folder.cls
+                    status, new_id = self._pim_add(ctx, folder, data, working, entry)
                 else:
                     item = Item(folder.new_item_id(), raw=list(data.children), cls=folder.cls)
                     folder.items[item.server_id] = item
@@ -2128,7 +3856,7 @@ class MockEasServer:
                     responses.append(el("Fetch", [el("ServerId", sid or ""), el("Status", "8")]))
                 else:
                     responses.append(el("Fetch", [el("ServerId", sid), el("Status", "1"), el(
-                        "ApplicationData", self._application_data(item, state.options))]))
+                        "ApplicationData", self._application_data(item, state.options, version=ctx.version))]))
             else:
                 self._protocol_error(ctx, f"commande {cmd.tag} inattendue dans Commands")
                 return None
@@ -2158,6 +3886,12 @@ class MockEasServer:
             return reply("12"), False
         if self.options.status12_on_hierarchy_change and self._hierarchy_stale(user, dev):
             return reply("12"), False
+        supported = None
+        if folder.cls in ("Calendar", "Tasks"):
+            supported, problem = self._supported(ctx, coll, folder, key)
+            if problem:
+                self._protocol_error(ctx, problem)
+                return reply("4"), False
         options, problem = self._parse_options(coll, folder)
         if problem:
             self._protocol_error(ctx, problem)
@@ -2191,6 +3925,7 @@ class MockEasServer:
                 return reply("4"), False
             state = CollectionState(cid)
             state.options = options or {}
+            state.supported = supported
             dev.collections[cid] = state
             return reply("1", state.key), False
         state = dev.collections.get(cid)
@@ -2208,6 +3943,14 @@ class MockEasServer:
             return reply("3", "0"), False
         if options is not None:
             state.options = options
+        fail = self.options.fail_next_calendar_change
+        if (fail is not None and str(fail) in ("5", "16") and folder.cls == "Calendar" and commands_el is not None
+                and any(c.tag == "Change" for c in commands_el.children)):
+            # A status whose scope is the whole collection: nothing is applied, the key does not move.
+            self.options.fail_next_calendar_change = None
+            self._action(ctx, "sync_change", collection_id=cid, server_id=None, changes={}, ignored=[],
+                         status=str(fail), injected=str(fail))
+            return reply(str(fail)), False
         working = dict(state.known)
         responses = []
         if commands_el is not None:
@@ -2229,7 +3972,7 @@ class MockEasServer:
                 else:
                     item = view[sid]
                     working[sid] = item.version
-                    data = self._application_data(item, state.options, full=op == "Add")
+                    data = self._application_data(item, state.options, full=op == "Add", version=ctx.version)
                     commands.append(el(op, [el("ServerId", sid), el("ApplicationData", data)]))
         if commands_el is None and not commands and not responses:
             return reply("1", state.key), True
@@ -2308,7 +4051,8 @@ class MockEasServer:
                 return _status_doc("Sync", 4)
             budget = [min(int(window), self.options.max_window_size)]
         dev.last_sync = {"top": top_children, "collections": [
-            Element("AirSync", "Collection", [x for x in c.children if x.tag not in ("SyncKey", "Commands")])
+            Element("AirSync", "Collection", [x for x in c.children
+                                              if x.tag not in ("SyncKey", "Commands", "Supported")])
             for c in colls]}
         if seconds:
             self._sync_wait(ctx, colls, seconds)
@@ -2483,6 +4227,175 @@ class MockEasServer:
             answers.append(el("Response", answer))
         return el("Move:MoveItems", answers)
 
+    # ── MeetingResponse ───────────────────────────────────────────────────
+
+    def _cmd_meetingresponse(self, ctx):
+        """[MS-ASCMD] 2.2.1.11: answer a meeting request in the Inbox, or (14.1) a meeting in the Calendar."""
+        doc = ctx.doc
+
+        def invalid(message):
+            # InvalidXML ([MS-ASCMD] 2.2.2: Status 103; an HTTP 400 up to 12.1).
+            self._protocol_error(ctx, message)
+            if ctx.version.startswith("12."):
+                raise _HttpAbort(400, message)
+            return _status_doc("MeetingResponse", 103)
+
+        requests = doc.children_named("MeetingResponse:Request")
+        if not requests or len(requests) != len(doc.children):
+            return invalid("MeetingResponse : un ou plusieurs Request attendus, rien d'autre")
+        if len(requests) > self.options.max_meeting_responses:  # [MS-ASCMD] 3.1.5.10
+            return invalid(f"MeetingResponse : plus de {self.options.max_meeting_responses} Request")
+        return el("MeetingResponse:MeetingResponse", [self._meeting_response(ctx, r) for r in requests])
+
+    def _meeting_response(self, ctx, req):
+        """One Request -> its Result (RequestId, Status, CalendarId)."""
+        user, dev = ctx.user, ctx.device
+        parts, malformed = {}, None
+        for c in req.children:
+            if c.tag in parts or c.children or not (c.ns == "MeetingResponse" or c.name == "Search:LongId"):
+                malformed = malformed or f"MeetingResponse : élément {c.name} en double ou inattendu"
+            parts.setdefault(c.tag, c)
+
+        def text(name):
+            try:
+                return parts[name].text() if name in parts else None
+            except WbxmlError:
+                return ""
+
+        answer, cid, rid, instance = text("UserResponse"), text("CollectionId"), text("RequestId"), text("InstanceId")
+        entry = {"seq": self._next_seq(), "time": time.time(), "user": user.login, "device": dev.device_id,
+                 "response": int(answer) if answer in ("1", "2", "3") else None,
+                 "answer": {"1": "accepted", "2": "tentative", "3": "declined"}.get(answer),
+                 "collection_id": cid, "request_id": rid, "instance_id": instance, "source": None, "uid": None,
+                 "organizer": None, "status": None, "calendar_id": None}
+        self._meeting_responses.append(entry)
+
+        def result(status, calendar_id=None, why=None, violation=False):
+            entry.update(status=str(status), calendar_id=calendar_id)
+            if why:
+                entry["error"] = why
+            if violation:
+                self._protocol_error(ctx, f"MeetingResponse : {why}")
+            self._action(ctx, "meeting_response", **{k: entry[k] for k in (
+                "response", "answer", "collection_id", "request_id", "instance_id", "source", "uid", "status",
+                "calendar_id")})
+            children = [el("RequestId", rid)] if rid is not None else []
+            children.append(el("Status", status))
+            if calendar_id:
+                children.append(el("CalendarId", calendar_id))
+            return el("MeetingResponse:Result", children)
+
+        # What the request itself must be ([MS-ASCMD] 2.2.3.150.2, 2.2.3.194, 6.25): Status 2 otherwise.
+        if malformed:
+            return result(2, why=malformed, violation=True)
+        unknown = [n for n in parts if n not in ("UserResponse", "CollectionId", "RequestId", "InstanceId")]
+        if unknown:  # LongId needs Search, which this server does not have; SendResponse and the rest are 16.x
+            return result(2, why=f"élément {unknown[0]} non pris en charge en version {ctx.version}", violation=True)
+        if entry["response"] is None:
+            return result(2, why="UserResponse absent ou hors de 1, 2, 3", violation=True)
+        if not cid or not rid or len(cid) > 64 or len(rid) > 64:
+            return result(2, why="CollectionId ou RequestId absent ou trop long", violation=True)
+        if instance is not None and ctx.version != "14.1":  # [MS-ASCMD] 2.2.3.92.1
+            return result(2, why=f"InstanceId n'existe pas en version {ctx.version}", violation=True)
+        if instance is not None and len(instance) != 24:
+            return result(2, why="InstanceId : 24 caractères attendus", violation=True)
+        fail = self.options.fail_next_meeting_response
+        if fail is not None:
+            self.options.fail_next_meeting_response = None
+            return result(fail, why="panne simulée")
+        folder = user.folders.get(cid)
+        if folder is None:
+            return result(2, why="dossier inconnu")
+        if cid not in dev.collections:
+            # 2.2.1.11: only for a folder the device synchronizes.
+            return result(2, why="dossier que l'appareil ne synchronise pas", violation=True)
+        item = folder.items.get(rid)
+        if item is None:
+            return result(2, why="élément inconnu")
+        when = None
+        if folder.cls == "Email" and item.invitation is not None:
+            inv = item.invitation
+            entry.update(source="mail", uid=inv["uid"], organizer=inv["organizer_email"])
+            if instance is not None:  # 2.2.3.177.9: an InstanceId that names a meeting request mail
+                return result(2, why="InstanceId sur un message d'invitation")
+            if inv["message_type"] == 6:  # 3.1.5.6: a delegated request must not be answered
+                return result(2, why="invitation déléguée (MeetingMessageType 6)", violation=True)
+            organizer, event = inv["organizer_email"], None
+        elif folder.cls == "Calendar" and item.pim is not None:
+            event = item.pim
+            entry.update(source="calendar", uid=event.get("uid"), organizer=event.get("organizer_email"))
+            if ctx.version != "14.1":  # 2.2.1.11: not in the Calendar folder up to 14.0
+                return result(2, why=f"réponse sur un élément d'agenda en version {ctx.version}", violation=True)
+            if not (event.get("meeting_status") or 0) & 1:
+                return result(2, why="cet élément n'est pas une réunion")
+            organizer = event.get("organizer_email") or user.email
+            if not (event.get("meeting_status") or 0) & 2:
+                organizer = user.email
+            if instance is not None:
+                when = _parse_datetime(instance)
+                if when is None:
+                    return result(104, why="InstanceId : date invalide")
+                if not event.get("recurrence"):
+                    return result(146, why="InstanceId sur une réunion sans récurrence")
+                until = event["recurrence"].get("until")
+                gone = any(x["exception_start"] == when and x.get("deleted") for x in event["exceptions"])
+                if when < event["start"] or (until is not None and when.date() > until.date()) or gone:
+                    return result(2, why="InstanceId : occurrence inexistante")
+        else:
+            return result(2, why="ni invitation ni réunion")
+        if organizer.lower() == user.email.lower():  # 2.2.3.177.9
+            return result(2, why="l'utilisateur est l'organisateur de cette réunion")
+
+        now = _utcnow().replace(microsecond=0)
+        response_type = {1: 3, 2: 2, 3: 4}[entry["response"]]
+        found = (folder, item) if event is not None else self._calendar_item_of(user, entry["uid"])
+        calendar_id = None
+        if when is not None:
+            # One occurrence: the answer is kept in its exception; a declined occurrence is deleted.
+            target = found[1]
+            others = [x for x in target.pim["exceptions"] if x["exception_start"] != when]
+            mine = next((x for x in target.pim["exceptions"] if x["exception_start"] == when),
+                        {"exception_start": when, "deleted": False})
+            mine = dict(mine, deleted=True) if entry["response"] == 3 else dict(
+                mine, response_type=response_type, reply_time=now)
+            target.pim["exceptions"] = others + [mine]
+            target.version += 1
+            calendar_id = None if entry["response"] == 3 else target.server_id
+        elif entry["response"] == 3:
+            # 3.1.5.6: declined, the server deletes the calendar item and returns no CalendarId.
+            if found is not None:
+                del found[0].items[found[1].server_id]
+        elif found is not None:
+            found[1].pim.update(response_type=response_type, reply_time=now,
+                                busy_status=2 if entry["response"] == 1 else 1)
+            found[1].version += 1
+            calendar_id = found[1].server_id
+        else:
+            # 2.2.3.18: accepted or tentative, the server adds the calendar item if none is present.
+            calendar_id = self._meeting_to_calendar(user, item.invitation, response_type,
+                                                    2 if entry["response"] == 1 else 1, now)
+        if when is None:
+            self._retire_invitations(user, entry["uid"], item if event is None else None)
+        return result(1, calendar_id)
+
+    def _retire_invitations(self, user, uid, answered):
+        """An answered invitation leaves the Inbox, by the option invitation_after_response: the mail that was
+        answered, or, for an answer given on the calendar item, the invitations of that meeting in the Inbox."""
+        how = self.options.invitation_after_response
+        if how == "kept":
+            return
+        trash = next((f for f in user.folders.values() if f.type == FolderType.DELETED), None)
+        for f in list(user.folders.values()):
+            if f.cls != "Email" or f is trash or (answered is None and f.type != FolderType.INBOX):
+                continue
+            for sid, mail in list(f.items.items()):
+                if mail is answered or (answered is None and mail.invitation is not None
+                                        and mail.invitation["uid"] == uid):
+                    if how == "deleted_items" and trash is not None:
+                        self._move_item(f, sid, trash)
+                    else:
+                        del f.items[sid]
+
     # ── GetItemEstimate ───────────────────────────────────────────────────
 
     def _cmd_getitemestimate(self, ctx):
@@ -2544,7 +4457,8 @@ class MockEasServer:
                     options = parsed or options
                 answers.append(el("Fetch", [el("Status", "1"), el("AirSync:CollectionId", cid),
                                             el("AirSync:ServerId", sid), el("AirSync:Class", item.cls),
-                                            el("Properties", self._application_data(item, options))]))
+                                            el("Properties", self._application_data(item, options,
+                                                                                    version=ctx.version))]))
             elif op.tag == "EmptyFolderContents":
                 cid = op.text("AirSync:CollectionId")
                 folder = user.folders.get(cid) if cid else None

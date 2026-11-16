@@ -88,11 +88,11 @@
   },
   "confirmDeletes": {
     "message": "Confirm the deletions",
-    "description": "Button: apply the deletions held back by the mass-deletion safeguard."
+    "description": "Button: apply the deletions held back by the mass-deletion safeguard (messages, folders, events or tasks)."
   },
   "keepLocalCopies": {
     "message": "Keep the local copies",
-    "description": "Button: drop the deletions held back, keep the local messages."
+    "description": "Button: drop the deletions held back, keep the local messages, events and tasks."
   },
   "syncButton": {
     "message": "Synchronize",
@@ -115,7 +115,7 @@
     "description": "Button."
   },
   "removeQuestion": {
-    "message": "Remove the mailbox “$NAME$”? Its account, its local folders and its password will be removed from Thunderbird. Nothing is deleted on the server.",
+    "message": "Remove the mailbox “$NAME$”? Its account, its local folders and its password will be removed from Thunderbird. Nothing is deleted on the server. Changes not yet sent to the server are lost.",
     "description": "Asked before a mailbox is removed; $NAME$: its name.",
     "placeholders": {
       "name": {
@@ -124,8 +124,44 @@
     }
   },
   "discardConfirm": {
-    "message": "The deletions made on the server will not be applied: the messages stay in Thunderbird, and the folders concerned are synchronized again with the server. A folder deleted on the server stays here, without synchronization.",
-    "description": "Asked before the deletions held back are dropped (keepLocalCopies)."
+    "message": "The deletions made on the server will not be applied: the messages, events and tasks concerned stay in Thunderbird. The mail folders concerned are synchronized again with the server; the events and tasks kept are no longer linked to the server. A folder deleted on the server stays here, without synchronization.",
+    "description": "Asked before the deletions held back are dropped (keepLocalCopies); they may concern messages, mail folders, events or tasks."
+  },
+  "uncheckCalendarConfirm": {
+    "message": "Stop synchronizing the calendar of “$NAME$”? Its events will be removed from Thunderbird. Nothing is deleted on the server. Changes not yet sent to the server are lost.",
+    "description": "Asked before a mailbox is saved with its calendar unchecked (it was synchronized until now); $NAME$: name of the mailbox.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "uncheckTasksConfirm": {
+    "message": "Stop synchronizing the tasks of “$NAME$”? Its tasks will be removed from Thunderbird. Nothing is deleted on the server. Changes not yet sent to the server are lost.",
+    "description": "Asked before a mailbox is saved with its tasks unchecked (they were synchronized until now); $NAME$: name of the mailbox.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "uncheckBothConfirm": {
+    "message": "Stop synchronizing the calendar and the tasks of “$NAME$”? Its calendars will be removed from Thunderbird, with their events and tasks. Nothing is deleted on the server. Changes not yet sent to the server are lost.",
+    "description": "Asked before a mailbox is saved with both its calendar and its tasks unchecked (they were synchronized until now); $NAME$: name of the mailbox.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "moveConfirm": {
+    "message": "Change the server or the sign-in name of “$NAME$”? Its calendars and tasks will be removed from Thunderbird, then synchronized again from the server. Changes not yet sent to the server are lost.",
+    "description": "Asked before a mailbox whose calendar or tasks are synchronized is saved with another server or sign-in name; $NAME$: name of the mailbox.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
   },
   "noAnswer": {
     "message": "The extension is not responding. Reload this page.",
@@ -271,17 +307,29 @@
     "message": "Mail period",
     "description": "Label: how far back mail is synchronized."
   },
+  "fieldCalendarPeriod": {
+    "message": "Calendar period",
+    "description": "Label: how far back calendar events are synchronized."
+  },
+  "calendarPeriodHint": {
+    "message": "Events older than this period are not synchronized. Future events always are.",
+    "description": "Hint under the calendar period: it only limits past events."
+  },
+  "fieldTaskFilter": {
+    "message": "Tasks to synchronize",
+    "description": "Label of the choice between all tasks and incomplete tasks only."
+  },
   "fieldKinds": {
     "message": "Items to synchronize",
     "description": "Label of the group of check boxes."
   },
   "kindsHint": {
-    "message": "In this version, only mail is synchronized. The other choices are saved for later.",
-    "description": "Hint."
+    "message": "In this version, contacts are not synchronized yet. This choice is saved for later.",
+    "description": "Hint under the items to synchronize: contacts cannot be synchronized yet."
   },
   "soon": {
     "message": "coming soon",
-    "description": "Badge next to an item not synchronized yet in this version."
+    "description": "Badge next to an item not synchronized yet in this version (contacts)."
   },
   "save": {
     "message": "Save",
@@ -335,19 +383,35 @@
   },
   "period2Weeks": {
     "message": "2 weeks",
-    "description": "Mail period choice."
+    "description": "Mail or calendar period choice."
   },
   "period1Month": {
     "message": "1 month",
-    "description": "Mail period choice."
+    "description": "Mail or calendar period choice."
+  },
+  "period3Months": {
+    "message": "3 months",
+    "description": "Calendar period choice."
+  },
+  "period6Months": {
+    "message": "6 months",
+    "description": "Calendar period choice."
   },
   "periodAll": {
     "message": "All",
-    "description": "Mail period choice: all mail."
+    "description": "Mail or calendar period choice: everything."
   },
   "periodUnknown": {
     "message": "Unknown",
     "description": "Mail period that is not one of the choices."
+  },
+  "taskFilterAll": {
+    "message": "All tasks",
+    "description": "Choice of tasks to synchronize: all of them."
+  },
+  "taskFilterIncomplete": {
+    "message": "Incomplete tasks only",
+    "description": "Choice of tasks to synchronize: only those not completed yet."
   },
   "kindMail": {
     "message": "Mail",
@@ -430,6 +494,14 @@
     "message": "Choose the period of mail to synchronize.",
     "description": "Field error."
   },
+  "chooseCalendarPeriod": {
+    "message": "Choose the calendar period to synchronize.",
+    "description": "Field error."
+  },
+  "chooseTaskFilter": {
+    "message": "Choose which tasks to synchronize.",
+    "description": "Field error."
+  },
   "chooseKind": {
     "message": "Choose at least one item to synchronize.",
     "description": "Field error."
@@ -485,8 +557,8 @@
     }
   },
   "statusMassDelete": {
-    "message": "Synchronization paused: the server deleted $COUNT$ messages at once. These deletions will only be applied after your confirmation; you can also keep the local copies.",
-    "description": "Status; $COUNT$: number of messages the server deleted at once.",
+    "message": "Synchronization paused: the server deleted $COUNT$ items at once (messages, events or tasks). These deletions will only be applied after your confirmation; you can also keep the local copies.",
+    "description": "Status; $COUNT$: number of items (messages, events or tasks) the server deleted at once.",
     "placeholders": {
       "count": {
         "content": "$1"
@@ -494,7 +566,7 @@
     }
   },
   "statusMassDeleteMany": {
-    "message": "Synchronization paused: the server deleted many messages at once. These deletions will only be applied after your confirmation; you can also keep the local copies.",
+    "message": "Synchronization paused: the server deleted many items at once (messages, events or tasks). These deletions will only be applied after your confirmation; you can also keep the local copies.",
     "description": "Status, when the number of deletions is not known."
   },
   "statusBlocked": {
@@ -556,11 +628,24 @@
   },
   "failedOne": {
     "message": "1 message could not be imported: it will be tried again automatically.",
-    "description": "Follows the status."
+    "description": "Follows the status: a message (mail only; events and tasks have failedCalendarOne)."
   },
   "failedMany": {
     "message": "$COUNT$ messages could not be imported: they will be tried again automatically.",
-    "description": "Follows the status; $COUNT$: number of messages (2 or more).",
+    "description": "Follows the status; $COUNT$: number of messages (2 or more; mail only).",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "failedCalendarOne": {
+    "message": "1 event or task could not be imported.",
+    "description": "Follows the status (and failedOne or failedMany, if any): an event or a task the calendar could not take."
+  },
+  "failedCalendarMany": {
+    "message": "$COUNT$ events or tasks could not be imported.",
+    "description": "Follows the status; $COUNT$: number of events and tasks the calendar could not take (2 or more).",
     "placeholders": {
       "count": {
         "content": "$1"
@@ -1051,5 +1136,386 @@
   "sentLeftoverBoth": {
     "message": "Message sent, but its draft could not be deleted and the compose window could not be closed: do not send it again.",
     "description": "Notification."
+  },
+  "confirmTitle": {
+    "message": "Sync443 – Confirm sending",
+    "description": "Title of the window that asks before a meeting message (invitation, update, cancellation) is sent."
+  },
+  "confirmAskInvite": {
+    "message": "Send the invitation to this meeting?",
+    "description": "Question of the confirmation window: the user created a meeting, its invitation is ready to be sent."
+  },
+  "confirmAskUpdate": {
+    "message": "Send the updated invitation to this meeting?",
+    "description": "Question of the confirmation window: the user changed a meeting, its updated invitation is ready to be sent."
+  },
+  "confirmAskCancel": {
+    "message": "Send the cancellation of this meeting?",
+    "description": "Question of the confirmation window: the user cancelled a meeting, its cancellation is ready to be sent."
+  },
+  "confirmHint": {
+    "message": "Your change is already saved. Without this message, the recipients will not be informed of it.",
+    "description": "Under the question of the confirmation window: what happens if the message is not sent."
+  },
+  "confirmLabelEvent": {
+    "message": "Event",
+    "description": "Label before the title of the event, in the confirmation window."
+  },
+  "confirmLabelWhen": {
+    "message": "Date",
+    "description": "Label before the date and time at which the event starts, in the confirmation window. No colon."
+  },
+  "confirmLabelFrom": {
+    "message": "From",
+    "description": "Label before the address of the mailbox that sends the message, in the confirmation window. No colon."
+  },
+  "confirmAllDay": {
+    "message": "$DATE$ (all day)",
+    "description": "Date of an all-day event, shown without a time; $DATE$: the date, written out in full.",
+    "placeholders": {
+      "date": {
+        "content": "$1"
+      }
+    }
+  },
+  "confirmRecipientsOne": {
+    "message": "1 recipient",
+    "description": "Heading of the list of recipients, when there is one."
+  },
+  "confirmRecipientsMany": {
+    "message": "$COUNT$ recipients",
+    "description": "Heading of the list of recipients; $COUNT$: their number (2 to 100). In languages whose plural depends on the number, put the number after a colon.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "confirmSend": {
+    "message": "Send",
+    "description": "Button of the confirmation window: send the meeting message."
+  },
+  "confirmDontSend": {
+    "message": "Don't send",
+    "description": "Button of the confirmation window: send nothing (the event stays as saved). The safe choice, focused by default."
+  },
+  "confirmSending": {
+    "message": "Sending…",
+    "description": "Shown in the confirmation window after “Send”, until Sync443 has taken the message."
+  },
+  "confirmClose": {
+    "message": "Close",
+    "description": "Button: close the confirmation window, when there is nothing to confirm any more."
+  },
+  "confirmExpired": {
+    "message": "This request is no longer valid: it has already been answered, or it has expired.",
+    "description": "Shown instead of the question when the confirmation can no longer be given (unknown, already used, or older than 10 minutes). Followed by confirmNothingSent."
+  },
+  "confirmNothingSent": {
+    "message": "Nothing will be sent from this window.",
+    "description": "Follows confirmExpired, or an unexpected answer of the extension, in the confirmation window."
+  },
+  "confirmUncertain": {
+    "message": "Sync443 did not answer: the message may not have been sent. Check the Sent folder before sending it again.",
+    "description": "Shown in the confirmation window when the user clicked “Send” and Sync443 gave no answer."
+  },
+  "meetingSubjectInvite": {
+    "message": "Invitation: $SUMMARY$",
+    "description": "Subject of an invitation sent to the attendees of a meeting; $SUMMARY$: the title of the event. Read by other people, in their mail.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingSubjectUpdate": {
+    "message": "Updated invitation: $SUMMARY$",
+    "description": "Subject of an updated invitation sent to the attendees of a meeting; $SUMMARY$: the title of the event.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingSubjectCancel": {
+    "message": "Cancelled: $SUMMARY$",
+    "description": "Subject of the message telling the attendees that a meeting is cancelled; $SUMMARY$: the title of the event.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingSubjectAccepted": {
+    "message": "Accepted: $SUMMARY$",
+    "description": "Subject of the reply telling the organizer that the user accepted an invitation; $SUMMARY$: the title of the event.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingSubjectTentative": {
+    "message": "Tentatively accepted: $SUMMARY$",
+    "description": "Subject of the reply telling the organizer that the user accepted an invitation tentatively; $SUMMARY$: the title of the event.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingSubjectDeclined": {
+    "message": "Declined: $SUMMARY$",
+    "description": "Subject of the reply telling the organizer that the user declined an invitation; $SUMMARY$: the title of the event.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingTextWhen": {
+    "message": "When: $WHEN$",
+    "description": "Line of the plain-text part of a meeting message; $WHEN$: the date and time of the event.",
+    "placeholders": {
+      "when": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingTextWhere": {
+    "message": "Where: $LOCATION$",
+    "description": "Line of the plain-text part of a meeting message; $LOCATION$: the location of the event.",
+    "placeholders": {
+      "location": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingNoTitle": {
+    "message": "(no title)",
+    "description": "Stands for the title of an event or a task that has none (subjects, notifications, the confirmation window)."
+  },
+  "calendarSendFailed": {
+    "message": "The meeting message for “$SUMMARY$” was not sent: $REASON$ The event is saved, but the attendees were not informed.",
+    "description": "Notification: an invitation, update or cancellation was refused. $SUMMARY$: the title of the event; $REASON$: why (an error message), ending with a full stop.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      },
+      "reason": {
+        "content": "$2"
+      }
+    }
+  },
+  "calendarSendUncertain": {
+    "message": "The meeting message for “$SUMMARY$” may not have been sent: the connection was lost. Check the Sent folder before sending it again.",
+    "description": "Notification: the connection was lost while an invitation, update or cancellation was being sent; it is never sent again automatically. $SUMMARY$: the title of the event.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarTooManyAttendees": {
+    "message": "“$SUMMARY$” has more than $MAX$ attendees: Sync443 cannot send its invitations. The change was undone.",
+    "description": "Notification: a meeting has too many attendees for its invitations to be sent. $SUMMARY$: the title of the event; $MAX$: the largest number of attendees allowed (100). In languages whose plural depends on the number, put the number after a colon.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      },
+      "max": {
+        "content": "$2"
+      }
+    }
+  },
+  "calendarAnswerFailed": {
+    "message": "Your answer to “$SUMMARY$” could not be sent: $REASON$ The event is back as it was.",
+    "description": "Notification: the user's answer to an invitation (accept, tentative, decline) was refused. $SUMMARY$: the title of the event; $REASON$: why (an error message), ending with a full stop.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      },
+      "reason": {
+        "content": "$2"
+      }
+    }
+  },
+  "calendarAnswerNoInvitation": {
+    "message": "Your answer to “$SUMMARY$” could not be sent: its invitation was not found on the server. The event is back as it was.",
+    "description": "Notification: the user's answer to an invitation could not be sent, because the invitation mail is no longer on the server. $SUMMARY$: the title of the event.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarAnswerNeedsMail": {
+    "message": "Your answer to “$SUMMARY$” could not be sent: answering invitations on this server requires mail to be synchronized for this mailbox.",
+    "description": "Notification: the user's answer to an invitation could not be sent, because this server needs the invitation mail and mail is not synchronized for the mailbox. $SUMMARY$: the title of the event.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarChangeRefused": {
+    "message": "The server refused a change to “$SUMMARY$”. The server's version is restored.",
+    "description": "Notification: the server refused a change the user made to an event or a task. $SUMMARY$: its title.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarRecurrenceUnsupported": {
+    "message": "The repetition of “$SUMMARY$” cannot be saved on an ActiveSync server. The change was undone.",
+    "description": "Notification: the user gave an event or a task a repetition rule that ActiveSync cannot express. $SUMMARY$: its title.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarReadOnly": {
+    "message": "“$SUMMARY$” cannot be changed from Thunderbird. The change was undone.",
+    "description": "Notification: the user changed an event or a task that Sync443 only shows (read-only). $SUMMARY$: its title.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarTooLarge": {
+    "message": "“$SUMMARY$” is too large to be saved on the server. The change was undone.",
+    "description": "Notification: an event or a task is too large for the server after the user's change. $SUMMARY$: its title.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarKeptLocal": {
+    "message": "“$SUMMARY$” could not be saved on the server. It stays in Thunderbird as a local copy that is no longer synchronized.",
+    "description": "Notification: an event or a task could not be saved on the server; it stays in Thunderbird, detached from the server. $SUMMARY$: its title.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarServerChanged": {
+    "message": "“$SUMMARY$” was changed on the server before your change was sent. The server's version is shown; your change was not sent.",
+    "description": "Notification: the server changed an event or a task while a change of the user's was waiting to be sent; the server's version wins. $SUMMARY$: its title.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarDetached": {
+    "message": "“$SUMMARY$” is no longer the same item on the server. Your version stays in Thunderbird as a local copy that is no longer synchronized.",
+    "description": "Notification: after the server rebuilt its list, the item the user changed is no longer the same item there; the user's version stays as a local copy. $SUMMARY$: its title.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarRestoreUnsupported": {
+    "message": "An occurrence of “$SUMMARY$” that was changed or deleted cannot be put back into its series on an ActiveSync server. The change was undone.",
+    "description": "Notification: the user put an occurrence that was changed or deleted back into its repeating event, which ActiveSync cannot express. $SUMMARY$: the title of the event.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarOrganizerChanged": {
+    "message": "The organizer of “$SUMMARY$” was changed in Thunderbird: no message was sent to the attendees.",
+    "description": "Notification: a change made in Thunderbird replaced the organizer of a meeting, so no invitation, update, cancellation or reply was sent. $SUMMARY$: the title of the event.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarNotSentExpired": {
+    "message": "The meeting message for “$SUMMARY$” was not sent: the confirmation was not answered in time. The event is saved, but the attendees were not informed.",
+    "description": "Notification: the confirmation window of a meeting message stayed unanswered for 10 minutes; the message was not sent. $SUMMARY$: the title of the event.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarNotSentFull": {
+    "message": "The meeting message for “$SUMMARY$” was not sent: too many messages are waiting. The event is saved, but the attendees were not informed.",
+    "description": "Notification: a meeting message could not be queued because too many are waiting already; it was not sent. $SUMMARY$: the title of the event.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarNotSentOld": {
+    "message": "The meeting message for “$SUMMARY$” was not sent: it had been waiting for more than a day. The event is saved, but the attendees were not informed.",
+    "description": "Notification: a meeting message waited more than 24 hours for its confirmation; it was dropped without being sent. $SUMMARY$: the title of the event.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarChangesDroppedOne": {
+    "message": "One change made in Thunderbird was not sent: its calendar is no longer synchronized with the server. A new item stays in Thunderbird as a local copy.",
+    "description": "Notification: one change the user made could not be sent because its calendar or task list is no longer synchronized (gone from the server, or unknown). See calendarChangesDroppedMany for several."
+  },
+  "calendarChangesDroppedMany": {
+    "message": "$COUNT$ changes made in Thunderbird were not sent: their calendar is no longer synchronized with the server. New items stay in Thunderbird as local copies.",
+    "description": "Notification: several changes the user made could not be sent because their calendar or task list is no longer synchronized (gone from the server, or unknown); $COUNT$: their number (2 or more). In languages whose plural depends on the number, put the number after a colon.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarReplyNotSent": {
+    "message": "Your answer to “$SUMMARY$” is saved in your calendar, but no reply was sent to the organizer: the invitation was not found in this mailbox.",
+    "description": "Notification: the user answered an invitation and asked for a reply, but no invitation mail could be named in the mailbox, so the answer was only saved; no reply went to the organizer. $SUMMARY$: the title of the event.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarKeptLocalTooManyAttendees": {
+    "message": "“$SUMMARY$” has more than $MAX$ attendees: Sync443 cannot send its invitations. It stays in Thunderbird as a local copy that is no longer synchronized.",
+    "description": "Notification: a new meeting has too many attendees for its invitations to be sent; it stays in Thunderbird, detached from the server. $SUMMARY$: its title; $MAX$: the largest number of attendees allowed (100). In languages whose plural depends on the number, put the number after a colon.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      },
+      "max": {
+        "content": "$2"
+      }
+    }
+  },
+  "calendarKeptLocalRecurrence": {
+    "message": "The repetition of “$SUMMARY$” cannot be saved on an ActiveSync server. It stays in Thunderbird as a local copy that is no longer synchronized.",
+    "description": "Notification: a new event or task has a repetition rule ActiveSync cannot express; it stays in Thunderbird, detached from the server. $SUMMARY$: its title.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarKeptLocalTooLarge": {
+    "message": "“$SUMMARY$” is too large to be saved on the server. It stays in Thunderbird as a local copy that is no longer synchronized.",
+    "description": "Notification: a new event or task is too large for the server; it stays in Thunderbird, detached from the server. $SUMMARY$: its title.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
   }
 }

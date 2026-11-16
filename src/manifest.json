@@ -69,6 +69,15 @@
         "paths": [["sync443Account"]],
         "script": "experiments/sync443Account/implementation.js"
       }
+    },
+    "sync443Calendar": {
+      "schema": "experiments/sync443Calendar/schema.json",
+      "parent": {
+        "scopes": ["addon_parent"],
+        "paths": [["sync443Calendar"]],
+        "script": "experiments/sync443Calendar/implementation.js",
+        "events": ["startup"]
+      }
     }
   }
 }

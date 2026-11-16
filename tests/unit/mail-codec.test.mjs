@@ -13,6 +13,7 @@ import { readEmail, changeEmail, mailOptions, DEFAULT_MAX_MIME_BYTES, MAIL_FILTE
 import { el, encode, decode, child, text, at } from "../../src/core/wbxml.mjs";
 import { parseSync, syncRequest, changeCommand, ProtocolError } from "../../src/core/protocol.mjs";
 import { encodeUtf8 } from "../../src/core/utf8.mjs";
+import { readMeetingRequest } from "../../src/core/meeting-request.mjs";
 
 /** ApplicationData of an Add in a Sync response, as the client receives it. */
 function received(children) {
@@ -32,7 +33,7 @@ function received(children) {
 const mimeBody = (data, extra = []) =>
   el("AirSyncBase:Body", [el("AirSyncBase:Type", "4"), ...extra, data === undefined ? null : el("AirSyncBase:Data", data)]);
 
-const NONE = { read: null, flagged: null, mime: null, truncated: false };
+const NONE = { read: null, flagged: null, mime: null, truncated: false, messageClass: null, meetingRequest: null };
 
 // ── readEmail ─────────────────────────────────────────────────────────────
 
@@ -105,7 +106,7 @@ test("readEmail : corps absent, Data absente ou vide → mime null", () => {
 test("readEmail : plafond maxMimeBytes → mime null, truncated true", () => {
   const data = received([mimeBody(new Uint8Array(10).fill(65))]);
   eq(readEmail(data, { maxMimeBytes: 10 }).mime.length, 10, "à la limite");
-  eq(readEmail(data, { maxMimeBytes: 9 }), { read: null, flagged: null, mime: null, truncated: true }, "au-delà");
+  eq(readEmail(data, { maxMimeBytes: 9 }), { ...NONE, truncated: true }, "au-delà");
   for (const bad of [NaN, -1, "5", Infinity, null]) eq(readEmail(data, { maxMimeBytes: bad }).mime.length, 10, `plafond invalide ${bad} → défaut`);
 });
 
@@ -114,7 +115,7 @@ test("readEmail : plafond par défaut de 64 Mio", () => {
   const huge = { ns: "AirSyncBase", tag: "Data", children: [], value: new Uint8Array(DEFAULT_MAX_MIME_BYTES + 1), opaque: true };
   const body = { ns: "AirSyncBase", tag: "Body", children: [{ ns: "AirSyncBase", tag: "Type", children: [], value: encodeUtf8("4"), opaque: false }, huge], value: null, opaque: false };
   const data = { ns: "AirSync", tag: "ApplicationData", children: [body], value: null, opaque: false };
-  eq(readEmail(data), { read: null, flagged: null, mime: null, truncated: true });
+  eq(readEmail(data), { ...NONE, truncated: true });
 });
 
 test("readEmail : entrée qui n'est pas un élément → tout à null", () => {
@@ -212,4 +213,77 @@ test("mailOptions : autres périodes refusées (6 et 7 : agenda, 8 : tâches)", 
     throws(() => mailOptions({ filterType: bad }), ProtocolError, JSON.stringify(bad) ?? String(bad));
   }
   throws(() => mailOptions(), ProtocolError, "sans argument");
+});
+
+// ── Stage 4: MessageClass and MeetingRequest ──────────────────────────────
+
+const INVITATION_ID = "BAAAAIIA4AB0xbcQGoLgCAAAAAAAAAAAAAAAAAAAAAAAAAAAMwAAAHZDYWwtVWlkAQAAAHs4MTQxMkQzQy0yQTI0LTRFOUQtQjIwRS0xMUY3QkJFOTI3OTl9AA==";
+const invitation = (extra = []) => el("Email:MeetingRequest", [
+  el("Email:StartTime", "2026-11-20T09:00:00.000Z"),
+  el("Email:EndTime", "2026-11-20T10:00:00.000Z"),
+  el("Email:Organizer", "Ana Ruiz <ana@example.org>"),
+  el("Email:ResponseRequested", "1"),
+  el("Email:GlobalObjId", INVITATION_ID),
+  ...extra,
+]);
+
+test("readEmail: the message class as the server gives it, or null", () => {
+  const cls = (value) => readEmail(received([el("Email:MessageClass", value)])).messageClass;
+  for (const ok of ["IPM.Note", "IPM.Schedule.Meeting.Request", "IPM.Schedule.Meeting.Canceled", "IPM.Schedule.Meeting.Resp.Pos", "IPM.Note.Custom Class", "x", "a".repeat(255)]) {
+    eq(cls(ok), ok);
+  }
+  const control = (code) => String.fromCharCode(code);
+  const bad = [
+    "", " ", " IPM.Note", "IPM.Note ", "IPM.Note\n", "IPM.Note\r\nX-Injected: 1", "IPM\tNote", "a".repeat(256), `IPM.${control(0xe9)}`,
+    `IPM.Note${control(0x202e)}`, `IPM.Note${control(0x200b)}`, `IPM.Note${control(0x7f)}`, `IPM${control(1)}.Note`,
+  ];
+  for (const value of bad) eq(cls(value), null, JSON.stringify(value).slice(0, 40));
+  eq(readEmail(received([el("Email:Read", "1")])).messageClass, null, "absent");
+  eq(readEmail(received([el("Notes:MessageClass", "IPM.StickyNote")])).messageClass, null, "the class of another namespace");
+});
+
+test("readEmail: an invitation is read through readMeetingRequest", () => {
+  const data = received([el("Email:MessageClass", "IPM.Schedule.Meeting.Request"), el("Email:Read", "0"), invitation(), mimeBody("Subject: x\r\n\r\ny\r\n")]);
+  const result = readEmail(data);
+  eq(result.messageClass, "IPM.Schedule.Meeting.Request");
+  eq(result.meetingRequest, readMeetingRequest(child(data, "Email:MeetingRequest")));
+  eq(
+    [result.meetingRequest.uid, result.meetingRequest.start, result.meetingRequest.end, result.meetingRequest.organizer, result.meetingRequest.responseRequested],
+    ["{81412D3C-2A24-4E9D-B20E-11F7BBE92799}", "2026-11-20T09:00:00Z", "2026-11-20T10:00:00Z", "ana@example.org", true],
+  );
+  // The rest of the item is read as before.
+  eq([result.read, result.flagged, result.truncated], [false, null, false]);
+  eq(result.mime, encodeUtf8("Subject: x\r\n\r\ny\r\n"));
+});
+
+test("readEmail: no MeetingRequest element, no meeting; a hostile one never costs the mail", () => {
+  eq(readEmail(received([el("Email:MessageClass", "IPM.Schedule.Meeting.Request"), el("Email:Read", "1")])).meetingRequest, null, "the class alone is not an invitation");
+  eq(readEmail(received([el("Calendar:Attendees", [])])).meetingRequest, null);
+  const empty = readEmail(received([el("Email:MeetingRequest"), el("Email:Read", "1")]));
+  eq(empty.meetingRequest, readMeetingRequest(null), "an empty element: every field at its default");
+  eq(empty.read, true);
+  const control = (code) => String.fromCharCode(code);
+  const hostile = readEmail(received([
+    el("Email:Read", "1"),
+    el("Email:MeetingRequest", [
+      el("Email:StartTime", "tomorrow"),
+      el("Email:EndTime", `2026-11-20T10:00:00Z${control(0x202e)}`),
+      el("Email:Organizer", "ana@example.org\r\nBcc: eve@evil.example"),
+      el("Email:Location", `Room${control(0x1b)}[2J\r\nATTENDEE:mailto:eve@evil.example`),
+      el("Email:TimeZone", "A".repeat(4000)),
+      el("Email:GlobalObjId", "A".repeat(4000)),
+      el("Email:InstanceType", "9"),
+      el("Email:MeetingRequest", [el("Email:StartTime", "2026-11-20T09:00:00Z")]),
+    ]),
+    mimeBody("Subject: x\r\n\r\ny\r\n"),
+  ]));
+  eq(hostile.read, true);
+  eq(hostile.mime, encodeUtf8("Subject: x\r\n\r\ny\r\n"));
+  eq(hostile.meetingRequest, { ...readMeetingRequest(null), location: "Room[2J ATTENDEE:mailto:eve@evil.example" });
+});
+
+test("readEmail: only the first MeetingRequest element counts", () => {
+  const second = el("Email:MeetingRequest", [el("Email:Organizer", "eve@evil.example"), el("Email:StartTime", "2027-01-01T00:00:00Z")]);
+  const result = readEmail(received([invitation(), second]));
+  eq([result.meetingRequest.organizer, result.meetingRequest.start], ["ana@example.org", "2026-11-20T09:00:00Z"]);
 });

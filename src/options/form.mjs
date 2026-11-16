@@ -34,17 +34,46 @@ export const PERIODS = Object.freeze([
   ["0", () => t("periodAll")],
 ]);
 
+/**
+ * Period of calendar kept in sync: ActiveSync FilterType ([MS-ASCMD] 2.2.3.68), and its label.
+ * It limits past events only: the server always keeps future ones in sync.
+ */
+export const CALENDAR_PERIODS = Object.freeze([
+  ["4", () => t("period2Weeks")],
+  ["5", () => t("period1Month")],
+  ["6", () => t("period3Months")],
+  ["7", () => t("period6Months")],
+  ["0", () => t("periodAll")],
+]);
+
+/** Tasks kept in sync: ActiveSync FilterType 0 (all) or 8 (incomplete tasks only), and its label. */
+export const TASK_FILTERS = Object.freeze([
+  ["0", () => t("taskFilterAll")],
+  ["8", () => t("taskFilterIncomplete")],
+]);
+
 /** What a mailbox synchronises; `soon`: saved, not synchronised yet in this version. */
 export const KINDS = Object.freeze([
   Object.freeze({ key: "mail", get label() { return t("kindMail"); }, soon: false }),
-  Object.freeze({ key: "calendar", get label() { return t("kindCalendar"); }, soon: true }),
+  Object.freeze({ key: "calendar", get label() { return t("kindCalendar"); }, soon: false }),
   Object.freeze({ key: "contacts", get label() { return t("kindContacts"); }, soon: true }),
-  Object.freeze({ key: "tasks", get label() { return t("kindTasks"); }, soon: true }),
+  Object.freeze({ key: "tasks", get label() { return t("kindTasks"); }, soon: false }),
+]);
+
+/**
+ * Fields the page shows only while their item is checked: [item, field].
+ * Hidden, a field keeps its value, and that value is still sent.
+ */
+export const KIND_FIELDS = Object.freeze([
+  Object.freeze(["calendar", "calendarPeriod"]),
+  Object.freeze(["tasks", "taskFilter"]),
 ]);
 
 export const DEFAULTS = Object.freeze({
   syncMinutes: 0,
   filterType: "5",
+  calendarPeriod: "7",
+  taskFilter: "0",
   sync: Object.freeze({ mail: true, calendar: true, contacts: true, tasks: true }),
 });
 
@@ -53,7 +82,7 @@ const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
 const HIDDEN = /[\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2028\u2029\u2060-\u2069\ufeff]/;
 
 /** The fields in the order of the page: errors are listed (and the first one focused) in that order. */
-export const FIELD_ORDER = Object.freeze(["email", "password", "name", "server", "username", "syncMinutes", "filterType", "sync"]);
+export const FIELD_ORDER = Object.freeze(["email", "password", "name", "server", "username", "syncMinutes", "filterType", "sync", "calendarPeriod", "taskFilter"]);
 
 /** Host permission covering one server (match patterns have no port). */
 export const permissionPattern = (host) => `https://${host}/*`;
@@ -71,7 +100,7 @@ export function emailError(email) {
 /**
  * Check the form, as the user filled it.
  *
- * @param {object} values  { email, username, password, name, server, syncMinutes, filterType, sync }
+ * @param {object} values  { email, username, password, name, server, syncMinutes, filterType, calendarPeriod, taskFilter, sync }
  *        strings as read from the fields (syncMinutes too), sync: { mail, calendar, contacts, tasks } booleans
  * @param {object|null} existing  the mailbox being edited (as listed by the background), or null for a new one
  * @returns {{ ok: boolean, errors: {field: string, message: string}[],
@@ -133,6 +162,19 @@ export function validateForm(values, existing = null) {
   const sync = Object.fromEntries(SYNC_KINDS.map((k) => [k, values.sync?.[k] === true]));
   if (!SYNC_KINDS.some((k) => sync[k])) error("sync", t("chooseKind"));
 
+  // Shown only while their item is checked. A hidden field keeps its value; one that
+  // cannot be used becomes the default, instead of an error on a field nobody sees.
+  let calendarPeriod = str(values.calendarPeriod);
+  if (!CALENDAR_PERIODS.some(([f]) => f === calendarPeriod)) {
+    if (sync.calendar) error("calendarPeriod", t("chooseCalendarPeriod"));
+    else calendarPeriod = DEFAULTS.calendarPeriod;
+  }
+  let taskFilter = str(values.taskFilter);
+  if (!TASK_FILTERS.some(([f]) => f === taskFilter)) {
+    if (sync.tasks) error("taskFilter", t("chooseTaskFilter"));
+    else taskFilter = DEFAULTS.taskFilter;
+  }
+
   if (errors.length) {
     errors.sort((a, b) => FIELD_ORDER.indexOf(a.field) - FIELD_ORDER.indexOf(b.field));
     return { ok: false, errors, server, permission: null, request: null };
@@ -151,6 +193,8 @@ export function validateForm(values, existing = null) {
         server: server.display,
         syncMinutes,
         filterType,
+        calendarPeriod,
+        taskFilter,
         sync,
       },
       password: password || null,
@@ -158,10 +202,25 @@ export function validateForm(values, existing = null) {
   };
 }
 
-/** Values of the form for a mailbox (edit), or the defaults (new). */
+/**
+ * Values of the form for a mailbox (edit), or the defaults (new). A mailbox
+ * saved before calendar and tasks were synchronised has neither
+ * calendarPeriod nor taskFilter: the defaults.
+ */
 export function formValues(mailbox = null) {
   if (!mailbox) {
-    return { email: "", username: "", password: "", name: "", server: "", syncMinutes: String(DEFAULTS.syncMinutes), filterType: DEFAULTS.filterType, sync: { ...DEFAULTS.sync } };
+    return {
+      email: "",
+      username: "",
+      password: "",
+      name: "",
+      server: "",
+      syncMinutes: String(DEFAULTS.syncMinutes),
+      filterType: DEFAULTS.filterType,
+      calendarPeriod: DEFAULTS.calendarPeriod,
+      taskFilter: DEFAULTS.taskFilter,
+      sync: { ...DEFAULTS.sync },
+    };
   }
   const sync = Object.fromEntries(SYNC_KINDS.map((k) => [k, mailbox.sync?.[k] === true]));
   return {
@@ -172,6 +231,8 @@ export function formValues(mailbox = null) {
     server: str2(mailbox.server),
     syncMinutes: String(FREQUENCIES.some(([m]) => m === mailbox.syncMinutes) ? mailbox.syncMinutes : DEFAULTS.syncMinutes),
     filterType: PERIODS.some(([f]) => f === mailbox.filterType) ? mailbox.filterType : DEFAULTS.filterType,
+    calendarPeriod: CALENDAR_PERIODS.some(([f]) => f === mailbox.calendarPeriod) ? mailbox.calendarPeriod : DEFAULTS.calendarPeriod,
+    taskFilter: TASK_FILTERS.some(([f]) => f === mailbox.taskFilter) ? mailbox.taskFilter : DEFAULTS.taskFilter,
     sync,
   };
 }
@@ -222,26 +283,77 @@ export function formatTime(ms, now = Date.now()) {
 /** Text shown, cut to one line of reasonable length (it may come from the server, already cleaned). */
 export const shown = (s, max = 300) => cleanText(typeof s === "string" ? s : "", { max, singleLine: true, stripBidi: true }).trim();
 
-/** Asked before "Keep the local copies" (discardDeletes). */
+/** Asked before "Keep the local copies" (discardDeletes): messages, events and tasks alike. */
 export const discardConfirm = () => t("discardConfirm");
 
-/** "3 messages could not be imported…", or "" for none. */
-export function failedText(count) {
+/**
+ * Asked before a mailbox is saved with its calendar or its tasks unchecked
+ * when they were synchronised until now: what leaves Thunderbird, that
+ * nothing is deleted on the server, and that the changes not yet sent to
+ * it are lost. `existing`: the mailbox as the background lists it; `sync`:
+ * the items as the form has them; `name`: how the page names the mailbox.
+ * → the question, or "" when the save removes nothing (a new mailbox,
+ * nothing unchecked, contacts or mail unchecked).
+ */
+export function uncheckConfirm(existing, sync, name) {
+  const dropped = (kind) => existing?.sync?.[kind] === true && sync?.[kind] !== true;
+  const label = shown(name);
+  if (dropped("calendar") && dropped("tasks")) return t("uncheckBothConfirm", label);
+  if (dropped("calendar")) return t("uncheckCalendarConfirm", label);
+  if (dropped("tasks")) return t("uncheckTasksConfirm", label);
+  return "";
+}
+
+/**
+ * Asked before a mailbox is saved with another server or another sign-in
+ * name while its calendar or its tasks stay synchronised: the background
+ * then removes the calendars made from the old server before it reads the
+ * new one, and the changes not yet sent go with them. `existing`: the
+ * mailbox as the background lists it; `server`: the server of the form,
+ * parsed (validateForm); `mailbox`: the mailbox of the request; `name`:
+ * how the page names the mailbox. → the question, or "" (a new mailbox,
+ * the same server and sign-in name, or no calendar and no tasks kept: what
+ * is unchecked has its own question, uncheckConfirm).
+ *
+ * "Another" is judged as the background judges it: the origin, and the
+ * sign-in name (the address when none is given), compared as they are.
+ */
+export function moveConfirm(existing, server, mailbox, name) {
+  if (!existing) return "";
+  const kept = (kind) => existing.sync?.[kind] === true && mailbox?.sync?.[kind] === true;
+  if (!kept("calendar") && !kept("tasks")) return "";
+  const signIn = (m) => String(m?.username || m?.email || "");
+  const moved = (typeof server?.origin === "string" && server.origin !== existing.origin) || signIn(mailbox) !== signIn(existing);
+  return moved ? t("moveConfirm", shown(name)) : "";
+}
+
+/**
+ * "3 messages could not be imported…", or "" for none. `count`: every item
+ * whose import fails; `calendar`: the events and tasks among them, told
+ * apart (a message is tried again by itself, an event or a task is not).
+ */
+export function failedText(count, calendar = 0) {
   if (!Number.isSafeInteger(count) || count <= 0) return "";
-  return count === 1 ? t("failedOne") : t("failedMany", count);
+  const pim = Number.isSafeInteger(calendar) && calendar > 0 ? Math.min(calendar, count) : 0;
+  const mail = count - pim;
+  const parts = [];
+  if (mail) parts.push(mail === 1 ? t("failedOne") : t("failedMany", mail));
+  if (pim) parts.push(pim === 1 ? t("failedCalendarOne") : t("failedCalendarMany", pim));
+  return parts.join(" ");
 }
 
 /**
  * Status of a mailbox, from the `status` the background lists, followed by
- * the number of messages whose import keeps failing (status.failedItems).
+ * the number of items whose import keeps failing (status.failedItems, the
+ * events and tasks among them being status.failedCalendarItems).
  * → { tone: "ok" | "running" | "error" | "blocked" | "idle", text, massDelete: number | null, detail? }
- * massDelete: number of deletions held back by the mass-deletion threshold, waiting for the user.
+ * massDelete: number of deletions held back by the mass-deletion threshold (messages, events and tasks), waiting for the user.
  * detail: after a failure, the engine's French reason when the text does not show it (a tooltip).
  */
 export function statusView(status, now = Date.now()) {
   const s = status && typeof status === "object" ? status : {};
   const view = baseView(s, now);
-  const failed = failedText(s.failedItems);
+  const failed = failedText(s.failedItems, s.failedCalendarItems);
   return failed ? { ...view, text: `${view.text} ${failed}` } : view;
 }
 

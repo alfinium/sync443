@@ -90,7 +90,7 @@
     "message": "Cancelar"
   },
   "removeQuestion": {
-    "message": "¿Quitar el buzón «$NAME$»? Su cuenta, sus carpetas locales y su contraseña se quitarán de Thunderbird. No se elimina nada en el servidor.",
+    "message": "¿Quitar el buzón «$NAME$»? Su cuenta, sus carpetas locales y su contraseña se quitarán de Thunderbird. No se elimina nada en el servidor. Los cambios que aún no se han enviado al servidor se pierden.",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -98,7 +98,39 @@
     }
   },
   "discardConfirm": {
-    "message": "Las eliminaciones realizadas en el servidor no se aplicarán: los mensajes se quedan en Thunderbird y las carpetas afectadas se vuelven a sincronizar con el servidor. Una carpeta eliminada en el servidor se queda aquí, sin sincronizar."
+    "message": "Las eliminaciones realizadas en el servidor no se aplicarán: los mensajes, eventos y tareas afectados se quedan en Thunderbird. Las carpetas de correo afectadas se vuelven a sincronizar con el servidor; los eventos y tareas conservados dejan de estar vinculados al servidor. Una carpeta eliminada en el servidor se queda aquí, sin sincronizar."
+  },
+  "uncheckCalendarConfirm": {
+    "message": "¿Dejar de sincronizar el calendario de «$NAME$»? Sus eventos se quitarán de Thunderbird. No se elimina nada en el servidor. Los cambios que aún no se han enviado al servidor se pierden.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "uncheckTasksConfirm": {
+    "message": "¿Dejar de sincronizar las tareas de «$NAME$»? Sus tareas se quitarán de Thunderbird. No se elimina nada en el servidor. Los cambios que aún no se han enviado al servidor se pierden.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "uncheckBothConfirm": {
+    "message": "¿Dejar de sincronizar el calendario y las tareas de «$NAME$»? Sus calendarios se quitarán de Thunderbird, con sus eventos y tareas. No se elimina nada en el servidor. Los cambios que aún no se han enviado al servidor se pierden.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "moveConfirm": {
+    "message": "¿Cambiar el servidor o el nombre de usuario de «$NAME$»? Sus calendarios y tareas se quitarán de Thunderbird y se volverán a sincronizar desde el servidor. Los cambios que aún no se han enviado al servidor se pierden.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
   },
   "noAnswer": {
     "message": "La extensión no responde. Recargue esta página."
@@ -213,11 +245,20 @@
   "fieldPeriod": {
     "message": "Período de correo"
   },
+  "fieldCalendarPeriod": {
+    "message": "Período del calendario"
+  },
+  "calendarPeriodHint": {
+    "message": "Los eventos anteriores a este período no se sincronizan. Los eventos futuros se sincronizan siempre."
+  },
+  "fieldTaskFilter": {
+    "message": "Tareas que sincronizar"
+  },
   "fieldKinds": {
     "message": "Elementos que sincronizar"
   },
   "kindsHint": {
-    "message": "En esta versión solo se sincroniza el correo. Las demás opciones se guardan para más adelante."
+    "message": "En esta versión aún no se sincronizan los contactos. Esta opción se guarda para más adelante."
   },
   "soon": {
     "message": "próximamente"
@@ -268,11 +309,23 @@
   "period1Month": {
     "message": "1 mes"
   },
+  "period3Months": {
+    "message": "3 meses"
+  },
+  "period6Months": {
+    "message": "6 meses"
+  },
   "periodAll": {
     "message": "Todo"
   },
   "periodUnknown": {
     "message": "Desconocido"
+  },
+  "taskFilterAll": {
+    "message": "Todas las tareas"
+  },
+  "taskFilterIncomplete": {
+    "message": "Solo las tareas sin completar"
   },
   "kindMail": {
     "message": "Correo"
@@ -336,6 +389,12 @@
   "choosePeriod": {
     "message": "Elija el período de correo que sincronizar."
   },
+  "chooseCalendarPeriod": {
+    "message": "Elija el período del calendario que sincronizar."
+  },
+  "chooseTaskFilter": {
+    "message": "Elija las tareas que sincronizar."
+  },
   "chooseKind": {
     "message": "Elija al menos un elemento que sincronizar."
   },
@@ -382,7 +441,7 @@
     }
   },
   "statusMassDelete": {
-    "message": "Sincronización en pausa: el servidor ha eliminado $COUNT$ mensajes a la vez. Estas eliminaciones solo se aplicarán cuando las confirme; también puede conservar las copias locales.",
+    "message": "Sincronización en pausa: el servidor ha eliminado $COUNT$ elementos a la vez (mensajes, eventos o tareas). Estas eliminaciones solo se aplicarán cuando las confirme; también puede conservar las copias locales.",
     "placeholders": {
       "count": {
         "content": "$1"
@@ -390,7 +449,7 @@
     }
   },
   "statusMassDeleteMany": {
-    "message": "Sincronización en pausa: el servidor ha eliminado muchos mensajes a la vez. Estas eliminaciones solo se aplicarán cuando las confirme; también puede conservar las copias locales."
+    "message": "Sincronización en pausa: el servidor ha eliminado muchos elementos a la vez (mensajes, eventos o tareas). Estas eliminaciones solo se aplicarán cuando las confirme; también puede conservar las copias locales."
   },
   "statusBlocked": {
     "message": "Sincronización detenida: $REASON$ No se intentará nada automáticamente: haga clic en «Sincronizar» para reanudarla.",
@@ -446,6 +505,17 @@
   },
   "failedMany": {
     "message": "No se han podido importar $COUNT$ mensajes: se volverá a intentar automáticamente.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "failedCalendarOne": {
+    "message": "No se ha podido importar 1 evento o tarea."
+  },
+  "failedCalendarMany": {
+    "message": "No se han podido importar $COUNT$ eventos o tareas.",
     "placeholders": {
       "count": {
         "content": "$1"
@@ -848,5 +918,335 @@
   },
   "sentLeftoverBoth": {
     "message": "Mensaje enviado, pero no se ha podido eliminar su borrador ni cerrar la ventana de redacción: no lo vuelva a enviar."
+  },
+  "confirmTitle": {
+    "message": "Sync443 – Confirmar el envío"
+  },
+  "confirmAskInvite": {
+    "message": "¿Enviar la invitación a esta reunión?"
+  },
+  "confirmAskUpdate": {
+    "message": "¿Enviar la invitación actualizada a esta reunión?"
+  },
+  "confirmAskCancel": {
+    "message": "¿Enviar la cancelación de esta reunión?"
+  },
+  "confirmHint": {
+    "message": "Su cambio ya está guardado. Sin este mensaje, no se informará de él a los destinatarios."
+  },
+  "confirmLabelEvent": {
+    "message": "Evento"
+  },
+  "confirmLabelWhen": {
+    "message": "Fecha"
+  },
+  "confirmLabelFrom": {
+    "message": "De"
+  },
+  "confirmAllDay": {
+    "message": "$DATE$ (todo el día)",
+    "placeholders": {
+      "date": {
+        "content": "$1"
+      }
+    }
+  },
+  "confirmRecipientsOne": {
+    "message": "1 destinatario"
+  },
+  "confirmRecipientsMany": {
+    "message": "$COUNT$ destinatarios",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "confirmSend": {
+    "message": "Enviar"
+  },
+  "confirmDontSend": {
+    "message": "No enviar"
+  },
+  "confirmSending": {
+    "message": "Enviando…"
+  },
+  "confirmClose": {
+    "message": "Cerrar"
+  },
+  "confirmExpired": {
+    "message": "Esta solicitud ya no es válida: ya se ha respondido o ha caducado."
+  },
+  "confirmNothingSent": {
+    "message": "No se enviará nada desde esta ventana."
+  },
+  "confirmUncertain": {
+    "message": "Sync443 no ha respondido: puede que el mensaje no se haya enviado. Compruebe la carpeta Enviados antes de volver a enviarlo."
+  },
+  "meetingSubjectInvite": {
+    "message": "Invitación: $SUMMARY$",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingSubjectUpdate": {
+    "message": "Invitación actualizada: $SUMMARY$",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingSubjectCancel": {
+    "message": "Cancelado: $SUMMARY$",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingSubjectAccepted": {
+    "message": "Aceptado: $SUMMARY$",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingSubjectTentative": {
+    "message": "Aceptado provisionalmente: $SUMMARY$",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingSubjectDeclined": {
+    "message": "Rechazado: $SUMMARY$",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingTextWhen": {
+    "message": "Cuándo: $WHEN$",
+    "placeholders": {
+      "when": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingTextWhere": {
+    "message": "Dónde: $LOCATION$",
+    "placeholders": {
+      "location": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingNoTitle": {
+    "message": "(sin título)"
+  },
+  "calendarSendFailed": {
+    "message": "El mensaje de reunión de «$SUMMARY$» no se ha enviado: $REASON$ El evento está guardado, pero no se ha informado a los asistentes.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      },
+      "reason": {
+        "content": "$2"
+      }
+    }
+  },
+  "calendarSendUncertain": {
+    "message": "Puede que el mensaje de reunión de «$SUMMARY$» no se haya enviado: se ha perdido la conexión. Compruebe la carpeta Enviados antes de volver a enviarlo.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarTooManyAttendees": {
+    "message": "«$SUMMARY$» tiene más de $MAX$ asistentes: Sync443 no puede enviar sus invitaciones. El cambio se ha deshecho.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      },
+      "max": {
+        "content": "$2"
+      }
+    }
+  },
+  "calendarAnswerFailed": {
+    "message": "Su respuesta a «$SUMMARY$» no se ha podido enviar: $REASON$ El evento ha vuelto a su estado anterior.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      },
+      "reason": {
+        "content": "$2"
+      }
+    }
+  },
+  "calendarAnswerNoInvitation": {
+    "message": "Su respuesta a «$SUMMARY$» no se ha podido enviar: no se ha encontrado su invitación en el servidor. El evento ha vuelto a su estado anterior.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarAnswerNeedsMail": {
+    "message": "Su respuesta a «$SUMMARY$» no se ha podido enviar: para responder a las invitaciones en este servidor, es necesario sincronizar el correo de este buzón.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarChangeRefused": {
+    "message": "El servidor ha rechazado un cambio en «$SUMMARY$». Se ha restaurado la versión del servidor.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarRecurrenceUnsupported": {
+    "message": "La repetición de «$SUMMARY$» no se puede guardar en un servidor ActiveSync. El cambio se ha deshecho.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarReadOnly": {
+    "message": "«$SUMMARY$» no se puede modificar desde Thunderbird. El cambio se ha deshecho.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarTooLarge": {
+    "message": "«$SUMMARY$» es demasiado grande para guardarse en el servidor. El cambio se ha deshecho.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarKeptLocal": {
+    "message": "«$SUMMARY$» no se ha podido guardar en el servidor. Se queda en Thunderbird como copia local que ya no se sincroniza.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarServerChanged": {
+    "message": "«$SUMMARY$» se ha modificado en el servidor antes de que se enviara su cambio. Se muestra la versión del servidor; su cambio no se ha enviado.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarDetached": {
+    "message": "«$SUMMARY$» ya no es el mismo elemento en el servidor. Su versión se queda en Thunderbird como copia local que ya no se sincroniza.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarRestoreUnsupported": {
+    "message": "Una ocurrencia de «$SUMMARY$» que se ha modificado o eliminado no se puede devolver a su serie en un servidor ActiveSync. El cambio se ha deshecho.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarOrganizerChanged": {
+    "message": "El organizador de «$SUMMARY$» se ha cambiado en Thunderbird: no se ha enviado ningún mensaje a los asistentes.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarNotSentExpired": {
+    "message": "El mensaje de reunión de «$SUMMARY$» no se ha enviado: la confirmación no se ha respondido a tiempo. El evento está guardado, pero no se ha informado a los asistentes.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarNotSentFull": {
+    "message": "El mensaje de reunión de «$SUMMARY$» no se ha enviado: hay demasiados mensajes en espera. El evento está guardado, pero no se ha informado a los asistentes.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarNotSentOld": {
+    "message": "El mensaje de reunión de «$SUMMARY$» no se ha enviado: llevaba más de un día en espera. El evento está guardado, pero no se ha informado a los asistentes.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarChangesDroppedOne": {
+    "message": "Un cambio realizado en Thunderbird no se ha enviado: su calendario ya no se sincroniza con el servidor. Un elemento nuevo se queda en Thunderbird como copia local."
+  },
+  "calendarChangesDroppedMany": {
+    "message": "$COUNT$ cambios realizados en Thunderbird no se han enviado: su calendario ya no se sincroniza con el servidor. Los elementos nuevos se quedan en Thunderbird como copias locales.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarReplyNotSent": {
+    "message": "Su respuesta a «$SUMMARY$» está guardada en su calendario, pero no se ha enviado ninguna respuesta al organizador: no se ha encontrado la invitación en este buzón.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarKeptLocalTooManyAttendees": {
+    "message": "«$SUMMARY$» tiene más de $MAX$ asistentes: Sync443 no puede enviar sus invitaciones. Se queda en Thunderbird como copia local que ya no se sincroniza.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      },
+      "max": {
+        "content": "$2"
+      }
+    }
+  },
+  "calendarKeptLocalRecurrence": {
+    "message": "La repetición de «$SUMMARY$» no se puede guardar en un servidor ActiveSync. Se queda en Thunderbird como copia local que ya no se sincroniza.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarKeptLocalTooLarge": {
+    "message": "«$SUMMARY$» es demasiado grande para guardarse en el servidor. Se queda en Thunderbird como copia local que ya no se sincroniza.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
   }
 }

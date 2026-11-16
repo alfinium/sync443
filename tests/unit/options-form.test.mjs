@@ -22,14 +22,20 @@ import {
   periodLabel,
   FREQUENCIES,
   PERIODS,
+  CALENDAR_PERIODS,
+  TASK_FILTERS,
   KINDS,
+  KIND_FIELDS,
   DEFAULTS,
   discardConfirm,
+  uncheckConfirm,
+  moveConfirm,
   FIELD_ORDER,
   failedText,
   shown,
 } from "../../src/options/form.mjs";
 import { SYNC_KINDS } from "../../src/sync/store.mjs";
+import { withLanguage, LOCALES } from "./i18n-fake.mjs";
 
 const values = (over = {}) => ({
   email: "alice@example.com",
@@ -39,6 +45,8 @@ const values = (over = {}) => ({
   server: "mail.example.com",
   syncMinutes: "0",
   filterType: "5",
+  calendarPeriod: "7",
+  taskFilter: "0",
   sync: { mail: true, calendar: false, contacts: false, tasks: false },
   ...over,
 });
@@ -73,6 +81,8 @@ test("formulaire : nouvelle boîte valable, requête et autorisation d'hôte", (
       server: "mail.example.com",
       syncMinutes: 0,
       filterType: "5",
+      calendarPeriod: "7",
+      taskFilter: "0",
       sync: { mail: true, calendar: false, contacts: false, tasks: false },
     },
     password: "s3cret pass",
@@ -189,8 +199,11 @@ test("formValues : valeurs par défaut, puis celles d'une boîte", () => {
     server: "",
     syncMinutes: "0",
     filterType: DEFAULTS.filterType,
+    calendarPeriod: "7",
+    taskFilter: "0",
     sync: { mail: true, calendar: true, contacts: true, tasks: true },
   });
+  // existing(): a mailbox saved before calendar and tasks were synchronised, without the two fields.
   eq(formValues(existing()), {
     email: "alice@example.com",
     username: "",
@@ -199,6 +212,8 @@ test("formValues : valeurs par défaut, puis celles d'une boîte", () => {
     server: "mail.example.com",
     syncMinutes: "15",
     filterType: "3",
+    calendarPeriod: "7",
+    taskFilter: "0",
     sync: { mail: true, calendar: true, contacts: false, tasks: false },
   });
   eq(formValues(existing({ syncMinutes: 7 })).syncMinutes, "0");
@@ -207,10 +222,11 @@ test("formValues : valeurs par défaut, puis celles d'une boîte", () => {
   eq(validateForm({ ...formValues(), email: "a@example.com", password: "p", server: "mail.example.com" }).ok, true);
 });
 
-test("choix : libellés, « bientôt » pour agenda, contacts et tâches", () => {
+test("choix : libellés, « bientôt » pour les contacts seulement", () => {
   eq(KINDS.map((k) => k.key), [...SYNC_KINDS]);
-  eq(KINDS.filter((k) => k.soon).map((k) => k.key), ["calendar", "contacts", "tasks"]);
-  eq(kindsLabel({ mail: true, calendar: true, contacts: false, tasks: true }), "Courrier, Agenda (bientôt), Tâches (bientôt)");
+  eq(KINDS.filter((k) => k.soon).map((k) => k.key), ["contacts"]);
+  eq(kindsLabel({ mail: true, calendar: true, contacts: false, tasks: true }), "Courrier, Agenda, Tâches");
+  eq(kindsLabel({ mail: true, calendar: true, contacts: true, tasks: true }), "Courrier, Agenda, Contacts (bientôt), Tâches");
   eq(kindsLabel({}), "Rien");
   eq(frequencyLabel(0), "Dès réception");
   eq(frequencyLabel(60), "Toutes les heures");
@@ -233,7 +249,7 @@ test("état d'une boîte : bloquée, en cours, erreur, synchronisée, jamais", (
   const at = (h, m) => new Date(2026, 10, 15, h, m).getTime();
   eq(statusView({ blocked: { code: "MASS_DELETE", message: "x" }, pendingDeletes: 120 }, now), {
     tone: "blocked",
-    text: "Synchronisation suspendue : le serveur a supprimé 120 messages d'un coup. Ces suppressions ne seront appliquées qu'après votre confirmation ; vous pouvez aussi garder les copies locales.",
+    text: "Synchronisation suspendue : le serveur a supprimé 120 éléments d'un coup (messages, événements ou tâches). Ces suppressions ne seront appliquées qu'après votre confirmation ; vous pouvez aussi garder les copies locales.",
     massDelete: 120,
   });
   eq(statusView({ blocked: { code: "MASS_DELETE" } }, now).massDelete, 0);
@@ -303,6 +319,101 @@ test("suppressions en masse : garder les copies locales est proposé et expliqu�
   assert(discardConfirm().includes("resynchronisés") && discardConfirm().includes("sans synchronisation"), discardConfirm());
 });
 
+test("mass deletions: the status line and the question also hold for events and tasks, in the ten languages", async () => {
+  // The held deletions may be messages, events or tasks: no language may speak of messages alone.
+  const WORDS = {
+    en: ["events", "tasks"], fr: ["événements", "tâches"], de: ["Termine", "Aufgaben"], es_ES: ["eventos", "tareas"], it: ["eventi", "attività"],
+    pt_BR: ["eventos", "tarefas"], pl: ["wydarze", "zada"], cs: ["událost", "úkol"], ru: ["событи", "задач"], ja: ["予定", "タスク"],
+  };
+  eq(Object.keys(WORDS).sort(), [...LOCALES].sort());
+  for (const lang of LOCALES) {
+    await withLanguage(lang, () => {
+      const counted = statusView({ blocked: { code: "MASS_DELETE" }, pendingDeletes: 75 }, 0).text;
+      const many = statusView({ blocked: { code: "MASS_DELETE" } }, 0).text;
+      assert(counted.includes("75"), `${lang}: the number is shown`);
+      for (const text of [counted, many, discardConfirm()]) for (const word of WORDS[lang]) assert(text.includes(word), `${lang}: “${word}” missing from “${text}”`);
+    });
+  }
+  assert(discardConfirm().includes("ne sont plus liés au serveur"), "what becomes of the events and tasks kept");
+});
+
+test("calendar or tasks unchecked: a question before saving (what leaves Thunderbird, nothing on the server, unsent changes lost)", async () => {
+  const before = (sync) => existing({ sync: { mail: true, contacts: false, calendar: false, tasks: false, ...sync } });
+  const now = (sync) => ({ mail: true, contacts: false, calendar: false, tasks: false, ...sync });
+  const lost = " Les modifications pas encore envoyées au serveur sont perdues.";
+  eq(uncheckConfirm(before({ calendar: true, tasks: true }), now({ tasks: true }), "Travail"), `Ne plus synchroniser l'agenda de « Travail » ? Ses événements seront retirés de Thunderbird. Rien n'est supprimé sur le serveur.${lost}`);
+  eq(uncheckConfirm(before({ calendar: true, tasks: true }), now({ calendar: true }), "Travail"), `Ne plus synchroniser les tâches de « Travail » ? Ses tâches seront retirées de Thunderbird. Rien n'est supprimé sur le serveur.${lost}`);
+  eq(
+    uncheckConfirm(before({ calendar: true, tasks: true }), now(), "Travail"),
+    `Ne plus synchroniser l'agenda ni les tâches de « Travail » ? Ses agendas seront retirés de Thunderbird, avec leurs événements et leurs tâches. Rien n'est supprimé sur le serveur.${lost}`,
+  );
+  // Nothing to ask: a new mailbox, nothing unchecked, an item checked, or an item that was not synchronised before.
+  eq(uncheckConfirm(null, now(), "Travail"), "");
+  eq(uncheckConfirm(before({ calendar: true, tasks: true }), now({ calendar: true, tasks: true }), "Travail"), "");
+  eq(uncheckConfirm(before(), now({ calendar: true, tasks: true }), "Travail"), "");
+  eq(uncheckConfirm(before({ tasks: true }), now({ calendar: false, tasks: true }), "Travail"), "");
+  eq(uncheckConfirm(before({ calendar: true }), { ...now({ calendar: true }), mail: false }, "Travail"), "", "unchecking mail removes nothing");
+  eq(uncheckConfirm(before({ calendar: "true" }), now(), "Travail"), "", "only a real boolean");
+  // The name is shown as text, cleaned; every language names it and says that the server keeps everything.
+  const odd = `Tra${String.fromCharCode(0x202e)}vail${String.fromCharCode(10)}B`;
+  const cleaned = uncheckConfirm(before({ calendar: true }), now(), odd);
+  assert(cleaned.startsWith("Ne plus synchroniser l'agenda de « Travail B » ?"), `the name is cleaned, on one line: ${cleaned}`);
+  const SERVER = { en: "server", fr: "serveur", de: "Server", es_ES: "servidor", it: "server", pt_BR: "servidor", pl: "serwerze", cs: "serveru", ru: "сервере", ja: "サーバー" };
+  for (const lang of LOCALES) {
+    await withLanguage(lang, () => {
+      const texts = [
+        uncheckConfirm(before({ calendar: true, tasks: true }), now({ tasks: true }), "Boîte 1"),
+        uncheckConfirm(before({ calendar: true, tasks: true }), now({ calendar: true }), "Boîte 1"),
+        uncheckConfirm(before({ calendar: true, tasks: true }), now(), "Boîte 1"),
+      ];
+      eq(new Set(texts).size, 3, `${lang}: three different questions`);
+      for (const text of texts) assert(text.includes("Boîte 1") && text.includes("Thunderbird") && text.includes(SERVER[lang]), `${lang} : ${text}`);
+    });
+  }
+});
+
+test("another server or sign-in name: a question before saving when calendars would leave Thunderbird with unsent changes", async () => {
+  const before = (over = {}) => existing({ sync: { mail: true, contacts: false, calendar: true, tasks: true }, ...over });
+  const request = (over = {}) => ({ email: "alice@example.com", username: "", sync: { mail: true, contacts: false, calendar: true, tasks: true }, ...over });
+  const same = { origin: "https://mail.example.com" };
+  const other = { origin: "https://mail2.example.com" };
+  const asked = "Changer le serveur ou l'identifiant de « Travail » ? Ses agendas et ses tâches seront retirés de Thunderbird, puis synchronisés de nouveau depuis le serveur. Les modifications pas encore envoyées au serveur sont perdues.";
+  // Another server (the origin: scheme, host and port), or another sign-in name.
+  eq(moveConfirm(before(), other, request(), "Travail"), asked);
+  eq(moveConfirm(before(), { origin: "https://mail.example.com:8443" }, request(), "Travail"), asked, "another port is another server");
+  eq(moveConfirm(before(), same, request({ username: "DOMAINE\\alice" }), "Travail"), asked);
+  eq(moveConfirm(before({ username: "alice" }), same, request({ username: "" }), "Travail"), asked, "back to the address");
+  eq(moveConfirm(before({ username: "alice" }), same, request({ username: "Alice" }), "Travail"), asked, "compared as it is, as the background compares it");
+  // Only one of the two is synchronised: its calendar leaves all the same.
+  eq(moveConfirm(before({ sync: { mail: true, calendar: false, tasks: true } }), other, request({ sync: { mail: true, tasks: true } }), "Travail"), asked);
+  // Nothing to ask: the same server and sign-in name, a new mailbox, no calendar and no tasks, or none of them kept
+  // (what is unchecked has its own question).
+  eq(moveConfirm(before(), same, request(), "Travail"), "");
+  eq(moveConfirm(before({ username: "alice" }), same, request({ username: "alice" }), "Travail"), "");
+  eq(moveConfirm(before(), same, request({ email: "alice@example.com", username: "alice@example.com" }), "Travail"), "", "the address typed as the sign-in name is the same sign-in name");
+  eq(moveConfirm(null, other, request(), "Travail"), "");
+  eq(moveConfirm(before({ sync: { mail: true, calendar: false, tasks: false } }), other, request(), "Travail"), "", "no calendar until now: nothing leaves");
+  eq(moveConfirm(before(), other, request({ sync: { mail: true, calendar: false, tasks: false } }), "Travail"), "", "both unchecked: uncheckConfirm asks");
+  eq(moveConfirm(before(), null, request(), "Travail"), "", "no server parsed: the form has an error of its own");
+  eq(moveConfirm(before({ sync: { calendar: "true" } }), other, request(), "Travail"), "", "only a real boolean");
+  // The form's own result gives what is compared.
+  const form = validateForm(values({ server: "mail2.example.com", password: "p", sync: { mail: true, calendar: true, contacts: false, tasks: false } }), before());
+  eq(form.ok, true);
+  eq(moveConfirm(before(), form.server, form.request.mailbox, "Travail"), asked);
+  // The name is shown as text, cleaned; every language names it and says what is lost.
+  const odd = `Tra${String.fromCharCode(0x202e)}vail${String.fromCharCode(10)}B`;
+  assert(moveConfirm(before(), other, request(), odd).startsWith("Changer le serveur ou l'identifiant de « Travail B » ?"));
+  for (const lang of LOCALES) {
+    await withLanguage(lang, () => {
+      const text = moveConfirm(before(), other, request(), "Boîte 1");
+      assert(text.includes("Boîte 1") && text.includes("Thunderbird") && /[.。]$/.test(text), `${lang} : ${text}`);
+      // It ends as the other questions do: changes not yet sent are lost.
+      const tail = /[^.。?？]+[.。]$/.exec(text)[0].trim();
+      assert(uncheckConfirm(before(), { mail: true }, "Boîte 1").endsWith(tail), `${lang} : ${tail}`);
+    });
+  }
+});
+
 test("messages impossibles à importer : signalés après l'état, s'il y en a", () => {
   const now = new Date(2026, 10, 15, 16, 30).getTime();
   const at = new Date(2026, 10, 15, 16, 2).getTime();
@@ -320,9 +431,95 @@ test("messages impossibles à importer : signalés après l'état, s'il y en a",
   eq(failedText(12), "12 messages n'ont pas pu être importés : nouvel essai automatique.");
 });
 
+test("events and tasks that cannot be imported: counted apart from messages (which alone are tried again)", () => {
+  const now = new Date(2026, 10, 15, 16, 30).getTime();
+  const at = new Date(2026, 10, 15, 16, 2).getTime();
+  eq(statusView({ lastSuccessAt: at, failedItems: 5, failedCalendarItems: 2 }, now).text,
+    "Synchronisée à 16:02. 3 messages n'ont pas pu être importés : nouvel essai automatique. 2 événements ou tâches n'ont pas pu être importés.");
+  eq(failedText(1, 1), "1 événement ou tâche n'a pas pu être importé.");
+  eq(failedText(2, 1), "1 message n'a pas pu être importé : nouvel essai automatique. 1 événement ou tâche n'a pas pu être importé.");
+  eq(failedText(4, 4), "4 événements ou tâches n'ont pas pu être importés.");
+  eq(failedText(3, 9), "3 événements ou tâches n'ont pas pu être importés.", "never more than the whole");
+  for (const calendar of [0, -1, 1.5, "2", null, undefined, NaN]) eq(failedText(3, calendar), "3 messages n'ont pas pu être importés : nouvel essai automatique.", String(calendar));
+  eq(failedText(0, 2), "");
+});
+
 test("page : ordre des champs et texte affiché partagés avec options.mjs", () => {
-  eq([...FIELD_ORDER], ["email", "password", "name", "server", "username", "syncMinutes", "filterType", "sync"]);
+  eq([...FIELD_ORDER], ["email", "password", "name", "server", "username", "syncMinutes", "filterType", "sync", "calendarPeriod", "taskFilter"]);
   eq(shown("a\u202eb\nc"), "ab c");
   eq(shown(42), "");
   eq(shown("x".repeat(400)).length, 300);
+});
+
+// ── Calendar period and task filter (stage 4) ─────────────────────────────
+
+test("form: calendar period and task filter among the choices offered, always sent in the request", () => {
+  eq(CALENDAR_PERIODS.map(([f]) => f), ["4", "5", "6", "7", "0"]);
+  eq(TASK_FILTERS.map(([f]) => f), ["0", "8"]);
+  eq([DEFAULTS.calendarPeriod, DEFAULTS.taskFilter], ["7", "0"]);
+  eq(CALENDAR_PERIODS.map(([, label]) => label()), ["2 semaines", "1 mois", "3 mois", "6 mois", "Tout"]);
+  eq(TASK_FILTERS.map(([, label]) => label()), ["Toutes les tâches", "Tâches non terminées seulement"]);
+  const all = { mail: true, calendar: true, contacts: false, tasks: true };
+  for (const [f] of CALENDAR_PERIODS) eq(validateForm(values({ sync: all, calendarPeriod: f })).request.mailbox.calendarPeriod, f);
+  for (const [f] of TASK_FILTERS) eq(validateForm(values({ sync: all, taskFilter: f })).request.mailbox.taskFilter, f);
+  // The request of an edited mailbox carries them too.
+  const r = validateForm(values({ password: "", sync: all, calendarPeriod: "4", taskFilter: "8" }), existing());
+  eq([r.ok, r.request.mailbox.calendarPeriod, r.request.mailbox.taskFilter], [true, "4", "8"]);
+});
+
+test("form: calendar period and task filter refused outside the choices, when their item is checked", () => {
+  const all = { mail: true, calendar: true, contacts: false, tasks: true };
+  // "1", "2", "3" are mail periods only; "8" is a task filter only; numbers are not strings.
+  for (const calendarPeriod of ["1", "2", "3", "8", "9", "", "07", " 7", "7 ", "all", "__proto__", 7, null, undefined, ["7"]]) {
+    const r = validateForm(values({ sync: all, calendarPeriod }));
+    eq(fields(r), ["calendarPeriod"], String(calendarPeriod));
+    eq(r.errors[0].message, "Choisissez la période d'agenda à synchroniser.");
+    eq(r.request, null);
+  }
+  for (const taskFilter of ["1", "4", "7", "9", "", "08", "constructor", 0, 8, null, undefined]) {
+    const r = validateForm(values({ sync: all, taskFilter }));
+    eq(fields(r), ["taskFilter"], String(taskFilter));
+    eq(r.errors[0].message, "Choisissez les tâches à synchroniser.");
+  }
+  // After the other fields, in the order of the page.
+  const r = validateForm({ email: "x", password: "", server: "http://a.b", syncMinutes: "9", filterType: "9", calendarPeriod: "9", taskFilter: "9", sync: { calendar: true, tasks: true } });
+  eq(fields(r), ["email", "password", "server", "syncMinutes", "filterType", "calendarPeriod", "taskFilter"]);
+});
+
+test("form: a hidden field keeps its value; an unusable one becomes the default instead of an unseen error", () => {
+  eq(KIND_FIELDS.map((pair) => [...pair]), [["calendar", "calendarPeriod"], ["tasks", "taskFilter"]]);
+  for (const [, field] of KIND_FIELDS) assert(FIELD_ORDER.includes(field), field);
+  const mailOnly = { mail: true, calendar: false, contacts: false, tasks: false };
+  // Unchecked: the value chosen earlier is still sent, to be there when the item is checked again.
+  const kept = validateForm(values({ sync: mailOnly, calendarPeriod: "4", taskFilter: "8" }));
+  eq([kept.ok, kept.request.mailbox.calendarPeriod, kept.request.mailbox.taskFilter], [true, "4", "8"]);
+  // Unchecked and unusable: nobody could see the error, the default is sent.
+  for (const bad of ["9", "", undefined, null, 7]) {
+    const r = validateForm(values({ sync: mailOnly, calendarPeriod: bad, taskFilter: bad }));
+    eq([r.ok, r.request.mailbox.calendarPeriod, r.request.mailbox.taskFilter], [true, "7", "0"], String(bad));
+  }
+  // Each field follows its own item.
+  eq(fields(validateForm(values({ sync: { mail: true, calendar: true }, calendarPeriod: "9", taskFilter: "9" }))), ["calendarPeriod"]);
+  eq(fields(validateForm(values({ sync: { mail: true, tasks: true }, calendarPeriod: "9", taskFilter: "9" }))), ["taskFilter"]);
+});
+
+test("formValues: calendar period and task filter of a mailbox, the defaults when absent or invalid", () => {
+  eq([formValues(existing({ calendarPeriod: "5", taskFilter: "8" })).calendarPeriod, formValues(existing({ calendarPeriod: "5", taskFilter: "8" })).taskFilter], ["5", "8"]);
+  eq(formValues(existing({ calendarPeriod: "0" })).calendarPeriod, "0");
+  for (const bad of ["1", "8", "", 7, null, undefined, {}, "__proto__"]) eq(formValues(existing({ calendarPeriod: bad })).calendarPeriod, "7", String(bad));
+  for (const bad of ["4", "7", "", 8, 0, null, undefined, [], "toString"]) eq(formValues(existing({ taskFilter: bad })).taskFilter, "0", String(bad));
+  // What the form shows for an old mailbox is a request the form accepts.
+  const old = formValues(existing());
+  eq(validateForm({ ...old, password: "" }, existing()).request.mailbox, {
+    id: "0123456789ab",
+    email: "alice@example.com",
+    username: "",
+    name: "Travail",
+    server: "mail.example.com",
+    syncMinutes: 15,
+    filterType: "3",
+    calendarPeriod: "7",
+    taskFilter: "0",
+    sync: { mail: true, calendar: true, contacts: false, tasks: false },
+  });
 });

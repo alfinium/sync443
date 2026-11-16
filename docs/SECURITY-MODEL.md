@@ -116,6 +116,19 @@ rule written here that the code does not respect is a security bug.
     - A message moved to a purely local folder is never deleted on the server.
     - The flags that Thunderbird sets by itself on import are not sent back to the server: an imported message is judged on its state once the engine's writes are finished, so that a change made by the user is never mistaken for one of these marks, nor swallowed.
 
+### Calendar, tasks and meetings
+
+20. **No server text is parsed as iCalendar in privileged code.** Privileged code builds Thunderbird items only from validated, bounded descriptions.
+21. **An iCalendar UID is not an identity.** Items are linked by ServerId. A UID or a GlobalObjId chosen by a sender never selects a local item. It only names, to the server, which invitation the user is answering.
+22. **Recurrences and exceptions are bounded** when read, and never expanded eagerly.
+23. **No message is sent without the user's own action.**
+    - A reply goes only to the organizer, after the user answered in Thunderbird.
+    - Invitations, updates and cancellations go only to the meeting's attendees, after the user saved or deleted the meeting and confirmed the sending in Sync443's window.
+    - Everything goes through ActiveSync. Thunderbird itself never sends a meeting message for a Sync443 calendar.
+    - A change coming from the server never sends anything.
+24. **Bodies are plain text, links are text.** A body or location is never shown as HTML, and a link is never opened automatically.
+25. **Meeting messages are bounded:** at most 100 recipients, one message of each kind per change, the mailbox's own address as organizer, no automatic resending.
+
 ## Known limitation, accepted risk
 
 **Basic authentication** is a limitation of the protocol as most servers offer it. The residual risk is reduced by three measures:

@@ -14,6 +14,7 @@
  */
 
 import { el, text, at, child } from "./wbxml.mjs";
+import { tokenOf } from "./codepages.mjs";
 import * as v from "./sanitize.mjs";
 
 export class ProtocolError extends Error {
@@ -28,6 +29,10 @@ export const MAX_COMMANDS_PER_COLLECTION = 2000;
 export const MAX_FOLDERS = 5000;
 /** Most collections one Sync response may carry (the client never asks for more than a few). */
 const MAX_COLLECTIONS = 100;
+/** Most meeting requests answered by one MeetingResponse command, and most results read from its response. */
+export const MAX_MEETING_RESPONSES = 100;
+/** Most element names in the Supported list of a collection: more than any class has properties. */
+export const MAX_SUPPORTED = 128;
 export const PING_CLASSES = new Set(["Email", "Calendar", "Contacts", "Tasks", "Notes"]);
 
 /** Tags whose values the debug log may show: technical values only, never content. */
@@ -37,7 +42,7 @@ export const DEBUG_SHOWN = new Set([
   "PolicyType", "SrcMsgId", "SrcFldId", "DstFldId", "DstMsgId", "Count", "Read", "Importance",
   "MessageClass", "InstanceType", "BusyStatus", "Sensitivity", "AllDayEvent", "MeetingStatus",
   "ResponseType", "Estimate", "Conflict", "ConversationMode", "NativeBodyType", "EstimatedDataSize",
-  "Truncated",
+  "Truncated", "RequestId", "CalendarId", "UserResponse",
 ]);
 
 const need = (value, check, what) => {
@@ -151,8 +156,35 @@ export function parseFolderChange(doc) {
 // ── Sync ──────────────────────────────────────────────────────────────────
 
 /**
- * collections: [{ collectionId, syncKey, deletesAsMoves?, getChanges?, windowSize?, options?: Element[], commands?: Element[] }]
- * Element order follows the schema of [MS-ASCMD] 2.2.3.29.
+ * The Supported element of a collection ([MS-ASCMD] 2.2.3.179): one empty
+ * element per property the client manages. `names` are element names with
+ * their namespace ("Calendar:Subject"), each one known to the code pages
+ * and given once. An empty list gives an empty Supported element, which
+ * the server reads as "every property that can be ghosted is ghosted".
+ */
+function supportedElement(names) {
+  if (!Array.isArray(names) || names.length > MAX_SUPPORTED) throw new ProtocolError("liste Supported invalide");
+  const seen = new Set();
+  return el(
+    "Supported",
+    names.map((name) => {
+      const colon = typeof name === "string" ? name.indexOf(":") : -1;
+      if (colon < 1 || seen.has(name) || tokenOf(name.slice(0, colon), name.slice(colon + 1)) === undefined) {
+        throw new ProtocolError("élément Supported invalide");
+      }
+      seen.add(name);
+      return el(name);
+    }),
+  );
+}
+
+/**
+ * collections: [{ collectionId, syncKey, supported?: string[], deletesAsMoves?, getChanges?, windowSize?,
+ *                 options?: Element[], commands?: Element[] }]
+ * Element order follows [MS-ASCMD] 2.2.3.29.2 (SyncKey, CollectionId, Supported, DeletesAsMoves, GetChanges,
+ * WindowSize, Options, Commands): the server enforces it.
+ * `supported` (element names with their namespace, see supportedElement) is checked on every call, and sent
+ * only with SyncKey "0": the server keeps the list of the first Sync and ignores any later one.
  */
 export function syncRequest(collections) {
   return el("AirSync:Sync", [
@@ -160,9 +192,11 @@ export function syncRequest(collections) {
       "Collections",
       collections.map((c) => {
         const key = need(c.syncKey, v.syncKey, "SyncKey");
+        const supported = c.supported === undefined || c.supported === null ? null : supportedElement(c.supported);
         return el("Collection", [
           el("SyncKey", key),
           el("CollectionId", need(c.collectionId, v.itemId, "CollectionId")),
+          key === "0" ? supported : null,
           c.deletesAsMoves === undefined ? null : el("DeletesAsMoves", c.deletesAsMoves ? "1" : "0"),
           c.getChanges && key !== "0" ? el("GetChanges") : null,
           // Math.trunc, not "| 0": 2^32 + 5 must clamp to 512, not wrap around to 5.
@@ -180,14 +214,40 @@ export const changeCommand = (serverId, data) =>
 export const deleteCommand = (serverId) => el("Delete", [el("ServerId", need(serverId, v.itemId, "ServerId"))]);
 export const fetchCommand = (serverId) => el("Fetch", [el("ServerId", need(serverId, v.itemId, "ServerId"))]);
 
+/**
+ * ClientId of an Add: the temporary id the client gives a new item, which
+ * the server sends back with the ServerId it assigned ([MS-ASCMD] 2.2.3.7.2,
+ * 2.2.3.28.2). Kept to 1 to 64 letters, digits and hyphens, the only form
+ * this client writes: anything else in a response is not an answer to it.
+ */
+const CLIENT_ID = /^[A-Za-z0-9-]{1,64}$/;
+const clientIdOf = (value) => (typeof value === "string" && CLIENT_ID.test(value) ? value : null);
+
+/** A new item sent to the server (calendar, tasks; never e-mail). `data`: ApplicationData children. */
+export const addCommand = (clientId, data) =>
+  el("Add", [el("ClientId", need(clientId, clientIdOf, "ClientId")), el("ApplicationData", data)]);
+
 const COMMANDS = { Add: "add", Change: "change", Delete: "delete", SoftDelete: "softdelete" };
-// The client sends Change and Fetch only (never Add): only their answers are read.
+// Answers handed over with their ApplicationData (the mail engine reads these two).
 const RESPONSES = { Change: "change", Fetch: "fetch" };
 
 /**
  * → { status, collections: [{ collectionId, syncKey, status, moreAvailable,
- *      commands: [{op, serverId, data}], responses: [{op: "change"|"fetch", serverId, status, data}] }] }
+ *      commands: [{op, serverId, data}], responses: [{op: "change"|"fetch", serverId, status, data}],
+ *      clientResponses: { adds: [{clientId, serverId, status}], changes: [{serverId, status}],
+ *                         deletes: [{serverId, status}] } }] }
  * `status` is the command-level status (null when the response is normal).
+ *
+ * `clientResponses` holds what the server says about the client's own
+ * commands ([MS-ASCMD] 2.2.3.154): it answers every successful Add, and a
+ * Change or a Delete only when it failed; no answer means success.
+ *  - adds: `serverId` is the id given to the new item, or null when the
+ *    server gave none or an invalid one (a refused Add: see `status`). An
+ *    answer without a valid ClientId or Status is left out. Two answers for
+ *    one ClientId, or two ClientIds bound to one ServerId, make the whole
+ *    response invalid (ProtocolError): which local item is which server item
+ *    is never guessed;
+ *  - changes, deletes: answers with a valid ServerId and Status.
  */
 export function parseSync(doc) {
   expectRoot(doc, "AirSync", "Sync");
@@ -217,17 +277,28 @@ export function parseSync(doc) {
     if (answers.length > MAX_COMMANDS_PER_COLLECTION) {
       throw new ProtocolError(`réponse anormale : ${answers.length} réponses pour un seul dossier`);
     }
+    const clientResponses = { adds: [], changes: [], deletes: [] };
+    const addedClientIds = new Set();
+    const addedServerIds = new Set();
     for (const r of answers) {
+      const status = v.status(text(r, "Status"));
+      const serverId = v.itemId(text(r, "ServerId"));
+      if (r.tag === "Add") {
+        const clientId = clientIdOf(text(r, "ClientId"));
+        if (!status || !clientId) continue;
+        if (addedClientIds.has(clientId) || (serverId && addedServerIds.has(serverId))) {
+          throw new ProtocolError("réponse anormale : deux réponses pour un même ajout");
+        }
+        addedClientIds.add(clientId);
+        if (serverId) addedServerIds.add(serverId);
+        clientResponses.adds.push({ clientId, serverId, status });
+        continue;
+      }
+      if (!status || !serverId) continue;
+      if (r.tag === "Change") clientResponses.changes.push({ serverId, status });
+      else if (r.tag === "Delete") clientResponses.deletes.push({ serverId, status });
       const op = RESPONSES[r.tag];
-      if (!op) continue;
-      const answer = {
-        op,
-        serverId: v.itemId(text(r, "ServerId")),
-        status: v.status(text(r, "Status")),
-        data: child(r, "ApplicationData"),
-      };
-      if (!answer.status || !answer.serverId) continue;
-      responses.push(answer);
+      if (op) responses.push({ op, serverId, status, data: child(r, "ApplicationData") });
     }
     collections.push({
       collectionId,
@@ -236,6 +307,7 @@ export function parseSync(doc) {
       moreAvailable: Boolean(child(c, "MoreAvailable")),
       commands,
       responses,
+      clientResponses,
     });
   }
   return { status: topStatus(doc), collections };
@@ -303,6 +375,86 @@ export function parseMoveItems(doc) {
       dstMsgId: v.itemId(text(r, "DstMsgId")),
     }))
     .filter((r) => r.srcMsgId && r.status); // an answer we cannot match to a request is ignored
+}
+
+// ── MeetingResponse ───────────────────────────────────────────────────────
+
+/** UserResponse values ([MS-ASCMD] 2.2.3.194): 1 accepted, 2 tentatively accepted, 3 declined. */
+const USER_RESPONSES = new Set([1, 2, 3]);
+const INSTANCE_ID = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.000)?Z$/;
+
+/**
+ * InstanceId of a MeetingResponse request ([MS-ASCMD] 2.2.3.92.1): the
+ * original UTC start of one occurrence, written with separators and
+ * milliseconds, 24 characters ("2010-04-08T18:16:00.000Z"). Accepted as
+ * that, or as a UTC date of the item descriptions ("2010-04-08T18:16:00Z");
+ * it must be a real date.
+ */
+function instanceIdOf(value) {
+  const m = typeof value === "string" ? INSTANCE_ID.exec(value) : null;
+  if (!m) return null;
+  const [year, month, day, hour, minute, second] = m.slice(1, 7).map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+  if (year < 1900 || year > 2200 || hour > 23 || minute > 59 || second > 59) return null;
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
+  return `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}.000Z`;
+}
+
+/**
+ * requests: [{ userResponse: 1|2|3, collectionId, requestId, instanceId? }], 1 to MAX_MEETING_RESPONSES.
+ * `collectionId` and `requestId` name the invitation mail, or the calendar
+ * item (14.1 only). `instanceId` answers one occurrence of a series; it only
+ * exists in 14.1 (an older server refuses the request): the caller decides.
+ * The server answers by RequestId alone, so a RequestId may appear once.
+ */
+export function meetingResponseRequest(requests) {
+  if (!Array.isArray(requests) || requests.length < 1 || requests.length > MAX_MEETING_RESPONSES) {
+    throw new ProtocolError("nombre de réponses à des invitations invalide");
+  }
+  const seen = new Set();
+  return el(
+    "MeetingResponse:MeetingResponse",
+    requests.map((r) => {
+      if (!USER_RESPONSES.has(r?.userResponse)) throw new ProtocolError("UserResponse invalide");
+      const collectionId = need(r.collectionId, v.itemId, "CollectionId");
+      const requestId = need(r.requestId, v.itemId, "RequestId");
+      if (seen.has(requestId)) throw new ProtocolError("deux réponses à la même invitation dans une requête");
+      seen.add(requestId);
+      const instanceId = r.instanceId === undefined || r.instanceId === null ? null : need(r.instanceId, instanceIdOf, "InstanceId");
+      return el("Request", [
+        el("UserResponse", String(r.userResponse)),
+        el("CollectionId", collectionId),
+        el("RequestId", requestId),
+        instanceId === null ? null : el("InstanceId", instanceId),
+      ]);
+    }),
+  );
+}
+
+/**
+ * → [{ requestId, status, calendarId }]
+ * `calendarId` is the ServerId of the calendar item the server names
+ * (accepted or tentative answers; absent after a decline), validated, or
+ * null. A result without a valid RequestId or Status cannot be matched to a
+ * request and is left out. More results than a request may hold, or two
+ * results for one RequestId, make the response invalid (ProtocolError). A
+ * command-level error comes as a Status under the root: see topStatus.
+ */
+export function parseMeetingResponse(doc) {
+  expectRoot(doc, "MeetingResponse", "MeetingResponse");
+  const results = doc.children.filter((r) => r.tag === "Result");
+  if (results.length > MAX_MEETING_RESPONSES) throw new ProtocolError(`réponse anormale : ${results.length} résultats`);
+  const seen = new Set();
+  const out = [];
+  for (const r of results) {
+    const requestId = v.itemId(text(r, "RequestId"));
+    const status = v.status(text(r, "Status"));
+    if (!requestId || !status) continue;
+    if (seen.has(requestId)) throw new ProtocolError("réponse anormale : deux résultats pour une même invitation");
+    seen.add(requestId);
+    out.push({ requestId, status, calendarId: v.itemId(text(r, "CalendarId")) });
+  }
+  return out;
 }
 
 // ── Provision ─────────────────────────────────────────────────────────────

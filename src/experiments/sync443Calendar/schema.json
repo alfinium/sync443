@@ -1,0 +1,115 @@
+[
+  {
+    "namespace": "sync443Calendar",
+    "description": "The calendars of Sync443, and nothing else. A calendar of the extension has the provider type \"sync443\" (registered when the extension starts), the id \"sync443-<mailboxId>-<n>\" and two marks among its properties: sync443.owner (the extension's id) and sync443.mailbox (the mailboxId); every function ignores a calendar without all of this, and ensureCalendar never adopts a calendar it did not create. Each calendar wraps an unregistered storage calendar of Thunderbird (calendar-data/sync443.sqlite). Thunderbird never sends a scheduling message for an item of these calendars. Items are exchanged as item descriptions (docs/CALENDAR-DESIGN.md), never as iCalendar text; every description received is checked whole against the contract. Accepted from the background page only. This schema checks the argument types; the implementation checks them again with every value constraint, so that every refusal of a well-typed call is an ExtensionError whose message starts with a code: CONFIG, PERMISSION, NOT_FOUND, CONFLICT, LIMIT, UNSUPPORTED or INTERNAL.",
+    "functions": [
+      {
+        "name": "listCalendars",
+        "type": "function",
+        "async": true,
+        "description": "listCalendars() resolves to [{calendarId, mailboxId, slot, name, events, tasks}], the calendars of this extension only, sorted by calendarId.",
+        "parameters": []
+      },
+      {
+        "name": "ensureCalendar",
+        "type": "function",
+        "async": true,
+        "description": "ensureCalendar({mailboxId, slot, name, events, tasks, organizerEmail}) resolves to {calendarId, created}. The calendar of the extension for this mailbox and slot is updated (name, kinds of items, address), or created, marked before it is registered; a new calendar starts empty (rows left under its id in the inner store are deleted first), and one that cannot be created whole is not registered. slot: \"main\" or the ServerId of the server folder; mailboxId: 12 lower-case hexadecimal digits; name: 1-256 characters, no control character; events, tasks: at least one true; organizerEmail: the mailbox's address. At most 50 calendars (LIMIT).",
+        "parameters": [
+          {
+            "name": "options",
+            "type": "object",
+            "properties": {
+              "mailboxId": { "type": "string" },
+              "slot": { "type": "string" },
+              "name": { "type": "string" },
+              "events": { "type": "boolean" },
+              "tasks": { "type": "boolean" },
+              "organizerEmail": { "type": "string" }
+            }
+          }
+        ]
+      },
+      {
+        "name": "removeCalendar",
+        "type": "function",
+        "async": true,
+        "description": "removeCalendar(calendarId) unregisters a calendar of the extension and deletes its items and its journal from the inner store; resolves to true, or to false if no calendar of the extension has this id. Nothing is touched on the server.",
+        "parameters": [{ "name": "calendarId", "type": "string" }]
+      },
+      {
+        "name": "applyServerChanges",
+        "type": "function",
+        "async": true,
+        "description": "applyServerChanges(calendarId, changes) applies at most 200 changes {op: \"put\", collectionId, serverId, item}, {op: \"remove\", collectionId, serverId}, {op: \"detach\", collectionId, serverId} or {op: \"lock\", collectionId, serverId} to the inner store, without recording a local change, and resolves to [{serverId, ok, code}] in the same order (code only when ok is false: INVALID, TOO_LARGE, KIND, UNSUPPORTED, LIMIT or INTERNAL). An item is its ServerId in its collection; a description refused is refused whole. In the item of a put, description: null and meeting.response: null mean that the server does not say: what is held is kept (an empty description and \"not-responded\" on an item that is new); neither is ever stored or returned. A task may carry ordinalDate and subOrdinalDate (text, at most 40 characters), kept with its synchronized description. A recurrence is UNSUPPORTED when it has a shape ActiveSync does not have, an until that is not of the kind of the start, a day that does not come within its first four periods, an item longer than its own period, or when Thunderbird cannot expand it. A put that would add an item to a calendar holding 50,000 answers LIMIT. A put on an item the user changed meanwhile only replaces the synchronized description: the user's change stays to send, marked rewritten when that description is no longer the same. A remove takes the item away with its pending change. A detach leaves the item in the calendar without ServerId, synchronized description or pending change: it is no longer linked to the server. A lock keeps the item as it is and makes its synchronized description read-only (\"incomplete\"): for an item the server changed into something that cannot be read; the next put replaces it as usual. An item whose synchronized description is read-only is read-only in Thunderbird too: Thunderbird is told through the item's access entry (its dialog opens as a summary), and a change or a deletion made through the calendar object is refused with CAL_IS_READONLY.",
+        "parameters": [
+          { "name": "calendarId", "type": "string" },
+          { "name": "changes", "type": "array", "items": { "type": "object", "additionalProperties": { "type": "any" } } }
+        ]
+      },
+      {
+        "name": "serverIds",
+        "type": "function",
+        "async": true,
+        "description": "serverIds(calendarId, collectionId) resolves to the ServerIds of the items held for this collection, including those whose deletion by the user is not acknowledged yet.",
+        "parameters": [
+          { "name": "calendarId", "type": "string" },
+          { "name": "collectionId", "type": "string" }
+        ]
+      },
+      {
+        "name": "readLocalChanges",
+        "type": "function",
+        "async": true,
+        "description": "readLocalChanges(calendarId, {max}) resolves to at most max (1-200, default 200) changes made by the user, oldest first: [{changeId, op: \"add\" | \"modify\" | \"delete\", kind: \"event\" | \"task\", collectionId, serverId, item, previous, problem, detached, rewritten, replyAsked}]. Several changes to one item are one change; a changeId never names two changes. collectionId is null for an item added in a \"main\" calendar (the engine knows the folder of each kind); serverId is null for an added item. previous is the last synchronized description, or null. problem is null, or \"recurrence\", \"read-only\" or \"too-large\": item is then null. detached is true for the \"add\" of an item that was detached and that the user changed since (deleting a detached item reports nothing), false for every other change. rewritten is true when the server changed the item while this change waited (previous is then the server's new description). replyAsked is true when Thunderbird asked to send the user's answer that the item carries to the organizer (it asks canNotify(\"REPLY\") only then: not after \"Do not send a response\", \"Add to calendar\" or an import); always false for a delete. The user's own answer to someone else's meeting is not returned during the two seconds that follow it: onLocalChange fires again when it can be read.",
+        "parameters": [
+          { "name": "calendarId", "type": "string" },
+          {
+            "name": "options",
+            "type": "object",
+            "optional": true,
+            "properties": { "max": { "type": "integer", "optional": true } }
+          }
+        ]
+      },
+      {
+        "name": "ackLocalChange",
+        "type": "function",
+        "async": true,
+        "description": "ackLocalChange(calendarId, changeId, {serverId, collectionId, item}): the server accepted the change. serverId binds an added item (required for an \"add\"; collectionId too when the change had none); item is the description now synchronized (without it, the item as it is). Resolves to true when the change is settled; to false when the change is unknown (never read, or settled already: an acknowledgement that comes twice changes nothing), or when the user changed the item again since it was read: what was acknowledged is recorded and the rest stays to send.",
+        "parameters": [
+          { "name": "calendarId", "type": "string" },
+          { "name": "changeId", "type": "string" },
+          {
+            "name": "options",
+            "type": "object",
+            "optional": true,
+            "properties": {
+              "serverId": { "type": "string", "optional": true },
+              "collectionId": { "type": "string", "optional": true },
+              "item": { "type": "object", "optional": true, "additionalProperties": { "type": "any" } }
+            }
+          }
+        ]
+      },
+      {
+        "name": "dropLocalChange",
+        "type": "function",
+        "async": true,
+        "description": "dropLocalChange(calendarId, changeId) undoes the change in Thunderbird: the last synchronized version is restored, a deleted item comes back; an item never synchronized is not deleted: it stays in the calendar as a detached copy, with nothing to send. Resolves to true; to false when the change is unknown or when the user changed the item again since it was read (nothing is undone: read again).",
+        "parameters": [
+          { "name": "calendarId", "type": "string" },
+          { "name": "changeId", "type": "string" }
+        ]
+      }
+    ],
+    "events": [
+      {
+        "name": "onLocalChange",
+        "type": "function",
+        "description": "onLocalChange(calendarId): the user changed an item of this calendar in a way worth sending (at most once per calendar and per turn of the event loop), or a change that readLocalChanges held back can now be read.",
+        "parameters": [{ "name": "calendarId", "type": "string" }]
+      }
+    ]
+  }
+]

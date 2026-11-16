@@ -90,7 +90,7 @@
     "message": "Отмена"
   },
   "removeQuestion": {
-    "message": "Удалить почтовый ящик «$NAME$»? Его учётная запись, локальные папки и пароль будут удалены из Thunderbird. На сервере ничего не удаляется.",
+    "message": "Удалить почтовый ящик «$NAME$»? Его учётная запись, локальные папки и пароль будут удалены из Thunderbird. На сервере ничего не удаляется. Изменения, ещё не отправленные на сервер, будут потеряны.",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -98,7 +98,39 @@
     }
   },
   "discardConfirm": {
-    "message": "Удаление, выполненное на сервере, не будет применено: сообщения останутся в Thunderbird, а затронутые папки будут заново синхронизированы с сервером. Папка, удалённая на сервере, останется здесь, но синхронизироваться не будет."
+    "message": "Удаление, выполненное на сервере, не будет применено: затронутые сообщения, события и задачи останутся в Thunderbird. Затронутые почтовые папки будут заново синхронизированы с сервером; оставленные события и задачи больше не будут связаны с сервером. Папка, удалённая на сервере, останется здесь, но синхронизироваться не будет."
+  },
+  "uncheckCalendarConfirm": {
+    "message": "Прекратить синхронизацию календаря ящика «$NAME$»? Его события будут удалены из Thunderbird. На сервере ничего не удаляется. Изменения, ещё не отправленные на сервер, будут потеряны.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "uncheckTasksConfirm": {
+    "message": "Прекратить синхронизацию задач ящика «$NAME$»? Его задачи будут удалены из Thunderbird. На сервере ничего не удаляется. Изменения, ещё не отправленные на сервер, будут потеряны.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "uncheckBothConfirm": {
+    "message": "Прекратить синхронизацию календаря и задач ящика «$NAME$»? Его календари будут удалены из Thunderbird вместе с событиями и задачами. На сервере ничего не удаляется. Изменения, ещё не отправленные на сервер, будут потеряны.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "moveConfirm": {
+    "message": "Изменить сервер или имя пользователя ящика «$NAME$»? Его календари и задачи будут удалены из Thunderbird, а затем заново синхронизированы с сервера. Изменения, ещё не отправленные на сервер, будут потеряны.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
   },
   "noAnswer": {
     "message": "Расширение не отвечает. Перезагрузите эту страницу."
@@ -213,11 +245,20 @@
   "fieldPeriod": {
     "message": "Период синхронизации почты"
   },
+  "fieldCalendarPeriod": {
+    "message": "Период синхронизации календаря"
+  },
+  "calendarPeriodHint": {
+    "message": "События старше этого периода не синхронизируются. Будущие события синхронизируются всегда."
+  },
+  "fieldTaskFilter": {
+    "message": "Задачи для синхронизации"
+  },
   "fieldKinds": {
     "message": "Элементы для синхронизации"
   },
   "kindsHint": {
-    "message": "В этой версии синхронизируется только почта. Остальные варианты сохраняются на будущее."
+    "message": "В этой версии контакты пока не синхронизируются. Этот вариант сохраняется на будущее."
   },
   "soon": {
     "message": "скоро"
@@ -268,11 +309,23 @@
   "period1Month": {
     "message": "1 месяц"
   },
+  "period3Months": {
+    "message": "3 месяца"
+  },
+  "period6Months": {
+    "message": "6 месяцев"
+  },
   "periodAll": {
     "message": "Без ограничений"
   },
   "periodUnknown": {
     "message": "Неизвестно"
+  },
+  "taskFilterAll": {
+    "message": "Все задачи"
+  },
+  "taskFilterIncomplete": {
+    "message": "Только незавершённые задачи"
   },
   "kindMail": {
     "message": "Почта"
@@ -336,6 +389,12 @@
   "choosePeriod": {
     "message": "Выберите период синхронизации почты."
   },
+  "chooseCalendarPeriod": {
+    "message": "Выберите период синхронизации календаря."
+  },
+  "chooseTaskFilter": {
+    "message": "Выберите задачи для синхронизации."
+  },
   "chooseKind": {
     "message": "Выберите хотя бы один элемент для синхронизации."
   },
@@ -382,7 +441,7 @@
     }
   },
   "statusMassDelete": {
-    "message": "Синхронизация приостановлена: сервер удалил сразу много сообщений (количество: $COUNT$). Удаление будет применено только после вашего подтверждения; вы также можете оставить локальные копии.",
+    "message": "Синхронизация приостановлена: сервер удалил сразу много элементов — сообщений, событий или задач (количество: $COUNT$). Удаление будет применено только после вашего подтверждения; вы также можете оставить локальные копии.",
     "placeholders": {
       "count": {
         "content": "$1"
@@ -390,7 +449,7 @@
     }
   },
   "statusMassDeleteMany": {
-    "message": "Синхронизация приостановлена: сервер удалил сразу много сообщений. Удаление будет применено только после вашего подтверждения; вы также можете оставить локальные копии."
+    "message": "Синхронизация приостановлена: сервер удалил сразу много элементов (сообщений, событий или задач). Удаление будет применено только после вашего подтверждения; вы также можете оставить локальные копии."
   },
   "statusBlocked": {
     "message": "Синхронизация остановлена: $REASON$ Автоматических попыток больше не будет: нажмите «Синхронизировать», чтобы возобновить.",
@@ -446,6 +505,17 @@
   },
   "failedMany": {
     "message": "Не удалось импортировать сообщения (количество: $COUNT$): повторная попытка будет выполнена автоматически.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "failedCalendarOne": {
+    "message": "1 событие или задачу не удалось импортировать."
+  },
+  "failedCalendarMany": {
+    "message": "Не удалось импортировать события или задачи (количество: $COUNT$).",
     "placeholders": {
       "count": {
         "content": "$1"
@@ -848,5 +918,335 @@
   },
   "sentLeftoverBoth": {
     "message": "Сообщение отправлено, но его черновик не удалось удалить, а окно составления сообщения не удалось закрыть: не отправляйте сообщение повторно."
+  },
+  "confirmTitle": {
+    "message": "Sync443 – Подтверждение отправки"
+  },
+  "confirmAskInvite": {
+    "message": "Отправить приглашение на эту встречу?"
+  },
+  "confirmAskUpdate": {
+    "message": "Отправить обновлённое приглашение на эту встречу?"
+  },
+  "confirmAskCancel": {
+    "message": "Отправить уведомление об отмене этой встречи?"
+  },
+  "confirmHint": {
+    "message": "Ваше изменение уже сохранено. Без этого сообщения получатели о нём не узнают."
+  },
+  "confirmLabelEvent": {
+    "message": "Событие"
+  },
+  "confirmLabelWhen": {
+    "message": "Дата"
+  },
+  "confirmLabelFrom": {
+    "message": "От"
+  },
+  "confirmAllDay": {
+    "message": "$DATE$ (весь день)",
+    "placeholders": {
+      "date": {
+        "content": "$1"
+      }
+    }
+  },
+  "confirmRecipientsOne": {
+    "message": "1 получатель"
+  },
+  "confirmRecipientsMany": {
+    "message": "Количество получателей: $COUNT$",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "confirmSend": {
+    "message": "Отправить"
+  },
+  "confirmDontSend": {
+    "message": "Не отправлять"
+  },
+  "confirmSending": {
+    "message": "Отправка…"
+  },
+  "confirmClose": {
+    "message": "Закрыть"
+  },
+  "confirmExpired": {
+    "message": "Этот запрос больше не действителен: на него уже дан ответ, или срок его действия истёк."
+  },
+  "confirmNothingSent": {
+    "message": "Из этого окна ничего не будет отправлено."
+  },
+  "confirmUncertain": {
+    "message": "Sync443 не ответил: возможно, сообщение не было отправлено. Прежде чем отправлять его повторно, проверьте папку «Отправленные»."
+  },
+  "meetingSubjectInvite": {
+    "message": "Приглашение: $SUMMARY$",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingSubjectUpdate": {
+    "message": "Обновлённое приглашение: $SUMMARY$",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingSubjectCancel": {
+    "message": "Отменено: $SUMMARY$",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingSubjectAccepted": {
+    "message": "Принято: $SUMMARY$",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingSubjectTentative": {
+    "message": "Предварительно принято: $SUMMARY$",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingSubjectDeclined": {
+    "message": "Отклонено: $SUMMARY$",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingTextWhen": {
+    "message": "Когда: $WHEN$",
+    "placeholders": {
+      "when": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingTextWhere": {
+    "message": "Где: $LOCATION$",
+    "placeholders": {
+      "location": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingNoTitle": {
+    "message": "(без названия)"
+  },
+  "calendarSendFailed": {
+    "message": "Сообщение о встрече «$SUMMARY$» не отправлено: $REASON$ Событие сохранено, но участники не были уведомлены.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      },
+      "reason": {
+        "content": "$2"
+      }
+    }
+  },
+  "calendarSendUncertain": {
+    "message": "Сообщение о встрече «$SUMMARY$», возможно, не отправлено: соединение было потеряно. Прежде чем отправлять его повторно, проверьте папку «Отправленные».",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarTooManyAttendees": {
+    "message": "У встречи «$SUMMARY$» слишком много участников (предел: $MAX$), поэтому Sync443 не может отправить приглашения. Изменение отменено.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      },
+      "max": {
+        "content": "$2"
+      }
+    }
+  },
+  "calendarAnswerFailed": {
+    "message": "Не удалось отправить ваш ответ на «$SUMMARY$»: $REASON$ Событие возвращено в прежнее состояние.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      },
+      "reason": {
+        "content": "$2"
+      }
+    }
+  },
+  "calendarAnswerNoInvitation": {
+    "message": "Не удалось отправить ваш ответ на «$SUMMARY$»: приглашение не найдено на сервере. Событие возвращено в прежнее состояние.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarAnswerNeedsMail": {
+    "message": "Не удалось отправить ваш ответ на «$SUMMARY$»: чтобы отвечать на приглашения на этом сервере, для этого почтового ящика должна синхронизироваться почта.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarChangeRefused": {
+    "message": "Сервер отклонил изменение элемента «$SUMMARY$». Восстановлена версия с сервера.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarRecurrenceUnsupported": {
+    "message": "Повторение элемента «$SUMMARY$» невозможно сохранить на сервере ActiveSync. Изменение отменено.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarReadOnly": {
+    "message": "Элемент «$SUMMARY$» нельзя изменить в Thunderbird. Изменение отменено.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarTooLarge": {
+    "message": "Элемент «$SUMMARY$» слишком велик для сохранения на сервере. Изменение отменено.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarKeptLocal": {
+    "message": "Элемент «$SUMMARY$» не удалось сохранить на сервере. Он остаётся в Thunderbird как локальная копия, которая больше не синхронизируется.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarServerChanged": {
+    "message": "Элемент «$SUMMARY$» был изменён на сервере до отправки вашего изменения. Показана версия с сервера; ваше изменение не отправлено.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarDetached": {
+    "message": "Элемент «$SUMMARY$» на сервере больше не является тем же элементом. Ваша версия остаётся в Thunderbird как локальная копия, которая больше не синхронизируется.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarRestoreUnsupported": {
+    "message": "Изменённый или удалённый экземпляр повторяющегося события «$SUMMARY$» невозможно вернуть в серию на сервере ActiveSync. Изменение отменено.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarOrganizerChanged": {
+    "message": "Организатор встречи «$SUMMARY$» был изменён в Thunderbird: участникам не отправлено ни одного сообщения.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarNotSentExpired": {
+    "message": "Сообщение о встрече «$SUMMARY$» не отправлено: на запрос подтверждения вовремя не ответили. Событие сохранено, но участники не были уведомлены.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarNotSentFull": {
+    "message": "Сообщение о встрече «$SUMMARY$» не отправлено: слишком много сообщений ожидает отправки. Событие сохранено, но участники не были уведомлены.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarNotSentOld": {
+    "message": "Сообщение о встрече «$SUMMARY$» не отправлено: оно ожидало отправки больше суток. Событие сохранено, но участники не были уведомлены.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarChangesDroppedOne": {
+    "message": "Одно изменение, сделанное в Thunderbird, не отправлено: его календарь больше не синхронизируется с сервером. Новый элемент остаётся в Thunderbird как локальная копия."
+  },
+  "calendarChangesDroppedMany": {
+    "message": "Изменения, сделанные в Thunderbird, не отправлены (количество изменений: $COUNT$): их календарь больше не синхронизируется с сервером. Новые элементы остаются в Thunderbird как локальные копии.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarReplyNotSent": {
+    "message": "Ваш ответ на «$SUMMARY$» сохранён в календаре, но ответ организатору не отправлен: приглашение не найдено в этом почтовом ящике.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarKeptLocalTooManyAttendees": {
+    "message": "У встречи «$SUMMARY$» слишком много участников (предел: $MAX$), поэтому Sync443 не может отправить приглашения. Элемент остаётся в Thunderbird как локальная копия, которая больше не синхронизируется.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      },
+      "max": {
+        "content": "$2"
+      }
+    }
+  },
+  "calendarKeptLocalRecurrence": {
+    "message": "Повторение элемента «$SUMMARY$» невозможно сохранить на сервере ActiveSync. Элемент остаётся в Thunderbird как локальная копия, которая больше не синхронизируется.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarKeptLocalTooLarge": {
+    "message": "Элемент «$SUMMARY$» слишком велик для сохранения на сервере. Элемент остаётся в Thunderbird как локальная копия, которая больше не синхронизируется.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
   }
 }

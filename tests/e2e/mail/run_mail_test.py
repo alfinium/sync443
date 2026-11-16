@@ -65,6 +65,13 @@ What it does, all in a throw-away directory (never your Thunderbird profile):
 
 Prints a PASS/FAIL/SKIP list (and GAP: behaviour this version does not
 implement); exit status 1 on any FAIL.
+
+The calendar, the tasks and the meetings are tested by a sibling runner,
+run_calendar_sync_test.py, with a scenario of its own (calendar-scenario.mjs)
+on a profile and servers of its own: it imports this module for the servers'
+requests (Rpc, CALLABLE), the test package (build_test_package), the phases
+(run_phase, parse, collect) and the report. Here the calendar is only
+synchronized in the background, as for any mailbox that has it checked.
 """
 
 import base64
@@ -256,7 +263,14 @@ def setup_fixture(srv, server_archives=True):
 
 CALLABLE = {"add_message", "set_read", "set_flag", "delete_message", "move_message", "mass_delete", "add_folder", "set_option",
             "rename_folder", "delete_folder", "last_seq", "pings_waiting", "wake_ping", "folders", "devices",
-            "folder_id", "users"}
+            "folder_id", "users",
+            # Calendar, tasks and meetings (calendar-scenario.mjs, run by run_calendar_sync_test.py).
+            "add_event", "change_event", "delete_event", "events", "event", "find_events", "set_attendee_status",
+            "cancel_meeting", "add_task", "change_task", "delete_task", "tasks", "task", "find_tasks",
+            "deliver_invitation", "meeting_responses", "sent_calendar_parts"}
+# Those that only read the server: not listed in the timeline of --trace.
+READ_ONLY_CALLS = {"last_seq", "pings_waiting", "folders", "devices", "folder_id", "users", "events", "event", "find_events",
+                   "tasks", "task", "find_tasks", "meeting_responses", "sent_calendar_parts"}
 
 
 def jsonable(value):
@@ -435,7 +449,7 @@ class Rpc:
             method = data.get("method")
             if method not in CALLABLE:
                 raise ValueError(f"méthode non autorisée : {method}")
-            if method not in ("last_seq", "pings_waiting", "folders", "devices", "folder_id", "users"):
+            if method not in READ_ONLY_CALLS:
                 self.calls.append((time.time(), f"{method} {data.get('args', [])[1:]} {data.get('kwargs', {})}"))
             return getattr(srv, method)(*data.get("args", []), **data.get("kwargs", {}))
         if op == "add_dated":  # a message received `days` days ago (JSON has no dates)
@@ -471,8 +485,9 @@ class Rpc:
 
 # ── Package ────────────────────────────────────────────────────────────────
 
-def build_test_package(work, config, src):
-    """src/ + test material, in work/package, zipped to work/<id>.xpi."""
+def build_test_package(work, config, src, customize=None):
+    """src/ + test material, in work/package, zipped to work/<id>.xpi.
+    customize(pkg, manifest): a sibling runner adds its own test material (run_calendar_sync_test.py)."""
     pkg = work / "package"
     if pkg.exists():
         shutil.rmtree(pkg)
@@ -485,10 +500,12 @@ def build_test_package(work, config, src):
         "parent": {"scopes": ["addon_parent"], "paths": [["sync443MailTest"]],
                    "script": "experiments/sync443MailTest/implementation.js"},
     }
-    (pkg / "manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
     (pkg / "test-config.json").write_text(json.dumps(config, indent=2), encoding="utf-8")
     shutil.copy2(HERE / "test-scenario.mjs", pkg / "test-scenario.mjs")
     shutil.copytree(HERE / "extension" / "experiments" / "sync443MailTest", pkg / "experiments" / "sync443MailTest")
+    if customize:
+        customize(pkg, manifest)
+    (pkg / "manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
     xpi = work / f"{EXTENSION_ID}.xpi"
     with zipfile.ZipFile(xpi, "w", zipfile.ZIP_DEFLATED) as z:
         for file in sorted(pkg.rglob("*")):
@@ -531,7 +548,7 @@ def parse(text):
     return out
 
 
-def run_phase(thunderbird, profile, phase, extra, rpc, log_path):
+def run_phase(thunderbird, profile, phase, extra, rpc, log_path, timeout=None):
     results_path = profile / RESULTS_FILE
     if results_path.exists():
         results_path.unlink()
@@ -547,7 +564,7 @@ def run_phase(thunderbird, profile, phase, extra, rpc, log_path):
         logf.flush()
         proc = subprocess.Popen([str(thunderbird), "-headless", "-no-remote", "-profile", str(profile)],
                                 stdin=subprocess.DEVNULL, stdout=logf, stderr=subprocess.STDOUT, env=env)
-        deadline = time.time() + PHASE_TIMEOUT_S[phase]
+        deadline = time.time() + (timeout or PHASE_TIMEOUT_S[phase])
         while time.time() < deadline:
             rpc.poll()
             if results_path.exists() and "SYNC443MAIL-DONE" in results_path.read_text(encoding="utf-8",
@@ -802,11 +819,16 @@ def main():
         else:
             net.remove_tree(work)
 
+    return report(f"Résultats courrier : {thunderbird} (sans interface), {sys.platform}"
+                  + (f", sources {src}" if src != ROOT / "src" else "") + (f", langue {ui_locale}" if ui_locale else "")
+                  + (", « Dossiers locaux » créés d'avance" if local_folders else "")
+                  + ("" if server_archives else ", sans dossier « Archives » sur le serveur"), started, durations)
+
+
+def report(title, started, durations):
+    """Prints the PASS/FAIL/SKIP list, the gaps and the notes; -> the exit status (1 on any FAIL)."""
     width = min(max((len(r[1]) for r in results), default=0), 110)
-    print(f"\nRésultats courrier : {thunderbird} (sans interface), {sys.platform}"
-          + (f", sources {src}" if src != ROOT / "src" else "") + (f", langue {ui_locale}" if ui_locale else "")
-          + (", « Dossiers locaux » créés d'avance" if local_folders else "")
-          + ("" if server_archives else ", sans dossier « Archives » sur le serveur"))
+    print(f"\n{title}")
     for status, label, detail in results:
         shown = str(detail).replace("\r", "\\r").replace("\n", "\\n") if detail not in (None, "") else ""
         print(f"  {status:4}  {label.ljust(width)}" + (f"   [{shown[:400]}]" if shown else ""))

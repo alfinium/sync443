@@ -110,6 +110,28 @@ test("ping : seulement les dossiers donnés, classe Email, intervalle courant", 
   assert(opts.signal, "signal transmis");
 });
 
+test("ping: calendar and tasks watched with their class; a change in one of them syncs that folder", async () => {
+  // Mail folders as bare ids (class Email) or with their class; calendar and task folders always with theirs.
+  const h = harness({ folders: ["1", { id: "6", cls: "Email" }, { id: "7", cls: "Calendar" }, { id: "8", cls: "Tasks" }] });
+  script(h, [{ status: "2", folders: ["7"] }, { status: "2", folders: ["8", "1"] }]);
+  await finish(h);
+  for (const req of h.server.sent("Ping")) {
+    eq(child(req, "Folders").children.map((f) => [text(f, "Id"), text(f, "Class")]), [["1", "Email"], ["6", "Email"], ["7", "Calendar"], ["8", "Tasks"]]);
+  }
+  eq(h.changes, [["7"], ["8", "1"]], "each change reported starts a pass for the folders named");
+});
+
+test("ping: the server's limit holds for every folder, whatever its class; an unknown class is never sent", async () => {
+  const h = harness({ folders: ["1", { id: "7", cls: "Calendar" }, { id: "8", cls: "Tasks" }] });
+  script(h, [{ status: "6", maxFolders: 2 }]);
+  await finish(h);
+  eq(child(h.server.sent("Ping")[1], "Folders").children.map((f) => [text(f, "Id"), text(f, "Class")]), [["1", "Email"], ["7", "Calendar"]]);
+  const odd = harness({ folders: ["1", { id: "7", cls: "Agenda" }] });
+  await finish(odd);
+  eq(odd.server.sent("Ping").length, 0, "the request is refused before it leaves");
+  assert(odd.sleeps.some((ms) => ms >= 30_000), "and the loop backs off as after an error");
+});
+
 test("ping : changements signalés → synchro de ces dossiers ; hiérarchie changée → synchro complète", async () => {
   const h = harness();
   script(h, [{ status: "2", folders: ["6"] }, { status: "7" }]);

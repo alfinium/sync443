@@ -46,7 +46,33 @@ export function recordName(kind, id) {
  */
 export const SYNC_KINDS = Object.freeze(["mail", "calendar", "contacts", "tasks"]);
 
-/** Fields of a mailbox, checked on every write. */
+/**
+ * Periods a calendar may ask for (FilterType, core/calendar-item.mjs
+ * CALENDAR_FILTER_TYPES): "0" everything, "4" two weeks back, "5" one month,
+ * "6" three months, "7" six months. Items in the future are always kept.
+ */
+export const CALENDAR_PERIODS = Object.freeze(["0", "4", "5", "6", "7"]);
+export const DEFAULT_CALENDAR_PERIOD = "7";
+/** Task filters (FilterType, core/task-item.mjs TASK_FILTER_TYPES): "0" all tasks, "8" incomplete tasks only. */
+export const TASK_FILTERS = Object.freeze(["0", "8"]);
+export const DEFAULT_TASK_FILTER = "0";
+
+/**
+ * A setting added after the first release: absent (a mailbox stored by an
+ * earlier version), it takes its default; present, it must be one of the
+ * allowed values, written as a string or as a number.
+ */
+function choice(value, allowed, fallback) {
+  if (value === undefined) return fallback;
+  const text = typeof value === "string" || typeof value === "number" ? String(value) : "";
+  return allowed.includes(text) ? text : null;
+}
+
+/**
+ * Fields of a mailbox, checked on every write. `calendarPeriod` and
+ * `taskFilter` (stage 4) are optional on the way in and always present on
+ * the way out.
+ */
 export function checkMailbox(mb) {
   const fail = (what) => {
     throw new StoreError(`boîte invalide : ${what}`);
@@ -66,6 +92,10 @@ export function checkMailbox(mb) {
   const sync = mb.sync;
   if (!sync || typeof sync !== "object" || SYNC_KINDS.some((k) => typeof sync[k] !== "boolean")) fail("éléments à synchroniser");
   if (!SYNC_KINDS.some((k) => sync[k])) fail("au moins un élément à synchroniser");
+  const calendarPeriod = choice(mb.calendarPeriod, CALENDAR_PERIODS, DEFAULT_CALENDAR_PERIOD);
+  if (calendarPeriod === null) fail("période du calendrier");
+  const taskFilter = choice(mb.taskFilter, TASK_FILTERS, DEFAULT_TASK_FILTER);
+  if (taskFilter === null) fail("filtre des tâches");
   return {
     id: mb.id,
     email: mb.email,
@@ -75,6 +105,8 @@ export function checkMailbox(mb) {
     deviceId: mb.deviceId,
     syncMinutes: mb.syncMinutes,
     filterType: String(mb.filterType),
+    calendarPeriod,
+    taskFilter,
     accountKey: mb.accountKey,
     tlsPins: [...mb.tlsPins],
     sync: Object.fromEntries(SYNC_KINDS.map((k) => [k, sync[k]])),
@@ -268,9 +300,31 @@ export class Store {
         if (changed) await this.set(namesKey, [...names]);
       });
     };
+    /**
+     * Several records written by one storage call, with the list of names
+     * when it grows: all of them are stored, or none is (what must change
+     * together never changes by half).
+     */
+    const writeMany = (entries) => {
+      const list = [...entries].map(([name, value]) => [name, checkName(name), value]);
+      return this.#withLock(namesKey, async () => {
+        alive();
+        if (!list.length) return;
+        const values = new Map(list.map(([, key, value]) => [key, value]));
+        const known = listed();
+        const names = new Set(await this.get(namesKey, []));
+        const before = names.size;
+        for (const [name] of list) names.add(name);
+        if (names.size !== before) values.set(namesKey, [...names]);
+        await this.area.set(Object.fromEntries(values));
+        for (const [name] of list) known.add(name);
+      });
+    };
     return {
       get: (name, fallback = null) => this.get(checkName(name), fallback),
       set: (name, value) => write(name, value),
+      /** `entries`: [[name, value], …] (or a Map), written together. */
+      setMany: (entries) => writeMany(entries instanceof Map ? entries : Array.isArray(entries) ? entries : []),
       remove: (name) => erase(name),
       removeMany: (names) => eraseMany(Array.isArray(names) ? names : []),
       /** A Map record (stored as entries). A damaged record reads as an empty Map. */

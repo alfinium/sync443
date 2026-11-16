@@ -52,8 +52,9 @@ const PAGES = [
     [0x3b, "Status"], [0x3c, "ContentClass"], [0x3d, "FlagType"], [0x3e, "CompleteTime"],
     [0x3f, "DisallowNewTimeProposal"],
   ]],
+  // Page 4 spells its first tag "Timezone"; page 2 has "TimeZone" (0x33).
   [4, "Calendar", [
-    [0x05, "TimeZone"], [0x06, "AllDayEvent"], [0x07, "Attendees"], [0x08, "Attendee"], [0x09, "Email"],
+    [0x05, "Timezone"], [0x06, "AllDayEvent"], [0x07, "Attendees"], [0x08, "Attendee"], [0x09, "Email"],
     [0x0a, "Name"], [0x0d, "BusyStatus"], [0x0e, "Categories"], [0x0f, "Category"], [0x11, "DtStamp"],
     [0x12, "EndTime"], [0x13, "Exception"], [0x14, "Exceptions"], [0x15, "Deleted"],
     [0x16, "ExceptionStartTime"], [0x17, "Location"], [0x18, "MeetingStatus"], [0x19, "OrganizerEmail"],

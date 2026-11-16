@@ -4,7 +4,7 @@
 /**
  * Synchronisation of one mailbox: the public entry point of the engine.
  *
- *   const sync = new MailboxSync({ mailbox, store, clientFactory, mailStore, log, now });
+ *   const sync = new MailboxSync({ mailbox, store, clientFactory, mailStore, log, now, invitations, scheduler, pim });
  *   await sync.run({ reason: "user" | "timer" | "push" | …, folders, signal, confirmDeletes, round });
  *   sync.startPush(); await sync.stopPush();
  *   await sync.recordIntent(intent);   // a local change, from tb/events.mjs
@@ -22,11 +22,30 @@
  *      collection fully resynchronised;
  *   3. journal: local changes sent to the server, in order, each to the
  *      collection it was made in (by ServerId);
- *   4. collections: server changes applied locally (sync/mail.mjs).
- * Only mail is synchronised in this version: calendar, contacts and tasks
- * folders are ignored even when chosen. The server's Outbox is never
- * synchronised (its local counterpart is Thunderbird's queue of messages to
- * send).
+ *   4. collections: server changes applied locally (sync/mail.mjs);
+ *   5. calendar and tasks (sync/pim.mjs PimSync.pass), in both directions.
+ *      When FolderSync gave the whole list again, the calendar part is told
+ *      first (PimSync.listRestarted): its collections are matched again, by
+ *      place, before any ServerId is trusted.
+ * Step 1 runs when mail, the calendar or the tasks are chosen; steps 2 to 4
+ * when mail is (unchecked, its local account and its tables stay as they
+ * are); step 5 when the calendar or the tasks are, and the calendar objects
+ * were given (`invitations`, `scheduler`, `pim`: without them the mailbox
+ * synchronises mail only). Contacts folders are ignored even when chosen.
+ * The server's Outbox is never synchronised (its local counterpart is
+ * Thunderbird's queue of messages to send).
+ *
+ * The two parts. A failure of the mail part (steps 2 to 4) does not stop
+ * the calendar part, nor the reverse: what each one did is kept, and the
+ * first failure is the pass's, recorded once in the mailbox's health. A
+ * FATAL failure or a cancellation stops the pass at once. Calendars left by
+ * kinds unchecked since the last pass are removed by one more run of step 5
+ * (record "pimActive").
+ *
+ * Meeting messages. Step 5 only queues them. Once the pass is over and the
+ * lock released, they are asked for and sent (scheduler.deliver) with a
+ * client of their own: the confirmation window never holds a pass back.
+ * close() withdraws the question in progress; its message stays queued.
  *
  * Special folders. The server's Inbox, Drafts, Deleted Items and Sent Items
  * always go to the account's default local folders "/Inbox", "/Drafts",
@@ -51,11 +70,13 @@
  * Health (sync/health.mjs). An automatic run (any reason but "user")
  * respects backoff and blocks; a "user" run clears them first. FATAL
  * errors block, others back off; a cancelled pass changes nothing. Retained
- * mass deletions (of messages or of folders) block the mailbox with code
- * MASS_DELETE until the user confirms them (run({ confirmDeletes: true }))
- * or keeps the local copies (discardPendingDeletes()); no pass runs in the
- * meantime.
- * Items whose import keeps failing are counted in health.failedItems.
+ * mass deletions (of messages, of folders, of events or tasks) block the
+ * mailbox with code MASS_DELETE until the user confirms them
+ * (run({ confirmDeletes: true })) or keeps the local copies
+ * (discardPendingDeletes()); no pass runs in the meantime. Those of a part
+ * that is no longer synchronised wait without blocking the other.
+ * Items whose import keeps failing are counted in health.failedItems (those
+ * of the calendar part among them: health.failedCalendarItems).
  */
 
 import { folderSyncRequest, parseFolderSync, folderCreateRequest, folderUpdateRequest, folderDeleteRequest, parseFolderChange, ProtocolError } from "../core/protocol.mjs";
@@ -78,12 +99,16 @@ export const MASS_DELETE = SYNC_ERR.MASS_DELETE;
 const MASS_FOLDER_COUNT = 3;
 /** …and at least this share of the mailbox's folders is a mass deletion too. */
 const MASS_FOLDER_RATIO = 0.5;
-/** Kinds synchronised by this version: mail only (calendar, contacts and tasks folders are ignored even when chosen). */
+/** Kinds that get local mail folders: mail only (calendar and task folders go to sync/pim.mjs, contacts folders nowhere). */
 const KINDS = Object.freeze({ mail: true, calendar: false, contacts: false, tasks: false });
 const { TRASH: TRASH_TYPE, INBOX: INBOX_TYPE, OUTBOX: OUTBOX_TYPE, USER_MAIL: USER_MAIL_TYPE } = FOLDER_TYPE;
 const ARCHIVES_NAME = "Archives";
 /** FolderCreate / FolderUpdate / FolderDelete statuses worth another try ([MS-ASCMD] 2.2.3.177.x). */
 const FOLDER_TRANSIENT = new Set(["6", "8", "9", "11"]);
+/** Record: the calendar part has run for this mailbox (its calendars may exist in Thunderbird). */
+const PIM_ACTIVE = "pimActive";
+/** Record: the folder list the mail tables were last matched against, kept while mail is not synchronised. */
+const LIST_BEFORE = "foldersBefore";
 
 
 function closedError() {
@@ -138,6 +163,13 @@ export class MailboxSync {
   #run = 0; // current run (journal attempts are counted once per run)
   #closed = false;
   #closing = null;
+  #invitations;
+  #scheduler;
+  #pim;
+  #deliveryCtrl = new AbortController(); // aborted by close(): the delivery of meeting messages stops
+  #delivering = null; // the delivery in progress, outside the lock
+  #deliverAgain = false; // a pass ended while a delivery was going on
+  #deliverAfter = false; // the pass in progress ran the calendar part: its messages are delivered once it is over
 
   /**
    * @param {object} o
@@ -150,8 +182,11 @@ export class MailboxSync {
    * @param {(ms, signal) => Promise} [o.sleep]   for the Ping loop
    * @param {() => number} [o.random]
    * @param {object} [o.push]           Ping settings (sync/push.mjs PING_DEFAULTS)
+   * @param {object} [o.invitations]    sync/invitations.mjs InvitationTable of the mailbox: told of the invitation mails
+   * @param {object} [o.scheduler]      sync/scheduling.mjs Scheduler of the mailbox: its messages are delivered after a pass
+   * @param {object} [o.pim]            sync/pim.mjs PimSync of the mailbox: the calendar part. Without it, mail only.
    */
-  constructor({ mailbox, store, clientFactory, mailStore, log = null, now = () => Date.now(), sleep, random = Math.random, push = {} }) {
+  constructor({ mailbox, store, clientFactory, mailStore, log = null, now = () => Date.now(), sleep, random = Math.random, push = {}, invitations = null, scheduler = null, pim = null }) {
     if (!mailbox?.id) throw new TypeError("MailboxSync : boîte manquante");
     this.#mailbox = mailbox;
     this.#records = store.mailbox(mailbox.id);
@@ -162,7 +197,21 @@ export class MailboxSync {
     this.#sleep = sleep;
     this.#random = random;
     this.#pushSettings = push;
+    this.#invitations = invitations;
+    this.#scheduler = scheduler;
+    this.#pim = pim;
     this.#journal = new Journal({ records: this.#records, log, now });
+  }
+
+  /** The calendar part runs: its engine was given, and the calendar or the tasks are chosen. */
+  #wantsPim() {
+    const sync = this.#mailbox.sync;
+    return Boolean(this.#pim) && (sync?.calendar === true || sync?.tasks === true);
+  }
+
+  /** Meeting messages are being asked for or sent (tests). */
+  get delivering() {
+    return this.#delivering !== null;
   }
 
   /** A pass is in progress (tests). */
@@ -224,8 +273,10 @@ export class MailboxSync {
 
   /**
    * Stop for good: the pass in progress is cancelled and awaited, the Ping
-   * loop stopped, the journal written out. Once this resolves, the
-   * instance never writes to the storage again; run() then resolves at
+   * loop stopped, the delivery of meeting messages stopped (a question the
+   * user has not answered is withdrawn: its message stays queued, and the
+   * next engine asks again), the journal written out. Once this resolves,
+   * the instance never writes to the storage again; run() then resolves at
    * once without a pass, recordIntent() rejects with code CLOSED.
    */
   close() {
@@ -233,8 +284,10 @@ export class MailboxSync {
       this.#closed = true;
       this.#closing = (async () => {
         this.cancel();
+        this.#deliveryCtrl.abort();
         await this.stopPush().catch(() => {});
         await this.#lock;
+        await this.#delivering;
         await this.#journal.close();
       })();
     }
@@ -288,23 +341,43 @@ export class MailboxSync {
     return p;
   }
 
-  /** Retained mass deletions: → { count, collections: [{ collectionId, count, at, folder? }] } */
-  async pendingDeletes() {
+  /**
+   * Deletions held by the mass-deletion threshold, of the parts this
+   * mailbox synchronises: → { map, mail, pim, count } (`map`: the mail ones).
+   * Those of mail wait, uncounted, while mail is unchecked: nothing could
+   * apply them, and they must not block the calendar.
+   */
+  async #held() {
     const map = await loadPendingDeletes(this.#records);
-    return {
-      count: countPending(map),
-      collections: [...map]
+    const mail = this.#mailbox.sync?.mail === true ? countPending(map) : 0;
+    const pim = this.#wantsPim() ? await this.#pim.pendingDeletes() : 0;
+    return { map, mail, pim, count: mail + pim };
+  }
+
+  /**
+   * Retained mass deletions: → { count, collections: [{ collectionId, count, at, folder? }] }.
+   * `count` is the whole (messages, folders, events and tasks), `collections`
+   * the mail folders concerned; with a calendar engine, `calendar` is the
+   * number of events and tasks among `count`.
+   */
+  async pendingDeletes() {
+    const held = await this.#held();
+    const out = {
+      count: held.count,
+      collections: [...(held.mail ? held.map : [])]
         .filter(([, e]) => e.retained)
         .map(([collectionId, e]) => ({ collectionId, count: e.folder ? Math.max(1, e.messages) : e.items.length, at: e.at, ...(e.folder ? { folder: true } : {}) })),
     };
+    return this.#pim ? { ...out, calendar: held.pim } : out;
   }
 
   /**
    * The user refuses the retained deletions: they are forgotten, the local
    * copies kept, and the collections concerned fully resynchronised (their
    * tables rebuilt from what the server really holds). A folder the server
-   * removed stays as a local folder, no longer synchronised. Unblocks the
-   * mailbox.
+   * removed stays as a local folder, no longer synchronised. Events and
+   * tasks whose deletion was held stay in their calendar, detached from the
+   * server (PimSync.discardPendingDeletes). Unblocks the mailbox.
    */
   discardPendingDeletes() {
     return this.#exclusive(async () => {
@@ -324,6 +397,8 @@ export class MailboxSync {
         await saveCollection(records, coll);
       }
       await savePendingDeletes(records, new Map());
+      // (Should the calendar refuse, the mailbox stays blocked: the user can ask again.)
+      if (this.#wantsPim()) await this.#pim.discardPendingDeletes();
       const health = await this.#health();
       if (health.blocked?.code === MASS_DELETE) await records.set("health", { ...health, blocked: null });
       this.#log?.info?.(`Suppressions retenues abandonnées ; ${map.size - folders} dossier(s) entièrement resynchronisé(s) au prochain passage, ${folders} dossier(s) gardé(s) localement.`);
@@ -351,6 +426,11 @@ export class MailboxSync {
     } finally {
       for (const s of opts.signals) s.removeEventListener?.("abort", abort);
       this.#ctrl = null;
+      // The meeting messages this pass queued: asked for and sent from here on, outside the lock.
+      if (this.#deliverAfter) {
+        this.#deliverAfter = false;
+        this.#startDelivery();
+      }
     }
   }
 
@@ -360,17 +440,18 @@ export class MailboxSync {
     let health = await this.#health();
     const user = opts.reason === "user";
     if (user) health = clearForUser(health);
+    const wantMail = this.#mailbox.sync?.mail === true;
+    const wantPim = this.#wantsPim();
 
-    // Retained mass deletions: nothing runs until the user decides.
-    const pending = await loadPendingDeletes(records);
-    const pendingCount = countPending(pending);
-    if (!pendingCount && health.blocked?.code === MASS_DELETE) health = { ...health, blocked: null };
-    if (pendingCount && !opts.confirmDeletes) {
-      health = this.#blockMassDelete(health, pendingCount);
+    // Retained mass deletions (messages, folders, events, tasks): nothing runs until the user decides.
+    const held = await this.#held();
+    if (!held.count && health.blocked?.code === MASS_DELETE) health = { ...health, blocked: null };
+    if (held.count && !opts.confirmDeletes) {
+      health = this.#blockMassDelete(health, held.count);
       await records.set("health", health);
-      return { ...result, status: "blocked", reason: MASS_DELETE, pendingDeletes: pendingCount };
+      return { ...result, status: "blocked", reason: MASS_DELETE, pendingDeletes: held.count };
     }
-    if (!user && !(opts.confirmDeletes && pendingCount)) {
+    if (!user && !(opts.confirmDeletes && held.count)) {
       const gate = canSyncAutomatically(health, this.#now());
       if (!gate.ok) {
         await records.set("health", health);
@@ -378,78 +459,44 @@ export class MailboxSync {
       }
     }
     await records.set("health", health);
-    if (!this.#mailbox.sync?.mail) return result; // nothing chosen that this version synchronises
+    // Calendar and tasks both unchecked since the calendar part last ran: it runs once more, to remove what it left.
+    const tidyPim = !wantPim && Boolean(this.#pim) && (await records.get(PIM_ACTIVE, null)) === true;
+    if (!wantMail && !wantPim && !tidyPim) return result; // nothing chosen that this version synchronises
     if (opts.newRun || !this.#run) this.#run++;
-    const confirm = Boolean(opts.confirmDeletes && pendingCount);
 
     try {
       if (signal.aborted) throw new EasError(ERR.CANCELLED, "Synchronisation annulée.");
-      if (!this.#mailbox.accountKey) throw new EasError(ERR.CONFIG, "Compte local de la boîte absent.");
+      if (wantMail && !this.#mailbox.accountKey) throw new EasError(ERR.CONFIG, "Compte local de la boîte absent.");
       const client = await this.#clientFactory();
-      const pass = new MailPass();
       const state = await this.#folderSync(client, signal); // 1
-      let open;
-      this.#gate = new Promise((resolve) => (open = resolve));
-      let layout;
-      try {
-        layout = await this.#localFolders(state, { confirm }); // 2
-        if (state.previous) {
-          await this.#saveHierarchy(state);
-          state.previous = null;
-        }
-      } finally {
-        this.#gate = null;
-        open();
-      }
-      const ctx = this.#context(client, signal, pass, state, layout);
+      // The whole list came again (folders perhaps renumbered): the calendar part is told before the new list is
+      // saved, and matches its collections again before it trusts a ServerId, as mail does (rules 18 and 19).
+      if (state.previous && this.#pim) await this.#pim.listRestarted();
 
-      if (confirm) {
-        const now = await loadPendingDeletes(records); // step 2 may have dropped some (a folder reset, a removal applied)
-        let applied = 0;
-        for (const [cid, entry] of now) {
-          if (!entry.retained || entry.folder) continue;
-          const coll = layout.colls.get(cid);
-          if (coll && layout.local.has(coll.path)) {
-            await applyLocalDeletes(ctx, coll, entry.items);
-            coll.window = { since: this.#now(), count: 0, base: coll.size }; // confirmed: the rolling window starts again
-            await saveCollection(records, coll);
-            applied += entry.items.length;
-          }
-          now.delete(cid);
-        }
-        await savePendingDeletes(records, now);
-        this.#log?.info?.(`${pendingCount} suppression(s) confirmée(s) par l'utilisateur (${applied} message(s) mis à la corbeille locale).`);
-      }
-
-      const replay = await replayJournal({ journal: this.#journal, handlers: this.#handlers(ctx, client, state, layout), signal, log: this.#log, run: this.#run }); // 3
-      result.sent = replay.sent;
-      for (const st of pass.per.values()) st.ops = null; // what is left of the journal now
-
-      // 4. Collections: the inbox first, the trash last (a message moved on the server comes out of the trash).
-      const errors = [];
-      for (const coll of this.#syncOrder(state, layout, opts.folders)) {
-        if (signal.aborted) throw new EasError(ERR.CANCELLED, "Synchronisation annulée.");
+      // Each part runs whatever became of the other: only a cancellation or a FATAL failure stops the pass at once.
+      let failure = null;
+      const part = async (fn) => {
         try {
-          await syncCollection(ctx, coll);
+          await fn();
         } catch (e) {
           if (signal.aborted || e?.code === ERR.CANCELLED || FATAL.has(e?.code)) throw e;
-          errors.push(e);
-          this.#log?.warn?.(`Sync ${coll.serverId} : ${describe(e)}`);
+          failure ??= e;
         }
+      };
+      if (wantMail) await part(() => this.#mailPart(client, signal, state, opts, { confirm: Boolean(opts.confirmDeletes && held.mail), count: held.mail }, result)); // 2, 3, 4
+      else await this.#withoutMail(state);
+      let failedCalendarItems = 0;
+      if (wantPim || tidyPim) {
+        if (signal.aborted) throw new EasError(ERR.CANCELLED, "Synchronisation annulée.");
+        await part(async () => {
+          failedCalendarItems = await this.#calendarPart(client, signal, state, opts, { confirm: Boolean(opts.confirmDeletes && held.pim), tidy: tidyPim }, result); // 5
+        });
       }
-      // Server deletions received by an earlier pass for collections not synchronised in this one, once their run is over.
-      for (const [cid, entry] of await loadPendingDeletes(records)) {
-        const coll = layout.colls.get(cid);
-        if (!entry.retained && !entry.folder && coll && layout.syncable.has(cid)) await settleDeletes(ctx, coll);
-      }
-      await this.#saveLayout(layout);
-      Object.assign(result, pass.counts);
-      result.failed = [...layout.colls.values()].reduce((n, c) => n + c.failed.size, 0);
-      result.moreAvailable = pass.bounded || pass.hierarchyChanged || pass.waiting || [...layout.colls.values()].some((c) => layout.syncable.has(c.serverId) && c.more);
-      if (errors.length) throw errors[0];
+      if (failure) throw failure;
 
       health = recordSuccess(this.#now(), { failedItems: result.failed });
-      const stillPending = countPending(await loadPendingDeletes(records));
+      if (failedCalendarItems) health = { ...health, failedCalendarItems };
+      const stillPending = (await this.#held()).count;
       result.pendingDeletes = stillPending;
       if (stillPending) {
         health = this.#blockMassDelete(health, stillPending);
@@ -465,6 +512,151 @@ export class MailboxSync {
       await records.set("health", recordFailure(health, err, this.#now(), { random: this.#random }));
       throw err;
     }
+  }
+
+  /**
+   * Steps 2 to 4: local folders, journal, mail collections. Counts go to
+   * `result`; throws the first failure of a collection once the others ran.
+   */
+  async #mailPart(client, signal, state, opts, { confirm, count }, result) {
+    const records = this.#records;
+    const pass = new MailPass();
+    // The whole list came again while mail was not synchronised: the tables are matched now, against the list they knew.
+    const kept = (await records.names()).includes(LIST_BEFORE);
+    if (kept) state.previous = checkFolders(await records.getMap(LIST_BEFORE)) ?? new Map();
+    let open;
+    this.#gate = new Promise((resolve) => (open = resolve));
+    let layout;
+    try {
+      layout = await this.#localFolders(state, { confirm }); // 2
+      if (state.previous) {
+        await this.#saveHierarchy(state);
+        state.previous = null;
+      }
+      if (kept) await records.remove(LIST_BEFORE);
+    } finally {
+      this.#gate = null;
+      open();
+    }
+    const ctx = this.#context(client, signal, pass, state, layout);
+
+    if (confirm) {
+      const now = await loadPendingDeletes(records); // step 2 may have dropped some (a folder reset, a removal applied)
+      let applied = 0;
+      for (const [cid, entry] of now) {
+        if (!entry.retained || entry.folder) continue;
+        const coll = layout.colls.get(cid);
+        if (coll && layout.local.has(coll.path)) {
+          await applyLocalDeletes(ctx, coll, entry.items);
+          coll.window = { since: this.#now(), count: 0, base: coll.size }; // confirmed: the rolling window starts again
+          await saveCollection(records, coll);
+          applied += entry.items.length;
+        }
+        now.delete(cid);
+      }
+      await savePendingDeletes(records, now);
+      this.#log?.info?.(`${count} suppression(s) confirmée(s) par l'utilisateur (${applied} message(s) mis à la corbeille locale).`);
+    }
+
+    const replay = await replayJournal({ journal: this.#journal, handlers: this.#handlers(ctx, client, state, layout), signal, log: this.#log, run: this.#run }); // 3
+    result.sent = replay.sent;
+    for (const st of pass.per.values()) st.ops = null; // what is left of the journal now
+
+    // 4. Collections: the inbox first, the trash last (a message moved on the server comes out of the trash).
+    const errors = [];
+    for (const coll of this.#syncOrder(state, layout, opts.folders)) {
+      if (signal.aborted) throw new EasError(ERR.CANCELLED, "Synchronisation annulée.");
+      try {
+        await syncCollection(ctx, coll);
+      } catch (e) {
+        if (signal.aborted || e?.code === ERR.CANCELLED || FATAL.has(e?.code)) throw e;
+        errors.push(e);
+        this.#log?.warn?.(`Sync ${coll.serverId} : ${describe(e)}`);
+      }
+    }
+    // Server deletions received by an earlier pass for collections not synchronised in this one, once their run is over.
+    for (const [cid, entry] of await loadPendingDeletes(records)) {
+      const coll = layout.colls.get(cid);
+      if (!entry.retained && !entry.folder && coll && layout.syncable.has(cid)) await settleDeletes(ctx, coll);
+    }
+    await this.#saveLayout(layout);
+    Object.assign(result, pass.counts);
+    result.failed = [...layout.colls.values()].reduce((n, c) => n + c.failed.size, 0);
+    result.moreAvailable = pass.bounded || pass.hierarchyChanged || pass.waiting || [...layout.colls.values()].some((c) => layout.syncable.has(c.serverId) && c.more);
+    if (errors.length) throw errors[0];
+  }
+
+  /**
+   * Mail is not synchronised in this pass. When the server gave its whole
+   * folder list again (a key refused, a partnership reset: folders may be
+   * renumbered), the mail tables kept from before still name the folders of
+   * the list before. That list is kept for the pass that synchronises mail
+   * again, which matches every table as after any restart: no ServerId is
+   * taken at face value (the oldest list kept is the one the tables knew).
+   */
+  async #withoutMail(state) {
+    if (!state.previous) return;
+    const names = await this.#records.names();
+    if (!names.includes(LIST_BEFORE) && storedCollections(names).length) await this.#records.setMap(LIST_BEFORE, state.previous);
+    await this.#saveHierarchy(state);
+    state.previous = null;
+  }
+
+  /**
+   * Step 5: the calendar and task collections (sync/pim.mjs), with the
+   * folder list of this pass. `tidy`: neither kind is chosen any more, the
+   * pass only removes what was left. Meeting messages are not delivered
+   * here (the lock is held): #pass starts their delivery once it is over.
+   * → the number of items the calendar part could not read or write
+   */
+  async #calendarPart(client, signal, state, opts, { confirm, tidy }, result) {
+    const records = this.#records;
+    // Written before the first calendar exists: kinds unchecked later are tidied even if the pass that made it stopped.
+    if (!tidy && (await records.get(PIM_ACTIVE, null)) !== true) await records.set(PIM_ACTIVE, true);
+    let r;
+    try {
+      r = await this.#pim.pass({ client, version: client.proto?.asVersion ?? null, folders: state.folders, signal, confirmDeletes: confirm, only: opts.folders, deliver: false });
+    } catch (e) {
+      // A collection that failed does not hold back the messages of the others.
+      if (!signal.aborted && e?.code !== ERR.CANCELLED && !FATAL.has(e?.code)) this.#deliverAfter = true;
+      throw e;
+    }
+    this.#deliverAfter = true;
+    if (tidy) await records.remove(PIM_ACTIVE);
+    result.calendar = { received: r.received, sent: r.sent, failed: r.failed };
+    result.failed += r.failed;
+    result.moreAvailable ||= r.moreAvailable;
+    return r.failed;
+  }
+
+  /**
+   * Ask for and send the meeting messages that wait (scheduler.deliver),
+   * outside the lock and with a client of their own: a question the user
+   * has not answered never holds a pass back. One delivery at a time; a
+   * pass that ends meanwhile makes it look again.
+   */
+  #startDelivery() {
+    if (!this.#scheduler || this.#closed) return;
+    if (this.#delivering) {
+      this.#deliverAgain = true;
+      return;
+    }
+    const signal = this.#deliveryCtrl.signal;
+    this.#delivering = (async () => {
+      try {
+        for (;;) {
+          this.#deliverAgain = false;
+          if (signal.aborted) break;
+          if (await this.#scheduler.pending()) await this.#scheduler.deliver({ client: await this.#clientFactory(), signal });
+          if (!this.#deliverAgain) break;
+        }
+      } catch (e) {
+        // What could not be asked or sent stays queued: the next pass delivers again.
+        if (!signal.aborted && e?.code !== ERR.CANCELLED) this.#log?.warn?.(`Messages de réunion non traités (${describe(e)}).`);
+      } finally {
+        this.#delivering = null;
+      }
+    })();
   }
 
   #blockMassDelete(health, count) {
@@ -494,6 +686,7 @@ export class MailboxSync {
       journalOps: (coll) => this.#journal.messageOps({ serverId: coll.serverId, path: coll.path }),
       stuck: this.#stuck,
       pass,
+      ...(this.#invitations ? { invitations: this.#invitations } : {}),
     };
   }
 
@@ -1412,7 +1605,7 @@ export class MailboxSync {
 
   // ── Push ────────────────────────────────────────────────────────────────
 
-  /** Start the Ping loop (idempotent). Changes reported by the server start passes (reason "push"). */
+  /** Start the Ping loop (idempotent). Changes reported by the server start passes (reason "push") for the folders it names. */
   startPush() {
     if (this.#closed || this.#push?.running) return;
     this.#push = new PushLoop({
@@ -1420,10 +1613,10 @@ export class MailboxSync {
       folders: () => this.#pingFolders(),
       onChanges: (ids) => this.run({ reason: "push", folders: ids }),
       canPing: async () => {
-        if (this.#closed || !this.#mailbox.sync?.mail) return { ok: false, stop: true };
+        if (this.#closed || !(this.#mailbox.sync?.mail || this.#wantsPim())) return { ok: false, stop: true };
         const health = await this.#health();
         if (health.blocked) return { ok: false, stop: true };
-        if (countPending(await loadPendingDeletes(this.#records))) return { ok: false, stop: true };
+        if ((await this.#held()).count) return { ok: false, stop: true };
         const gate = canSyncAutomatically(health, this.#now());
         return gate.ok ? { ok: true } : { ok: false, until: gate.until };
       },
@@ -1452,18 +1645,28 @@ export class MailboxSync {
     return Boolean(this.#push?.running);
   }
 
-  /** Collections to watch: mail of the chosen kinds, synchronised, not the Outbox. */
+  /**
+   * Collections to watch, each with its class: [{ id, cls }]. The mail
+   * folders that are synchronised (not the Outbox), then the calendar and
+   * task folders the last pass left ready (PimSync.pingFolders). Only the
+   * kinds chosen for the mailbox.
+   */
   async #pingFolders() {
-    if (!this.#mailbox.sync?.mail) return [];
+    const wantMail = Boolean(this.#mailbox.sync?.mail);
+    const wantPim = this.#wantsPim();
+    if (!wantMail && !wantPim) return [];
     const folders = checkFolders(await this.#records.getMap("folders"));
     if (!folders) return [];
-    const tree = buildTree(folders, { kinds: KINDS });
-    const layout = checkLayout(await this.#records.getMap("layout"));
     const out = [];
-    for (const [sid, node] of tree.nodes) {
-      if (node.type === OUTBOX_TYPE) continue;
-      if (layout.get(sid)?.ready) out.push(sid);
+    if (wantMail) {
+      const tree = buildTree(folders, { kinds: KINDS });
+      const layout = checkLayout(await this.#records.getMap("layout"));
+      for (const [sid, node] of tree.nodes) {
+        if (node.type === OUTBOX_TYPE) continue;
+        if (layout.get(sid)?.ready) out.push({ id: sid, cls: "Email" });
+      }
     }
+    if (wantPim) for (const f of this.#pim.pingFolders(folders)) out.push({ id: f.id, cls: f.class });
     return out;
   }
 }

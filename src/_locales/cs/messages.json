@@ -90,7 +90,7 @@
     "message": "Zrušit"
   },
   "removeQuestion": {
-    "message": "Odebrat schránku „$NAME$“? Její účet, místní složky a heslo budou z Thunderbirdu odebrány. Na serveru se nic nesmaže.",
+    "message": "Odebrat schránku „$NAME$“? Její účet, místní složky a heslo budou z Thunderbirdu odebrány. Na serveru se nic nesmaže. Změny, které ještě nebyly odeslány na server, budou ztraceny.",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -98,7 +98,39 @@
     }
   },
   "discardConfirm": {
-    "message": "Smazání provedená na serveru nebudou uplatněna: zprávy zůstanou v Thunderbirdu a dotčené složky se znovu synchronizují se serverem. Složka smazaná na serveru zde zůstane, ale nebude se synchronizovat."
+    "message": "Smazání provedená na serveru nebudou uplatněna: dotčené zprávy, události a úkoly zůstanou v Thunderbirdu. Dotčené složky pošty se znovu synchronizují se serverem; ponechané události a úkoly už nebudou se serverem propojeny. Složka smazaná na serveru zde zůstane, ale nebude se synchronizovat."
+  },
+  "uncheckCalendarConfirm": {
+    "message": "Přestat synchronizovat kalendář schránky „$NAME$“? Její události budou z Thunderbirdu odebrány. Na serveru se nic nesmaže. Změny, které ještě nebyly odeslány na server, budou ztraceny.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "uncheckTasksConfirm": {
+    "message": "Přestat synchronizovat úkoly schránky „$NAME$“? Její úkoly budou z Thunderbirdu odebrány. Na serveru se nic nesmaže. Změny, které ještě nebyly odeslány na server, budou ztraceny.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "uncheckBothConfirm": {
+    "message": "Přestat synchronizovat kalendář a úkoly schránky „$NAME$“? Její kalendáře budou z Thunderbirdu odebrány včetně událostí a úkolů. Na serveru se nic nesmaže. Změny, které ještě nebyly odeslány na server, budou ztraceny.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "moveConfirm": {
+    "message": "Změnit server nebo přihlašovací jméno schránky „$NAME$“? Její kalendáře a úkoly budou z Thunderbirdu odebrány a poté znovu synchronizovány ze serveru. Změny, které ještě nebyly odeslány na server, budou ztraceny.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
   },
   "noAnswer": {
     "message": "Rozšíření neodpovídá. Načtěte tuto stránku znovu."
@@ -213,11 +245,20 @@
   "fieldPeriod": {
     "message": "Období pošty"
   },
+  "fieldCalendarPeriod": {
+    "message": "Období kalendáře"
+  },
+  "calendarPeriodHint": {
+    "message": "Události starší než toto období se nesynchronizují. Budoucí události se synchronizují vždy."
+  },
+  "fieldTaskFilter": {
+    "message": "Úkoly k synchronizaci"
+  },
   "fieldKinds": {
     "message": "Položky k synchronizaci"
   },
   "kindsHint": {
-    "message": "V této verzi se synchronizuje pouze pošta. Ostatní volby se uloží pro pozdější použití."
+    "message": "V této verzi se kontakty zatím nesynchronizují. Tato volba se uloží pro pozdější použití."
   },
   "soon": {
     "message": "již brzy"
@@ -268,11 +309,23 @@
   "period1Month": {
     "message": "1 měsíc"
   },
+  "period3Months": {
+    "message": "3 měsíce"
+  },
+  "period6Months": {
+    "message": "6 měsíců"
+  },
   "periodAll": {
     "message": "Vše"
   },
   "periodUnknown": {
     "message": "Neznámé"
+  },
+  "taskFilterAll": {
+    "message": "Všechny úkoly"
+  },
+  "taskFilterIncomplete": {
+    "message": "Pouze nedokončené úkoly"
   },
   "kindMail": {
     "message": "Pošta"
@@ -336,6 +389,12 @@
   "choosePeriod": {
     "message": "Zvolte období pošty k synchronizaci."
   },
+  "chooseCalendarPeriod": {
+    "message": "Zvolte období kalendáře k synchronizaci."
+  },
+  "chooseTaskFilter": {
+    "message": "Zvolte úkoly k synchronizaci."
+  },
   "chooseKind": {
     "message": "Zvolte alespoň jednu položku k synchronizaci."
   },
@@ -382,7 +441,7 @@
     }
   },
   "statusMassDelete": {
-    "message": "Synchronizace pozastavena: server najednou smazal více zpráv (počet: $COUNT$). Tato smazání budou provedena až po vašem potvrzení; můžete si také ponechat místní kopie.",
+    "message": "Synchronizace pozastavena: server najednou smazal více položek – zpráv, událostí nebo úkolů (počet: $COUNT$). Tato smazání budou provedena až po vašem potvrzení; můžete si také ponechat místní kopie.",
     "placeholders": {
       "count": {
         "content": "$1"
@@ -390,7 +449,7 @@
     }
   },
   "statusMassDeleteMany": {
-    "message": "Synchronizace pozastavena: server najednou smazal mnoho zpráv. Tato smazání budou provedena až po vašem potvrzení; můžete si také ponechat místní kopie."
+    "message": "Synchronizace pozastavena: server najednou smazal mnoho položek (zpráv, událostí nebo úkolů). Tato smazání budou provedena až po vašem potvrzení; můžete si také ponechat místní kopie."
   },
   "statusBlocked": {
     "message": "Zastaveno: $REASON$ Automaticky se nebude nic zkoušet: chcete-li pokračovat, klikněte na „Synchronizovat“.",
@@ -446,6 +505,17 @@
   },
   "failedMany": {
     "message": "Počet zpráv, které se nepodařilo importovat: $COUNT$. Pokus se automaticky zopakuje.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "failedCalendarOne": {
+    "message": "1 událost nebo úkol se nepodařilo importovat."
+  },
+  "failedCalendarMany": {
+    "message": "Počet událostí nebo úkolů, které se nepodařilo importovat: $COUNT$.",
     "placeholders": {
       "count": {
         "content": "$1"
@@ -848,5 +918,335 @@
   },
   "sentLeftoverBoth": {
     "message": "Zpráva byla odeslána, ale její koncept se nepodařilo smazat a okno psaní zprávy se nepodařilo zavřít: neodesílejte ji znovu."
+  },
+  "confirmTitle": {
+    "message": "Sync443 – Potvrzení odeslání"
+  },
+  "confirmAskInvite": {
+    "message": "Odeslat pozvánku na tuto schůzku?"
+  },
+  "confirmAskUpdate": {
+    "message": "Odeslat aktualizovanou pozvánku na tuto schůzku?"
+  },
+  "confirmAskCancel": {
+    "message": "Odeslat zrušení této schůzky?"
+  },
+  "confirmHint": {
+    "message": "Vaše změna je již uložena. Bez této zprávy se o ní příjemci nedozvědí."
+  },
+  "confirmLabelEvent": {
+    "message": "Událost"
+  },
+  "confirmLabelWhen": {
+    "message": "Datum"
+  },
+  "confirmLabelFrom": {
+    "message": "Od"
+  },
+  "confirmAllDay": {
+    "message": "$DATE$ (celý den)",
+    "placeholders": {
+      "date": {
+        "content": "$1"
+      }
+    }
+  },
+  "confirmRecipientsOne": {
+    "message": "1 příjemce"
+  },
+  "confirmRecipientsMany": {
+    "message": "Počet příjemců: $COUNT$",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "confirmSend": {
+    "message": "Odeslat"
+  },
+  "confirmDontSend": {
+    "message": "Neodesílat"
+  },
+  "confirmSending": {
+    "message": "Odesílání…"
+  },
+  "confirmClose": {
+    "message": "Zavřít"
+  },
+  "confirmExpired": {
+    "message": "Tento požadavek již není platný: už byl zodpovězen, nebo jeho platnost vypršela."
+  },
+  "confirmNothingSent": {
+    "message": "Z tohoto okna se nic neodešle."
+  },
+  "confirmUncertain": {
+    "message": "Sync443 neodpověděl: zpráva možná nebyla odeslána. Než ji odešlete znovu, zkontrolujte složku Odeslaná pošta."
+  },
+  "meetingSubjectInvite": {
+    "message": "Pozvánka: $SUMMARY$",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingSubjectUpdate": {
+    "message": "Aktualizovaná pozvánka: $SUMMARY$",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingSubjectCancel": {
+    "message": "Zrušeno: $SUMMARY$",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingSubjectAccepted": {
+    "message": "Přijato: $SUMMARY$",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingSubjectTentative": {
+    "message": "Předběžně přijato: $SUMMARY$",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingSubjectDeclined": {
+    "message": "Odmítnuto: $SUMMARY$",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingTextWhen": {
+    "message": "Kdy: $WHEN$",
+    "placeholders": {
+      "when": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingTextWhere": {
+    "message": "Kde: $LOCATION$",
+    "placeholders": {
+      "location": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingNoTitle": {
+    "message": "(bez názvu)"
+  },
+  "calendarSendFailed": {
+    "message": "Zpráva o schůzce „$SUMMARY$“ nebyla odeslána: $REASON$ Událost je uložena, ale účastníci nebyli informováni.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      },
+      "reason": {
+        "content": "$2"
+      }
+    }
+  },
+  "calendarSendUncertain": {
+    "message": "Zpráva o schůzce „$SUMMARY$“ možná nebyla odeslána: spojení bylo ztraceno. Než ji odešlete znovu, zkontrolujte složku Odeslaná pošta.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarTooManyAttendees": {
+    "message": "Schůzka „$SUMMARY$“ má příliš mnoho účastníků (limit: $MAX$), proto Sync443 nemůže odeslat pozvánky. Změna byla vrácena zpět.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      },
+      "max": {
+        "content": "$2"
+      }
+    }
+  },
+  "calendarAnswerFailed": {
+    "message": "Vaši odpověď na „$SUMMARY$“ se nepodařilo odeslat: $REASON$ Událost byla vrácena do původního stavu.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      },
+      "reason": {
+        "content": "$2"
+      }
+    }
+  },
+  "calendarAnswerNoInvitation": {
+    "message": "Vaši odpověď na „$SUMMARY$“ se nepodařilo odeslat: příslušná pozvánka nebyla na serveru nalezena. Událost byla vrácena do původního stavu.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarAnswerNeedsMail": {
+    "message": "Vaši odpověď na „$SUMMARY$“ se nepodařilo odeslat: aby bylo možné na tomto serveru odpovídat na pozvánky, musí se u této schránky synchronizovat pošta.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarChangeRefused": {
+    "message": "Server odmítl změnu položky „$SUMMARY$“. Byla obnovena verze ze serveru.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarRecurrenceUnsupported": {
+    "message": "Opakování položky „$SUMMARY$“ nelze uložit na server ActiveSync. Změna byla vrácena zpět.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarReadOnly": {
+    "message": "Položku „$SUMMARY$“ nelze v Thunderbirdu změnit. Změna byla vrácena zpět.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarTooLarge": {
+    "message": "Položka „$SUMMARY$“ je příliš velká a nelze ji uložit na server. Změna byla vrácena zpět.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarKeptLocal": {
+    "message": "Položku „$SUMMARY$“ se nepodařilo uložit na server. Zůstává v Thunderbirdu jako místní kopie, která se již nesynchronizuje.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarServerChanged": {
+    "message": "Položka „$SUMMARY$“ byla na serveru změněna dříve, než byla odeslána vaše změna. Zobrazuje se verze ze serveru; vaše změna nebyla odeslána.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarDetached": {
+    "message": "Položka „$SUMMARY$“ už na serveru není toutéž položkou. Vaše verze zůstává v Thunderbirdu jako místní kopie, která se již nesynchronizuje.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarRestoreUnsupported": {
+    "message": "Změněný nebo smazaný výskyt položky „$SUMMARY$“ nelze na serveru ActiveSync vrátit zpět do série. Změna byla vrácena zpět.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarOrganizerChanged": {
+    "message": "Organizátor schůzky „$SUMMARY$“ byl v Thunderbirdu změněn: účastníkům nebyla odeslána žádná zpráva.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarNotSentExpired": {
+    "message": "Zpráva o schůzce „$SUMMARY$“ nebyla odeslána: na žádost o potvrzení nebylo včas odpovězeno. Událost je uložena, ale účastníci nebyli informováni.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarNotSentFull": {
+    "message": "Zpráva o schůzce „$SUMMARY$“ nebyla odeslána: na odeslání čeká příliš mnoho zpráv. Událost je uložena, ale účastníci nebyli informováni.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarNotSentOld": {
+    "message": "Zpráva o schůzce „$SUMMARY$“ nebyla odeslána: čekala na odeslání déle než jeden den. Událost je uložena, ale účastníci nebyli informováni.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarChangesDroppedOne": {
+    "message": "Jedna změna provedená v Thunderbirdu nebyla odeslána: její kalendář se už se serverem nesynchronizuje. Nová položka zůstává v Thunderbirdu jako místní kopie."
+  },
+  "calendarChangesDroppedMany": {
+    "message": "Změny provedené v Thunderbirdu nebyly odeslány (počet změn: $COUNT$): jejich kalendář se už se serverem nesynchronizuje. Nové položky zůstávají v Thunderbirdu jako místní kopie.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarReplyNotSent": {
+    "message": "Vaše odpověď na „$SUMMARY$“ je uložena v kalendáři, ale organizátorovi nebyla odeslána žádná odpověď: pozvánka nebyla v této schránce nalezena.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarKeptLocalTooManyAttendees": {
+    "message": "Schůzka „$SUMMARY$“ má příliš mnoho účastníků (limit: $MAX$), proto Sync443 nemůže odeslat pozvánky. Položka zůstává v Thunderbirdu jako místní kopie, která se již nesynchronizuje.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      },
+      "max": {
+        "content": "$2"
+      }
+    }
+  },
+  "calendarKeptLocalRecurrence": {
+    "message": "Opakování položky „$SUMMARY$“ nelze uložit na server ActiveSync. Položka zůstává v Thunderbirdu jako místní kopie, která se již nesynchronizuje.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarKeptLocalTooLarge": {
+    "message": "Položka „$SUMMARY$“ je příliš velká a nelze ji uložit na server. Položka zůstává v Thunderbirdu jako místní kopie, která se již nesynchronizuje.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
   }
 }

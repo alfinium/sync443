@@ -8,13 +8,14 @@
 
 import { test, assert, eq, throws } from "./harness.mjs";
 import { el, encode, decode, text, child, at } from "../../src/core/wbxml.mjs";
-import { namespaceOf, tokenOf } from "../../src/core/codepages.mjs";
+import { namespaceOf, tokenOf, tagOf } from "../../src/core/codepages.mjs";
 import {
   ProtocolError, MAX_COMMANDS_PER_COLLECTION, MAX_FOLDERS, PING_CLASSES, DEBUG_SHOWN, topStatus,
   folderSyncRequest, parseFolderSync, folderCreateRequest, folderUpdateRequest, folderDeleteRequest, parseFolderChange,
   syncRequest, changeCommand, deleteCommand, fetchCommand, parseSync,
   pingRequest, parsePing, moveItemsRequest, parseMoveItems, provisionRequest, parseProvision,
   userInformationRequest, parseUserInformation, sendMailRequest, parseSendMail,
+  addCommand, meetingResponseRequest, parseMeetingResponse, MAX_MEETING_RESPONSES, MAX_SUPPORTED,
 } from "../../src/core/protocol.mjs";
 
 /** Through the wire format, as the client sees it: namespaces resolved, unknown tags impossible. */
@@ -300,7 +301,10 @@ test("parseSync : commandes, réponses, MoreAvailable, rejets", () => {
     ["fetch", "5:11", "1"],
   ]);
   eq(text(a.responses[1].data, "Subject"), "Lu");
-  eq(b, { collectionId: "6", syncKey: "7", status: "3", moreAvailable: false, commands: [], responses: [] });
+  eq(b, {
+    collectionId: "6", syncKey: "7", status: "3", moreAvailable: false, commands: [], responses: [],
+    clientResponses: { adds: [], changes: [], deletes: [] },
+  });
 });
 
 test("parseSync : statut global, racine inattendue", () => {
@@ -412,4 +416,278 @@ test("constantes : limites et classes de Ping", () => {
   eq(MAX_COMMANDS_PER_COLLECTION, 2000);
   eq(MAX_FOLDERS, 5000);
   eq([...PING_CLASSES].sort(), ["Calendar", "Contacts", "Email", "Notes", "Tasks"]);
+});
+
+// ── Stage 4: Add, Supported, answers to client commands, MeetingResponse ──
+
+const collectionOf = (c) => at(wire(syncRequest([c])), "Collections", "Collection");
+/** A Sync response for one collection with the given Responses children. */
+const answered = (responses) => wire(el("AirSync:Sync", [el("Collections", [el("Collection", [
+  el("SyncKey", "9"), el("CollectionId", "7"), el("Status", "1"), el("Responses", responses),
+])])]));
+const control = (code) => String.fromCharCode(code);
+
+test("addCommand: ClientId then ApplicationData, inside Commands", () => {
+  const add = addCommand("c-1", [el("Calendar:Subject", "Point")]);
+  eq([add.tag, add.children.map((c) => c.tag)], ["Add", ["ClientId", "ApplicationData"]]);
+  const c = collectionOf({ collectionId: "7", syncKey: "4", commands: [add, changeCommand("7:1", [el("Calendar:Subject", "x")])] });
+  eq(tags(child(c, "Commands")), ["Add", "Change"]);
+  eq(text(c, "Commands", "Add", "ClientId"), "c-1");
+  eq(text(c, "Commands", "Add", "ApplicationData", "Calendar:Subject"), "Point");
+  eq(at(c, "Commands", "Add", "ClientId").ns, "AirSync");
+});
+
+test("addCommand: only 1 to 64 letters, digits and hyphens make a ClientId", () => {
+  for (const ok of ["a", "0", "-", "A1b2-C3", "x".repeat(64), "0123456789abcdef0123456789abcdef"]) {
+    eq(text(addCommand(ok, []), "ClientId"), ok);
+  }
+  const bad = [
+    "", "x".repeat(65), "a b", "a_b", "a:b", "a.b", "é", "a/b", "a\nb", `a${control(0)}`, `a${control(0x202e)}b`,
+    " a", "a ", null, undefined, 5, {}, ["a"],
+  ];
+  for (const id of bad) refused(() => addCommand(id, []), `ClientId ${JSON.stringify(id)}`);
+});
+
+test("syncRequest: Supported comes after CollectionId, as empty elements with their namespace", () => {
+  const supported = ["Calendar:Subject", "Calendar:Timezone", "Calendar:StartTime", "Calendar:Attendees"];
+  const c = collectionOf({ collectionId: "7", syncKey: "0", supported, deletesAsMoves: true, windowSize: 10, options: [el("FilterType", "4")] });
+  eq(tags(c), ["SyncKey", "CollectionId", "Supported", "DeletesAsMoves", "WindowSize", "Options"]);
+  const list = child(c, "Supported");
+  eq(list.ns, "AirSync");
+  eq(list.children.map((x) => `${x.ns}:${x.tag}`), supported);
+  for (const x of list.children) eq([x.value, x.children.length], [null, 0], "an empty element");
+});
+
+test("syncRequest: Supported is only sent with SyncKey 0", () => {
+  const supported = ["Calendar:Subject", "Calendar:Location"];
+  for (const syncKey of ["1", "00", "01", "{0}", "42", "O"]) {
+    eq(child(collectionOf({ collectionId: "7", syncKey, supported }), "Supported"), null, `SyncKey ${syncKey}`);
+  }
+  assert(child(collectionOf({ collectionId: "7", syncKey: "0", supported }), "Supported"), "SyncKey 0");
+  // Several collections: each one on its own key.
+  const d = wire(syncRequest([
+    { collectionId: "7", syncKey: "0", supported },
+    { collectionId: "8", syncKey: "5", supported },
+    { collectionId: "9", syncKey: "0" },
+  ]));
+  eq(child(d, "Collections").children.map((c) => tags(c)), [["SyncKey", "CollectionId", "Supported"], ["SyncKey", "CollectionId"], ["SyncKey", "CollectionId"]]);
+});
+
+test("syncRequest: an empty Supported list gives an empty element; none gives no element", () => {
+  const empty = child(collectionOf({ collectionId: "7", syncKey: "0", supported: [] }), "Supported");
+  eq([empty.tag, empty.children.length, empty.value], ["Supported", 0, null]);
+  for (const none of [undefined, null]) eq(child(collectionOf({ collectionId: "7", syncKey: "0", supported: none }), "Supported"), null);
+});
+
+test("syncRequest: a Supported list that is not known element names is refused, whatever the SyncKey", () => {
+  const bad = [
+    "Calendar", ["Subject"], [":Subject"], ["Calendar:"], ["Calendar:NoSuchTag"], ["NoSuchPage:Subject"], ["Calendar:Subject:x"],
+    ["Calendar:Subject", "Calendar:Subject"], [5], [null], [["Calendar:Subject"]], ["calendar:Subject"], ["Calendar:subject"],
+    ["__proto__:toString"], ["constructor:constructor"], [`Calendar:Subject${control(0)}`], {}, 7,
+  ];
+  for (const supported of bad) {
+    refused(() => syncRequest([{ collectionId: "7", syncKey: "0", supported }]), `Supported ${JSON.stringify(supported)?.slice(0, 60)}`);
+    refused(() => syncRequest([{ collectionId: "7", syncKey: "3", supported }]), "checked even when it is not sent");
+  }
+});
+
+test("syncRequest: a Supported list holds at most MAX_SUPPORTED names", () => {
+  // Every element name the code pages know, as many distinct valid names as needed.
+  const known = [];
+  for (let page = 0; page < 32; page++) {
+    for (let token = 0x05; token <= 0x3f; token++) if (tagOf(page, token)) known.push(`${namespaceOf(page)}:${tagOf(page, token)}`);
+  }
+  eq(MAX_SUPPORTED, 128);
+  assert(known.length > MAX_SUPPORTED + 1);
+  const sent = child(collectionOf({ collectionId: "7", syncKey: "0", supported: known.slice(0, MAX_SUPPORTED) }), "Supported");
+  eq(sent.children.length, MAX_SUPPORTED);
+  eq(sent.children.map((x) => `${x.ns}:${x.tag}`), known.slice(0, MAX_SUPPORTED));
+  refused(() => syncRequest([{ collectionId: "7", syncKey: "0", supported: known.slice(0, MAX_SUPPORTED + 1) }]), "one name too many");
+  refused(() => syncRequest([{ collectionId: "7", syncKey: "0", supported: Array.from({ length: 100_000 }, () => "Calendar:Subject") }]), "a huge list");
+});
+
+test("parseSync: answers to Add give the ClientId, the ServerId and the status", () => {
+  const r = parseSync(answered([
+    el("Add", [el("ClientId", "c-1"), el("ServerId", "7:10"), el("Status", "1")]),
+    el("Add", [el("ClientId", "c-2"), el("Status", "6")]),
+    el("Add", [el("ClientId", "c-3"), el("ServerId", "x".repeat(65)), el("Status", "1")]),
+    el("Add", [el("ClientId", "c-4"), el("ServerId", "7:11"), el("Status", "0001")]),
+  ])).collections[0];
+  eq(r.clientResponses.adds, [
+    { clientId: "c-1", serverId: "7:10", status: "1" },
+    { clientId: "c-2", serverId: null, status: "6" },
+    { clientId: "c-3", serverId: null, status: "1" },
+    { clientId: "c-4", serverId: "7:11", status: "1" },
+  ]);
+  eq([r.clientResponses.changes, r.clientResponses.deletes, r.responses], [[], [], []]);
+});
+
+test("parseSync: an Add answer without a usable ClientId or Status is left out", () => {
+  const hostile = [
+    "", "x".repeat(65), "a b", "a\nb", `a${control(1)}`, `a${control(0x202e)}`, "c_1", "c.1", "é", "__proto__",
+  ];
+  const r = parseSync(answered([
+    ...hostile.map((id, i) => el("Add", [el("ClientId", id), el("ServerId", `7:${i}`), el("Status", "1")])),
+    el("Add", [el("ServerId", "7:50"), el("Status", "1")]),
+    el("Add", [el("ClientId", "c-1"), el("ServerId", "7:51")]),
+    el("Add", [el("ClientId", "c-2"), el("ServerId", "7:52"), el("Status", "abc")]),
+    el("Add", [el("ClientId", "c-3"), el("ServerId", "7:53"), el("Status", "12345")]),
+    el("Add", [el("ClientId", "ok"), el("ServerId", "7:54"), el("Status", "1")]),
+  ])).collections[0];
+  eq(r.clientResponses.adds, [{ clientId: "ok", serverId: "7:54", status: "1" }]);
+});
+
+test("parseSync: two answers for one ClientId, or one ServerId for two ClientIds, refuse the response", () => {
+  refused(() => parseSync(answered([
+    el("Add", [el("ClientId", "c-1"), el("ServerId", "7:10"), el("Status", "1")]),
+    el("Add", [el("ClientId", "c-1"), el("ServerId", "7:11"), el("Status", "1")]),
+  ])), "same ClientId");
+  refused(() => parseSync(answered([
+    el("Add", [el("ClientId", "c-1"), el("Status", "6")]),
+    el("Add", [el("ClientId", "c-1"), el("ServerId", "7:11"), el("Status", "1")]),
+  ])), "same ClientId, one of them refused");
+  refused(() => parseSync(answered([
+    el("Add", [el("ClientId", "c-1"), el("ServerId", "7:10"), el("Status", "1")]),
+    el("Add", [el("ClientId", "c-2"), el("ServerId", "7:10"), el("Status", "1")]),
+  ])), "same ServerId");
+  // Two refused Adds have no ServerId to share.
+  eq(parseSync(answered([
+    el("Add", [el("ClientId", "c-1"), el("Status", "6")]),
+    el("Add", [el("ClientId", "c-2"), el("Status", "6")]),
+  ])).collections[0].clientResponses.adds.length, 2);
+});
+
+test("parseSync: answers to Change and Delete, when the server gives one", () => {
+  const r = parseSync(answered([
+    el("Change", [el("ServerId", "7:2"), el("Status", "6")]),
+    el("Delete", [el("ServerId", "7:3"), el("Status", "8")]),
+    el("Delete", [el("ServerId", "7:4")]),
+    el("Change", [el("ServerId", "a\nb"), el("Status", "6")]),
+    el("Delete", [el("Status", "8")]),
+    el("Fetch", [el("ServerId", "7:5"), el("Status", "1"), el("ApplicationData", [el("Calendar:Subject", "x")])]),
+    el("SoftDelete", [el("ServerId", "7:6"), el("Status", "1")]),
+  ])).collections[0];
+  eq(r.clientResponses, { adds: [], changes: [{ serverId: "7:2", status: "6" }], deletes: [{ serverId: "7:3", status: "8" }] });
+  // What the mail engine reads is what it was: Change and Fetch, with their data.
+  eq(r.responses.map(({ op, serverId, status }) => [op, serverId, status]), [["change", "7:2", "6"], ["fetch", "7:5", "1"]]);
+  eq(Object.keys(r.responses[0]), ["op", "serverId", "status", "data"]);
+  eq(text(r.responses[1].data, "Subject"), "x");
+});
+
+test("parseSync: client answers are bounded like the rest", () => {
+  const many = (n) => answered(Array.from({ length: n }, (_, i) => el("Add", [el("ClientId", `c-${i}`), el("ServerId", `7:${i}`), el("Status", "1")])));
+  eq(parseSync(many(MAX_COMMANDS_PER_COLLECTION)).collections[0].clientResponses.adds.length, MAX_COMMANDS_PER_COLLECTION);
+  refused(() => parseSync(many(MAX_COMMANDS_PER_COLLECTION + 1)), "one answer too many");
+});
+
+test("meetingResponseRequest: structure and element order", () => {
+  const d = wire(meetingResponseRequest([
+    { userResponse: 1, collectionId: "5", requestId: "5:12" },
+    { userResponse: 3, collectionId: "7", requestId: "7:4", instanceId: "2026-11-20T09:00:00Z" },
+    { userResponse: 2, collectionId: "7", requestId: "7:5", instanceId: "2026-11-27T09:00:00.000Z" },
+    { userResponse: 2, collectionId: "7", requestId: "7:6", instanceId: null },
+  ]));
+  eq([d.ns, d.tag, tags(d)], ["MeetingResponse", "MeetingResponse", ["Request", "Request", "Request", "Request"]]);
+  const [a, b, c, e] = d.children;
+  eq(tags(a), ["UserResponse", "CollectionId", "RequestId"]);
+  eq([text(a, "UserResponse"), text(a, "CollectionId"), text(a, "RequestId")], ["1", "5", "5:12"]);
+  eq(tags(b), ["UserResponse", "CollectionId", "RequestId", "InstanceId"]);
+  eq([text(b, "UserResponse"), text(b, "InstanceId")], ["3", "2026-11-20T09:00:00.000Z"]);
+  eq(text(c, "InstanceId"), "2026-11-27T09:00:00.000Z");
+  eq(text(c, "InstanceId").length, 24, "the length the schema requires");
+  eq(tags(e), ["UserResponse", "CollectionId", "RequestId"]);
+  for (const x of [a, b, c]) for (const y of x.children) eq(y.ns, "MeetingResponse");
+});
+
+test("meetingResponseRequest: invalid values are refused", () => {
+  const ok = { userResponse: 1, collectionId: "5", requestId: "5:12" };
+  for (const userResponse of [0, 4, -1, 1.5, "1", "accepted", null, undefined, true, NaN]) {
+    refused(() => meetingResponseRequest([{ ...ok, userResponse }]), `UserResponse ${userResponse}`);
+  }
+  for (const id of BAD_IDS) {
+    refused(() => meetingResponseRequest([{ ...ok, collectionId: id }]), "CollectionId");
+    refused(() => meetingResponseRequest([{ ...ok, requestId: id }]), "RequestId");
+  }
+  const badInstances = [
+    "", "2026-11-20", "20261120T090000Z", "2026-11-20T09:00:00", "2026-11-20T09:00:00+01:00", "2026-11-20 09:00:00Z",
+    "2026-11-20T09:00:00.123Z", "2026-11-20T09:00:00.0Z", "2026-02-30T09:00:00Z", "2026-13-01T09:00:00Z", "2026-11-20T24:00:00Z",
+    "2026-11-20T09:60:00Z", "2026-11-20T09:00:60Z", "1899-12-31T23:59:59Z", "2201-01-01T00:00:00Z", " 2026-11-20T09:00:00Z",
+    "2026-11-20T09:00:00Z\n", `2026-11-20T09:00:00Z${control(0)}`, 5, {}, new Date(0),
+  ];
+  for (const instanceId of badInstances) refused(() => meetingResponseRequest([{ ...ok, instanceId }]), `InstanceId ${JSON.stringify(instanceId)}`);
+  for (const list of [null, undefined, {}, "x", [], [null], [5]]) refused(() => meetingResponseRequest(list), `list ${JSON.stringify(list)}`);
+});
+
+test("meetingResponseRequest: 1 to 100 requests, a RequestId only once", () => {
+  const list = (n) => Array.from({ length: n }, (_, i) => ({ userResponse: 1, collectionId: "5", requestId: `5:${i}` }));
+  eq(MAX_MEETING_RESPONSES, 100);
+  eq(meetingResponseRequest(list(MAX_MEETING_RESPONSES)).children.length, MAX_MEETING_RESPONSES);
+  refused(() => meetingResponseRequest(list(MAX_MEETING_RESPONSES + 1)), "one too many");
+  refused(() => meetingResponseRequest([
+    { userResponse: 1, collectionId: "5", requestId: "5:1" },
+    { userResponse: 3, collectionId: "6", requestId: "5:1" },
+  ]), "the server answers by RequestId alone");
+});
+
+test("parseMeetingResponse: results validated; CalendarId only when it is an id", () => {
+  const r = parseMeetingResponse(wire(el("MeetingResponse:MeetingResponse", [
+    el("Result", [el("RequestId", "5:12"), el("Status", "1"), el("CalendarId", "7:33")]),
+    el("Result", [el("RequestId", "5:13"), el("Status", "1")]),
+    el("Result", [el("RequestId", "5:14"), el("Status", "2")]),
+    el("Result", [el("RequestId", "5:15"), el("Status", "1"), el("CalendarId", "x".repeat(65))]),
+    el("Result", [el("RequestId", "5:16"), el("Status", "1"), el("CalendarId", "a\nb")]),
+    el("Result", [el("RequestId", "5:17"), el("Status", "1"), el("CalendarId", "")]),
+    el("Result", [el("RequestId", "5:18"), el("Status", "0003"), el("CalendarId", `7:${control(0x1b)}`)]),
+  ])));
+  eq(r, [
+    { requestId: "5:12", status: "1", calendarId: "7:33" },
+    { requestId: "5:13", status: "1", calendarId: null },
+    { requestId: "5:14", status: "2", calendarId: null },
+    { requestId: "5:15", status: "1", calendarId: null },
+    { requestId: "5:16", status: "1", calendarId: null },
+    { requestId: "5:17", status: "1", calendarId: null },
+    { requestId: "5:18", status: "3", calendarId: null },
+  ]);
+});
+
+test("parseMeetingResponse: a result that cannot be matched or read is left out", () => {
+  const r = parseMeetingResponse(wire(el("MeetingResponse:MeetingResponse", [
+    el("Result", [el("Status", "1"), el("CalendarId", "7:1")]),
+    el("Result", [el("RequestId", ""), el("Status", "1")]),
+    el("Result", [el("RequestId", "x".repeat(65)), el("Status", "1")]),
+    el("Result", [el("RequestId", `5:${control(7)}`), el("Status", "1")]),
+    el("Result", [el("RequestId", "5:20")]),
+    el("Result", [el("RequestId", "5:21"), el("Status", "ok")]),
+    el("Result", [el("RequestId", "5:22"), el("Status", "-1")]),
+    el("Result", [el("RequestId", "5:23"), el("Status", "99999")]),
+    el("Request", [el("RequestId", "5:24"), el("Status", "1")]), // not a Result
+    el("Result", [el("RequestId", "5:25"), el("Status", "1"), el("CalendarId", "7:9")]),
+  ])));
+  eq(r, [{ requestId: "5:25", status: "1", calendarId: "7:9" }]);
+  eq(parseMeetingResponse(wire(el("MeetingResponse:MeetingResponse"))), []);
+});
+
+test("parseMeetingResponse: unexpected root, too many results, a RequestId twice", () => {
+  for (const root of [el("AirSync:Sync"), el("Move:MoveItems"), el("MeetingResponse:Result"), el("MeetingResponse:Request")]) {
+    refused(() => parseMeetingResponse(wire(root)), `${root.ns}:${root.tag}`);
+  }
+  refused(() => parseMeetingResponse(null), "null");
+  const results = (n) => wire(el("MeetingResponse:MeetingResponse", Array.from({ length: n }, (_, i) => el("Result", [el("RequestId", `5:${i}`), el("Status", "1")]))));
+  eq(parseMeetingResponse(results(MAX_MEETING_RESPONSES)).length, MAX_MEETING_RESPONSES);
+  refused(() => parseMeetingResponse(results(MAX_MEETING_RESPONSES + 1)), "more results than a request can hold");
+  refused(() => parseMeetingResponse(wire(el("MeetingResponse:MeetingResponse", [
+    el("Result", [el("RequestId", "5:1"), el("Status", "1"), el("CalendarId", "7:1")]),
+    el("Result", [el("RequestId", "5:1"), el("Status", "1"), el("CalendarId", "7:2")]),
+  ]))), "which calendar item it is would be a guess");
+});
+
+test("parseMeetingResponse: a command-level status is read with topStatus", () => {
+  const d = wire(el("MeetingResponse:MeetingResponse", [el("Status", "3")]));
+  eq(parseMeetingResponse(d), []);
+  eq(topStatus(d), "3");
+});
+
+test("DEBUG_SHOWN: the ids and the answer of a MeetingResponse, never the date of an occurrence", () => {
+  for (const tag of ["RequestId", "CalendarId", "UserResponse"]) assert(DEBUG_SHOWN.has(tag), tag);
+  for (const tag of ["InstanceId", "StartTime", "EndTime", "TimeZone", "Timezone", "GlobalObjId", "Organizer"]) assert(!DEBUG_SHOWN.has(tag), tag);
 });

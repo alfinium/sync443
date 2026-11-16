@@ -17,17 +17,22 @@
  *   { ok: false, error: "<sentence in the interface's language, shown as it is>", field?, detail? }
  *   detail: the engine's French reason, when `error` does not show it (a tooltip).
  *   field (saveMailbox): "email" | "username" | "password" | "name" | "server"
- *   | "syncMinutes" | "filterType" | "sync", the form field to point at.
+ *   | "syncMinutes" | "filterType" | "sync" | "calendarPeriod" | "taskFilter",
+ *   the form field to point at.
  *
  * { type: "listMailboxes" }
  *   → { ok: true, mailboxes: [MailboxView] }, in display order
  *   MailboxView = { id, email, username, name, origin, server, syncMinutes,
- *                   filterType, sync, status }
+ *                   filterType, calendarPeriod, taskFilter, sync, status }
  *     id           12 hexadecimal digits (store.newIds)
  *     username     "" when the e-mail address is the sign-in name
  *     origin       "https://host[:port]"; server: "host[:port]" (parseServer().display)
  *     syncMinutes  0 (as soon as mail arrives: Ping) | 1 | 5 | 15 | 30 | 60
  *     filterType   "1" 1 day | "2" 3 days | "3" 1 week | "4" 2 weeks | "5" 1 month | "0" all
+ *     calendarPeriod  "4" 2 weeks | "5" 1 month | "6" 3 months | "7" 6 months | "0" all
+ *                  (past events; future ones are always synchronized). Absent from a
+ *                  mailbox saved before calendars were synchronized: "7".
+ *     taskFilter   "0" all tasks | "8" incomplete tasks only. Absent as above: "0".
  *     sync         { mail, calendar, contacts, tasks } booleans, at least one true
  *     status       { running: boolean,
  *                    lastSuccessAt: ms | null,
@@ -35,22 +40,35 @@
  *                    lastError: { code, message, at } | null,
  *                    blocked: { code, message, at } | null,
  *                    pendingDeletes: number,
- *                    failedItems: number }
+ *                    failedItems: number,
+ *                    failedCalendarItems: number }
  *                  blocked.code "MASS_DELETE": deletions from the server held
- *                  back by the mass-deletion threshold (pendingDeletes of them),
- *                  waiting for "Confirmer les suppressions" (syncMailbox with
+ *                  back by the mass-deletion threshold (pendingDeletes of them:
+ *                  messages, folders, events and tasks together), waiting for
+ *                  "Confirmer les suppressions" (syncMailbox with
  *                  confirmDeletes) or "Garder les copies locales" (discardDeletes).
- *                  failedItems: messages whose import keeps failing (tried again
- *                  at every sync), shown after the status when there are any.
+ *                  failedItems: items whose import keeps failing, shown after
+ *                  the status when there are any; failedCalendarItems: the
+ *                  events and tasks among them (messages are tried again at
+ *                  every sync, events and tasks are not).
  *
  * { type: "saveMailbox", mailbox: MailboxInput, password: string | null }
  *   → { ok: true, id }
  *   MailboxInput = { id: string | null (null: new mailbox), email,
  *                    username ("" = the e-mail address), name,
- *                    server (parseServer().display), syncMinutes, filterType, sync }
+ *                    server (parseServer().display), syncMinutes, filterType,
+ *                    calendarPeriod, taskFilter, sync }
+ *   calendarPeriod and taskFilter are always sent, whether calendar and tasks
+ *   are checked or not (their fields are hidden when they are not, and keep
+ *   their value).
  *   password null keeps the stored password; it is refused for a new
  *   mailbox, and when the origin or the sign-in name changes (the password
- *   only ever goes to the origin it was typed for). The page has already
+ *   only ever goes to the origin it was typed for). Unchecking the calendar
+ *   or the tasks of a mailbox that synchronised them removes their local
+ *   copies at the next sync, and another server or sign-in name removes
+ *   the mailbox's calendars before the new server is read; either way the
+ *   changes not yet sent are lost: the page asks the user first
+ *   (uncheckConfirm, moveConfirm), and sends nothing without a yes. The page has already
  *   obtained the host permission https://host/* (permissions.request, in the
  *   submit handler: Thunderbird only asks during a user action). The
  *   background checks everything again (parseServer, checkMailbox, the
@@ -59,8 +77,8 @@
  *   starts a sync.
  *
  * { type: "removeMailbox", id } → { ok: true }
- *   The mailbox, its records, its Thunderbird account and its password go;
- *   so does the host permission if no other mailbox uses that server.
+ *   The mailbox, its records, its Thunderbird account, its calendars and its
+ *   password go; so does the host permission if no other mailbox uses that server.
  *   Nothing is deleted on the server.
  *
  * { type: "syncMailbox", id, confirmDeletes?: true } → { ok: true }
@@ -70,9 +88,10 @@
  *
  * { type: "discardDeletes", id } → { ok: true }
  *   The deletions held back by the mass-deletion threshold are dropped: the
- *   local copies stay, the folders concerned are synchronised again with the
- *   server, and a sync starts (sent only by "Garder les copies locales",
- *   after the user confirmed).
+ *   local copies stay, the mail folders concerned are synchronised again
+ *   with the server, the events and tasks kept are no longer linked to it,
+ *   and a sync starts (sent only by "Garder les copies locales", after the
+ *   user confirmed).
  *
  * { type: "getLog" }  → { ok: true, entries: [{ t, level, msg, details? }], debugUntil }
  *   (log.getLog(); debugUntil: ms since the epoch, 0 when debugging is off)
@@ -90,9 +109,14 @@
 import {
   FREQUENCIES,
   PERIODS,
+  CALENDAR_PERIODS,
+  TASK_FILTERS,
   KINDS,
+  KIND_FIELDS,
   FIELD_ORDER,
   discardConfirm,
+  uncheckConfirm,
+  moveConfirm,
   validateForm,
   formValues,
   statusView,
@@ -109,6 +133,8 @@ import { t, localizePage } from "../i18n.mjs";
 
 const api = globalThis.messenger ?? globalThis.browser;
 const FIELDS = new Set(FIELD_ORDER);
+// Fields read and filled through their value (the check boxes of the items are apart).
+const VALUE_FIELDS = ["email", "password", "name", "server", "username", "syncMinutes", "filterType", "calendarPeriod", "taskFilter"];
 const WATCHED = /^mb\/[a-f0-9]{12}\/(?:health|pendingDeletes|status)$/;
 
 const $ = (id) => document.getElementById(id);
@@ -328,6 +354,10 @@ function buildForm() {
   for (const [value, label] of FREQUENCIES) minutes.append(new Option(label(), String(value)));
   const period = $("filterType");
   for (const [value, label] of PERIODS) period.append(new Option(label(), value));
+  const calendarPeriod = $("calendarPeriod");
+  for (const [value, label] of CALENDAR_PERIODS) calendarPeriod.append(new Option(label(), value));
+  const taskFilter = $("taskFilter");
+  for (const [value, label] of TASK_FILTERS) taskFilter.append(new Option(label(), value));
   const kinds = $("kinds");
   for (const kind of KINDS) {
     const wrap = element("div");
@@ -340,16 +370,27 @@ function buildForm() {
     wrap.append(box, " ", label);
     kinds.append(wrap);
   }
+  for (const [kind, field] of KIND_FIELDS) {
+    const box = $(`kind-${kind}`);
+    box.setAttribute("aria-controls", `${field}-field`);
+    box.addEventListener("change", showKindFields);
+  }
+}
+
+/** The calendar period shows while calendar is checked, the task filter while tasks is; hidden, each keeps its value. */
+function showKindFields() {
+  for (const [kind, field] of KIND_FIELDS) $(`${field}-field`).hidden = !$(`kind-${kind}`).checked;
 }
 
 function fillForm(values) {
-  for (const field of ["email", "password", "name", "server", "username", "syncMinutes", "filterType"]) $(field).value = values[field];
+  for (const field of VALUE_FIELDS) $(field).value = values[field];
   for (const k of SYNC_KINDS) $(`kind-${k}`).checked = values.sync[k] === true;
+  showKindFields();
 }
 
 function readForm() {
   const values = {};
-  for (const field of ["email", "password", "name", "server", "username", "syncMinutes", "filterType"]) values[field] = $(field).value;
+  for (const field of VALUE_FIELDS) values[field] = $(field).value;
   values.sync = Object.fromEntries(SYNC_KINDS.map((k) => [k, $(`kind-${k}`).checked]));
   return values;
 }
@@ -373,7 +414,8 @@ function showErrors(errors) {
   const general = [];
   const details = [];
   for (const { field, message, detail } of errors) {
-    if (!FIELDS.has(field)) {
+    // An error on a field that is not shown (its item is unchecked) goes above the form, where it can be read.
+    if (!FIELDS.has(field) || $(`${field}-field`)?.hidden === true) {
       general.push(message);
       if (detail) details.push(detail);
       continue;
@@ -430,6 +472,12 @@ function onSubmit(event) {
     showErrors(result.errors);
     return;
   }
+  // Calendar or tasks unchecked: their local copies would go at the next sync. Nothing is sent without a yes.
+  const question = existing ? uncheckConfirm(existing, result.request.mailbox.sync, labelOf(existing)) : "";
+  if (question && !window.confirm(question)) return;
+  // Another server or sign-in name: the calendars made from the old one leave Thunderbird, with what was not sent yet.
+  const moving = existing ? moveConfirm(existing, result.server, result.request.mailbox, labelOf(existing)) : "";
+  if (moving && !window.confirm(moving)) return;
   // Asked now, before any await: Thunderbird shows the request only during a user action.
   let permission;
   try {

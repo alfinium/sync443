@@ -4,16 +4,23 @@
 /**
  * MailboxSync (src/sync/mailbox.mjs): whole passes against the fake
  * ActiveSync server and the fake Thunderbird account of mail-sync.test.mjs,
- * with the real Store on an in-memory storage area.
+ * with the real Store on an in-memory storage area. The second half adds
+ * the calendar part: the real PimSync, Scheduler, InvitationTable and
+ * CalendarStore over the doubles of calendar-fakes.mjs.
  */
 
 import { test, assert, eq, rejects } from "./harness.mjs";
-import { text, at, child } from "../../src/core/wbxml.mjs";
+import { el, text, at, child, encode, decode } from "../../src/core/wbxml.mjs";
 import { EasError, ERR } from "../../src/transport/client.mjs";
 import { Store } from "../../src/sync/store.mjs";
 import { MailboxSync, MASS_DELETE } from "../../src/sync/mailbox.mjs";
 import { loadCollection } from "../../src/sync/mail.mjs";
-import { FakeServer, FakeMailStore, mime, quietLog } from "./mail-sync.test.mjs";
+import { FakeServer, FakeMailStore, DEFAULT_FOLDERS, mime, quietLog } from "./mail-sync.test.mjs";
+import { InvitationTable } from "../../src/sync/invitations.mjs";
+import { Scheduler } from "../../src/sync/scheduling.mjs";
+import { PimSync } from "../../src/sync/pim.mjs";
+import { CalendarStore } from "../../src/tb/calendar-store.mjs";
+import { FakeCalendarApi, FakePimServer, OWN, event, task, meeting } from "./calendar-fakes.mjs";
 import { memoryArea } from "./journal.test.mjs";
 import { fakeBrowser } from "./mail-store.test.mjs";
 import { MailStore } from "../../src/tb/mail-store.mjs";
@@ -434,4 +441,662 @@ test("bout à bout : vrai adaptateur et vrais événements, nos écritures ne re
   assert(moved, "drapeaux puis déplacement reçus par le serveur");
   t += 60_000;
   eq(echo.size, 0);
+});
+
+// ── Mail and calendar in one pass ─────────────────────────────────────────
+
+const CAL = "7"; // the default Calendar folder of DEFAULT_FOLDERS
+const TASKS = "8";
+const BOTH = [...DEFAULT_FOLDERS, { id: TASKS, parentId: "0", name: "Tâches", type: 7 }];
+const ALL = { mail: true, calendar: true, contacts: false, tasks: true };
+const GUEST = "anne@example.org";
+const range = (n) => Array.from({ length: n }, (_, i) => i);
+const until = async (done, what = "the condition never came true") => {
+  for (let i = 0; i < 5000 && !done(); i++) await Promise.resolve();
+  assert(done(), what);
+};
+
+/**
+ * A mailbox with its calendar objects, as the background page builds them.
+ * `mail`: the fake server of the folder list, of mail and of Ping; `cal`:
+ * the one of the Calendar and Tasks classes, MeetingResponse and SendMail.
+ * One client reaches both, as one ActiveSync server would answer.
+ */
+function calendarWorld({ sync = ALL, folders = BOTH } = {}) {
+  const area = memoryArea();
+  const st = new Store(area);
+  const w = {
+    mail: new FakeServer({ folders }),
+    cal: new FakePimServer({ folders }),
+    store: new FakeMailStore(),
+    api: new FakeCalendarApi(),
+    area,
+    records: st.mailbox(MB),
+    log: quietLog(),
+    t: Date.UTC(2026, 10, 16, 9, 0, 0),
+    clients: 0,
+    passes: [], // options of every PimSync.pass
+    noted: [], // mails told to the invitation table
+    asked: [], // questions of the scheduler
+    notices: [],
+    confirm: null, // (question) → answer; null: "Send" at once
+    clientError: null, // (n) → the error the n-th client cannot be made for, or null
+    seed: 0,
+  };
+  w.now = () => w.t;
+  w.advance = (ms) => (w.t += ms);
+  w.requests = () => [...w.mail.requests, ...w.cal.requests];
+  /** One request, to the server that holds its collection. */
+  const command = (cmd, root, opts) => {
+    w.order.push(cmd === "Sync" ? `Sync ${text(at(decode(encode(root)), "Collections", "Collection"), "CollectionId")}` : cmd);
+    if (cmd === "SendMail" || cmd === "MeetingResponse") return w.cal.command(cmd, root, opts);
+    if (cmd === "Sync" && w.cal.classOf(w.order.at(-1).slice(5)) !== null) return w.cal.command(cmd, root, opts);
+    return w.mail.command(cmd, root, opts);
+  };
+  w.order = []; // every request, in order: "FolderSync", "Sync 1", "Sync 7", "SendMail"…
+  /** A new engine, with its calendar objects built anew, on the same storage and the same Thunderbird. */
+  w.make = (over = {}) => {
+    const mailbox = { id: MB, accountKey: "account1", email: OWN, name: "Travail", filterType: "0", calendarPeriod: "7", taskFilter: "0", sync, ...over };
+    w.mailbox = mailbox;
+    w.invitations = new InvitationTable({ records: w.records, now: w.now });
+    const note = w.invitations.noteMail.bind(w.invitations);
+    w.invitations.noteMail = (cid, sid, email) => {
+      w.noted.push([cid, sid]);
+      return note(cid, sid, email);
+    };
+    w.calendarStore = new CalendarStore({ mailboxId: MB, ownEmail: OWN, api: w.api });
+    w.scheduler = new Scheduler({
+      mailbox,
+      records: w.records,
+      invitations: w.invitations,
+      confirm: (question) => {
+        w.asked.push(question);
+        return w.confirm ? w.confirm(question) : true;
+      },
+      notify: (message) => w.notices.push(message),
+      log: w.log,
+      now: w.now,
+      random: (n) => Uint8Array.from({ length: n }, () => (w.seed = (w.seed * 73 + 41) % 251)),
+    });
+    w.pim = new PimSync({ mailbox, records: w.records, calendarStore: w.calendarStore, scheduler: w.scheduler, log: w.log, now: w.now });
+    const pass = w.pim.pass.bind(w.pim);
+    w.pim.pass = (o) => {
+      w.passes.push(o);
+      return pass(o);
+    };
+    w.sync = new MailboxSync({
+      mailbox,
+      store: st,
+      clientFactory: async () => {
+        w.clients++;
+        const refused = w.clientError?.(w.clients) ?? null;
+        if (refused) throw refused;
+        return { proto: { asVersion: "14.1" }, command };
+      },
+      mailStore: w.store,
+      log: w.log,
+      now: w.now,
+      random: () => 0.5,
+      sleep: async (ms) => {
+        w.t += ms;
+      },
+      invitations: w.invitations,
+      scheduler: w.scheduler,
+      pim: w.pim,
+    });
+    return w.sync;
+  };
+  w.make();
+  w.calendar = (slot = "main") => [...w.api.calendars].find(([, c]) => c.mailboxId === MB && c.slot === slot)?.[0] ?? null;
+  w.titles = (slot = "main") => (w.calendar(slot) ? w.api.summaries(w.calendar(slot)) : null);
+  w.health = () => w.records.get("health", null);
+  return w;
+}
+
+test("calendar: one pass covers mail, then the calendar and the tasks, with one FolderSync and one result", async () => {
+  const w = calendarWorld();
+  const sid = w.mail.addMessage("1", mime("a@x"));
+  w.cal.addItem(CAL, event({ uid: "e1", summary: "Réunion" }));
+  w.cal.addItem(TASKS, task({ uid: "t1", summary: "Rapport" }));
+  const r = await w.sync.run({ reason: "user" });
+  eq([r.status, r.added, r.calendar, r.failed, r.moreAvailable], ["ok", 1, { received: 2, sent: 0, failed: 0 }, 0, false]);
+  eq(w.store.mids("/Inbox"), ["a@x"]);
+  eq(w.titles(), ["Rapport", "Réunion"]);
+  eq(w.order.filter((c) => c === "FolderSync").length, 1);
+  const firstCalendar = w.order.findIndex((c) => c === `Sync ${CAL}` || c === `Sync ${TASKS}`);
+  assert(firstCalendar > Math.max(...["1", "2", "3", "4", "6"].map((id) => w.order.lastIndexOf(`Sync ${id}`))), `mail first: ${w.order}`);
+  assert(!w.order.includes("Sync 5"), "never the Outbox");
+  eq(w.clients, 1, "one client for the pass (nothing to deliver)");
+  // The calendar engine gets the pass's client, version and folder list, and never delivers under the lock.
+  const [o] = w.passes;
+  eq([o.version, o.deliver, o.confirmDeletes, o.only, o.folders instanceof Map && o.folders.get(CAL).type, typeof o.signal?.aborted], ["14.1", false, false, null, 8, "boolean"]);
+  // The mail context got the invitation table: every mail added is shown to it.
+  eq(w.noted, [["1", sid]]);
+  const h = await w.health();
+  eq([h.failures, h.blocked, h.lastSuccessAt, h.failedItems, h.failedCalendarItems], [0, null, w.now(), 0, undefined]);
+  eq(await w.records.get("pimActive", null), true);
+  assert(!w.store.folders.has("/Calendrier") && !w.store.folders.has("/Tâches"), "no mail folder for the calendar");
+});
+
+test("calendar: a mailbox without mail runs FolderSync, then the calendar and the tasks only; the folder list is saved", async () => {
+  const w = calendarWorld({ sync: { mail: false, calendar: true, contacts: false, tasks: true } });
+  w.mail.addMessage("1", mime("a@x"));
+  w.cal.addItem(CAL, event({ uid: "e1", summary: "Réunion" }));
+  w.cal.addItem(TASKS, task({ uid: "t1", summary: "Rapport" }));
+  const writes = w.store.writes.length;
+  const r = await w.sync.run({ reason: "user" });
+  eq([r.status, r.added, r.calendar.received], ["ok", 0, 2]);
+  eq(w.titles(), ["Rapport", "Réunion"]);
+  eq([...new Set(w.order)].sort(), ["FolderSync", `Sync ${CAL}`, `Sync ${TASKS}`], "no mail collection is asked for");
+  eq([w.store.writes.length, w.store.mids("/Inbox")], [writes, []], "the mail account is left alone");
+  eq(await w.records.get("hierarchy", null), { syncKey: "1" });
+  const before = w.order.length;
+  await w.sync.run({ reason: "timer" });
+  eq(text(w.mail.sent("FolderSync").at(-1), "SyncKey"), "1", "the next pass goes on from the list as it was");
+  assert(!w.order.slice(before).some((c) => /^Sync [12346]$/.test(c)));
+  // Without an account of its own to write mail in, the calendar still synchronises.
+  const bare = calendarWorld({ sync: { mail: false, calendar: true, contacts: false, tasks: false } });
+  bare.make({ accountKey: null });
+  bare.cal.addItem(CAL, event({ uid: "e1", summary: "Seul" }));
+  eq((await bare.sync.run({ reason: "user" })).status, "ok");
+  eq(bare.titles(), ["Seul"]);
+  assert(!bare.order.includes(`Sync ${TASKS}`), "tasks are not checked");
+});
+
+test("calendar: with mail only, the calendar engine given is never called; only the calendar or the tasks checked make it run", async () => {
+  const w = calendarWorld({ sync: { mail: true, calendar: false, contacts: true, tasks: false } });
+  w.mail.addMessage("1", mime("a@x"));
+  w.cal.addItem(CAL, event({ uid: "e1", summary: "Réunion" }));
+  const r = await w.sync.run({ reason: "user" });
+  eq([r.status, r.added, r.calendar], ["ok", 1, undefined]);
+  eq([w.passes.length, w.api.calls.length, w.api.calendars.size], [0, 0, 0], "no calendar pass, no call to Thunderbird");
+  assert(!w.order.includes(`Sync ${CAL}`));
+  eq(await w.records.get("pimActive", null), null);
+  eq(await w.sync.pendingDeletes(), { count: 0, collections: [], calendar: 0 });
+  // Contacts alone: nothing at all, as before.
+  const none = calendarWorld({ sync: { mail: false, calendar: false, contacts: true, tasks: false } });
+  eq((await none.sync.run({ reason: "user" })).status, "ok");
+  eq([none.order.length, none.clients], [0, 0]);
+});
+
+test("calendar: its failure does not lose the mail of the pass; one failure is recorded", async () => {
+  const w = calendarWorld();
+  await w.sync.run({ reason: "user" });
+  w.mail.addMessage("1", mime("a@x"));
+  w.cal.addItem(CAL, event({ uid: "e1", summary: "Réunion" }));
+  w.cal.addItem(TASKS, task({ uid: "t1", summary: "Rapport" }));
+  w.cal.hook("Sync", () => {
+    throw new EasError(ERR.NETWORK, "Serveur injoignable.", { sent: true });
+  });
+  await rejects(w.sync.run({ reason: "timer" }), (e) => e.code === ERR.NETWORK);
+  eq(w.store.mids("/Inbox"), ["a@x"], "the mail arrived");
+  eq((await loadCollection(w.records, "1")).items.size, 1, "and its table is saved");
+  eq(w.titles(), [], "nothing of the calendar in this pass");
+  const h = await w.health();
+  eq([h.failures, h.lastError.code, h.blocked], [1, ERR.NETWORK, null], "one failure, once");
+  assert(h.nextAttemptAt > w.now());
+  eq((await w.sync.run({ reason: "timer" })).reason, "backoff");
+  w.advance(3600_000);
+  const r = await w.sync.run({ reason: "timer" });
+  eq([r.status, r.calendar.received, r.added], ["ok", 2, 0]);
+  eq(w.titles(), ["Rapport", "Réunion"]);
+  eq((await w.health()).failures, 0);
+});
+
+test("calendar: a failure of mail does not stop it; the error of the pass is mail's, recorded once", async () => {
+  const w = calendarWorld();
+  await w.sync.run({ reason: "user" });
+  w.mail.addMessage("1", mime("a@x"));
+  w.cal.addItem(CAL, event({ uid: "e1", summary: "Réunion" }));
+  w.mail.hook("Sync", () => {
+    throw new EasError(ERR.HTTP, "Erreur HTTP 500.");
+  });
+  // Both parts fail here: the first failure is the one told, and the health counts one.
+  w.cal.hook("Sync", () => {
+    throw new EasError(ERR.NETWORK, "Serveur injoignable.", { sent: true });
+  });
+  const from = w.order.length;
+  await rejects(w.sync.run({ reason: "timer" }), (e) => e.code === ERR.HTTP);
+  assert(w.order.slice(from).includes(`Sync ${CAL}`), "the calendar was tried after mail failed");
+  eq([w.titles(), w.store.mids("/Inbox")], [[], []]);
+  eq([(await w.health()).failures, (await w.health()).lastError.code], [1, ERR.HTTP]);
+  // The mail part alone failing, even outside any request (Thunderbird refuses to list the folders).
+  w.advance(3600_000);
+  const list = w.store.listFolders.bind(w.store);
+  w.store.listFolders = async () => {
+    throw new Error("Unexpected error in folders API: /Inbox/Projets");
+  };
+  await rejects(w.sync.run({ reason: "timer" }), (e) => e.code === "LOCAL" && !/Projets/.test(e.message));
+  w.store.listFolders = list;
+  eq(w.titles(), ["Réunion"], "the calendar is synchronized all the same");
+  eq(w.store.mids("/Inbox"), [], "mail waits for the next pass");
+  w.advance(3600_000);
+  eq((await w.sync.run({ reason: "timer" })).status, "ok");
+  eq(w.store.mids("/Inbox"), ["a@x"]);
+});
+
+test("calendar: a fatal error or a cancellation stops the pass at once, and the calendar is not tried", async () => {
+  const w = calendarWorld();
+  await w.sync.run({ reason: "user" });
+  const passes = w.passes.length;
+  w.mail.addMessage("1", mime("a@x"));
+  w.mail.hook("Sync", () => {
+    throw new EasError(ERR.AUTH, "Identifiant ou mot de passe refusé par le serveur.");
+  });
+  await rejects(w.sync.run({ reason: "timer" }), (e) => e.code === ERR.AUTH);
+  eq([w.passes.length, (await w.health()).blocked.code], [passes, ERR.AUTH]);
+  // Cancelled during the calendar part: the signal reaches its requests, nothing is recorded as a failure.
+  eq((await w.sync.run({ reason: "user" })).status, "ok");
+  w.cal.addItem(CAL, event({ uid: "e1", summary: "Réunion" }));
+  const ctrl = new AbortController();
+  w.cal.hook("Sync", (req, opts) => {
+    eq(opts.signal.aborted, false);
+    ctrl.abort();
+    return undefined;
+  });
+  await rejects(w.sync.run({ reason: "timer", signal: ctrl.signal }), (e) => e.code === ERR.CANCELLED);
+  const h = await w.health();
+  eq([h.failures, h.lastError, w.titles()], [0, null, []]);
+  eq((await w.sync.run({ reason: "timer" })).status, "ok");
+  eq(w.titles(), ["Réunion"]);
+  // A fatal failure of the calendar part blocks the mailbox like any other.
+  w.cal.hook("Sync", () => {
+    throw new EasError(ERR.DENIED, "Accès refusé.");
+  });
+  w.cal.addItem(CAL, event({ uid: "e2", summary: "Autre" }));
+  await rejects(w.sync.run({ reason: "timer" }), (e) => e.code === ERR.DENIED);
+  eq((await w.health()).blocked.code, ERR.DENIED);
+});
+
+test("calendar: unreadable items are counted in the mailbox's health, apart from messages", async () => {
+  const w = calendarWorld();
+  w.cal.addRaw(CAL, [el("Calendar:UID", "cassé"), el("Calendar:Subject", "Illisible"), el("Calendar:StartTime", "pas une date"), el("Calendar:EndTime", "20261201T100000Z")]);
+  w.cal.addItem(CAL, event({ uid: "e1", summary: "Réunion" }));
+  const r = await w.sync.run({ reason: "user" });
+  eq([r.status, r.failed, r.calendar], ["ok", 1, { received: 1, sent: 0, failed: 1 }]);
+  const h = await w.health();
+  eq([h.failedItems, h.failedCalendarItems], [1, 1]);
+});
+
+async function hundredEach(w) {
+  for (const n of range(100)) w.mail.addMessage("1", mime(`k${n}@x`));
+  const sids = range(100).map((i) => w.cal.addItem(CAL, event({ uid: `e${i}`, summary: `E${i}` })));
+  for (let round = 0; round < 10; round++) if (!(await w.sync.run({ reason: "user", round })).moreAvailable) break;
+  eq([w.store.messages("/Inbox").length, w.titles().length], [100, 100]);
+  return sids;
+}
+
+test("calendar: mass deletions are held with mail's, in one block, and confirmed together", async () => {
+  const w = calendarWorld();
+  const sids = await hundredEach(w);
+  for (const sid of [...w.mail.items.get("1").keys()].slice(0, 60)) w.mail.deleteMessage("1", sid);
+  for (const sid of sids.slice(0, 70)) w.cal.deleteItem(CAL, sid);
+  const r = await w.sync.run({ reason: "timer" });
+  eq([r.status, r.reason, r.pendingDeletes], ["blocked", MASS_DELETE, 130]);
+  eq([w.store.messages("/Inbox").length, w.titles().length], [100, 100], "nothing removed, neither messages nor events");
+  const h = await w.health();
+  eq(h.blocked.code, MASS_DELETE);
+  assert(h.blocked.message.startsWith("130 suppression(s)"), h.blocked.message);
+  eq(await w.sync.pendingDeletes(), { count: 130, collections: [{ collectionId: "1", count: 60, at: w.now() }], calendar: 70 });
+  const n = w.order.length;
+  for (const reason of ["timer", "push", "user"]) eq((await w.sync.run({ reason })).pendingDeletes, 130, reason);
+  eq(w.order.length, n, "no request until the user has decided");
+  w.sync.startPush();
+  await ticks(200);
+  eq([w.mail.sent("Ping").length, w.sync.pushing], [0, false], "and no Ping");
+  const ok = await w.sync.run({ reason: "user", confirmDeletes: true });
+  eq([ok.status, ok.pendingDeletes, w.passes.at(-1).confirmDeletes], ["ok", 0, true]);
+  eq([w.store.messages("/Inbox").length, w.store.messages("/Trash").length, w.titles().length], [40, 60, 30]);
+  eq([(await w.health()).blocked, await w.sync.pendingDeletes()], [null, { count: 0, collections: [], calendar: 0 }]);
+});
+
+test("calendar: deletions held on one side only; the mail of the pass is kept, and the confirmation covers that side alone", async () => {
+  const w = calendarWorld();
+  const sids = await hundredEach(w);
+  // The calendar's alone: the mail of that pass is imported, then the mailbox waits.
+  for (const sid of sids.slice(0, 60)) w.cal.deleteItem(CAL, sid);
+  w.mail.addMessage("1", mime("nouveau@x"));
+  const r = await w.sync.run({ reason: "timer" });
+  eq([r.status, r.reason, r.pendingDeletes, r.added], ["blocked", MASS_DELETE, 60, 1]);
+  assert(w.store.mids("/Inbox").includes("nouveau@x"));
+  eq(await w.sync.pendingDeletes(), { count: 60, collections: [], calendar: 60 });
+  eq((await w.health()).blocked.code, MASS_DELETE);
+  const ok = await w.sync.run({ reason: "user", confirmDeletes: true });
+  eq([ok.status, w.titles().length, w.store.messages("/Trash").length], ["ok", 40, 0]);
+  // The mail's alone: the confirmation is not handed to the calendar, which held nothing.
+  for (const sid of [...w.mail.items.get("1").keys()].slice(0, 60)) w.mail.deleteMessage("1", sid);
+  eq((await w.sync.run({ reason: "timer" })).pendingDeletes, 60);
+  eq(await w.sync.pendingDeletes(), { count: 60, collections: [{ collectionId: "1", count: 60, at: w.now() }], calendar: 0 });
+  await w.sync.run({ reason: "user", confirmDeletes: true });
+  eq([w.passes.at(-1).confirmDeletes, w.store.messages("/Trash").length, w.titles().length], [false, 60, 40]);
+});
+
+test("calendar: keeping the local copies holds for messages and for events alike", async () => {
+  const w = calendarWorld();
+  const sids = await hundredEach(w);
+  for (const sid of [...w.mail.items.get("1").keys()].slice(0, 60)) w.mail.deleteMessage("1", sid);
+  for (const sid of sids.slice(0, 70)) w.cal.deleteItem(CAL, sid);
+  eq((await w.sync.run({ reason: "timer" })).pendingDeletes, 130);
+  await w.sync.discardPendingDeletes();
+  eq([(await w.health()).blocked, (await w.sync.pendingDeletes()).count], [null, 0]);
+  const r = await w.sync.run({ reason: "timer" });
+  eq([r.status, r.pendingDeletes], ["ok", 0]);
+  eq([w.store.messages("/Inbox").length, w.store.messages("/Trash").length], [100, 0], "the messages stay");
+  const rows = w.api.items(w.calendar());
+  eq([rows.length, rows.filter((x) => x.detached).length, rows.filter((x) => x.serverId !== null).length], [100, 70, 30], "the events stay, detached from the server");
+  // The calendar refuses: the mailbox stays blocked, and the user can ask again.
+  for (const sid of sids.slice(70, 100)) w.cal.deleteItem(CAL, sid);
+  for (const i of range(60)) w.cal.addItem(TASKS, task({ uid: `t${i}`, summary: `T${i}` }));
+  await w.sync.run({ reason: "timer" });
+  for (const sid of [...w.cal.items.get(TASKS).keys()]) w.cal.deleteItem(TASKS, sid);
+  eq((await w.sync.run({ reason: "timer" })).pendingDeletes, 60);
+  w.api.failAll = new Error("INTERNAL: agendas indisponibles");
+  await rejects(w.sync.discardPendingDeletes());
+  w.api.failAll = null;
+  eq([(await w.health()).blocked.code, (await w.sync.pendingDeletes()).count], [MASS_DELETE, 60]);
+  await w.sync.discardPendingDeletes();
+  eq((await w.health()).blocked, null);
+});
+
+test("calendar: held mail deletions do not block the calendar of a mailbox whose mail is unchecked", async () => {
+  const w = calendarWorld();
+  await hundredEach(w);
+  for (const sid of [...w.mail.items.get("1").keys()].slice(0, 60)) w.mail.deleteMessage("1", sid);
+  eq((await w.sync.run({ reason: "timer" })).pendingDeletes, 60);
+  // Mail unchecked: nothing could apply them. They wait, uncounted, and the calendar goes on.
+  w.make({ sync: { mail: false, calendar: true, contacts: false, tasks: true } });
+  w.cal.addItem(CAL, event({ uid: "plus", summary: "Plus tard" }));
+  const r = await w.sync.run({ reason: "timer" });
+  eq([r.status, r.pendingDeletes, (await w.health()).blocked], ["ok", 0, null]);
+  assert(w.titles().includes("Plus tard"));
+  eq(w.store.messages("/Inbox").length, 100);
+  // Mail checked again: they are the user's to decide, as before.
+  w.make();
+  const again = await w.sync.run({ reason: "timer" });
+  eq([again.status, again.pendingDeletes], ["blocked", 60]);
+});
+
+test("calendar: Ping also watches the calendar and the tasks, each with its class; a change reported there starts a pass for that folder", async () => {
+  const w = calendarWorld();
+  await w.sync.run({ reason: "user" });
+  let pings = 0;
+  w.mail.pings.push(() => {
+    pings++;
+    return { status: "2", folders: [CAL] };
+  });
+  w.mail.pings.push((req, opts) => {
+    pings++;
+    return new Promise((resolve, reject) => opts.signal.addEventListener("abort", () => reject(new EasError(ERR.CANCELLED, "annulé"))));
+  });
+  w.cal.addItem(CAL, event({ uid: "e1", summary: "Réunion" }));
+  w.cal.addItem(TASKS, task({ uid: "t1", summary: "Rapport" }));
+  const before = w.order.length;
+  w.sync.startPush();
+  for (let i = 0; i < 3000 && pings < 2; i++) await Promise.resolve();
+  eq(pings, 2);
+  await w.sync.stopPush();
+  const watched = child(w.mail.sent("Ping")[0], "Folders").children.map((f) => [text(f, "Id"), text(f, "Class")]);
+  eq(watched, [["1", "Email"], ["2", "Email"], ["3", "Email"], ["4", "Email"], ["6", "Email"], [CAL, "Calendar"], [TASKS, "Tasks"]]);
+  eq([w.passes.at(-1).only, w.titles()], [[CAL], ["Réunion"]], "only the folder reported is asked for");
+  eq(w.order.slice(before).filter((c) => c.startsWith("Sync ")), [`Sync ${CAL}`]);
+  // A mail folder reported: the calendar is told which, and asks for nothing.
+  const from = w.order.length;
+  await w.sync.run({ reason: "push", folders: ["6"] });
+  eq([w.order.slice(from).filter((c) => c.startsWith("Sync ")), w.passes.at(-1).only, w.titles()], [["Sync 6"], ["6"], ["Réunion"]]);
+  // No mail: only the calendar and the tasks are watched.
+  const only = calendarWorld({ sync: { mail: false, calendar: true, contacts: false, tasks: false } });
+  await only.sync.run({ reason: "user" });
+  let seen = null;
+  only.mail.pings.push((req) => {
+    seen = child(req, "Folders").children.map((f) => [text(f, "Id"), text(f, "Class")]);
+    only.sync.stopPush();
+    return { status: "1" };
+  });
+  only.sync.startPush();
+  await until(() => seen !== null);
+  await only.sync.stopPush();
+  eq(seen, [[CAL, "Calendar"]]);
+});
+
+/** A question the user has not answered yet: w.questions[i].resolve(true | false). */
+function openQuestions(w) {
+  w.questions = [];
+  w.confirm = (question) => new Promise((resolve) => w.questions.push({ question, resolve }));
+}
+
+test("calendar: meeting messages are delivered after the pass, outside the lock, with a client of their own; an open question holds no pass back", async () => {
+  const w = calendarWorld();
+  await w.sync.run({ reason: "user" });
+  openQuestions(w);
+  w.api.userAdd(w.calendar(), meeting([GUEST], { uid: "m1", summary: "Budget" }));
+  const clients = w.clients;
+  const r = await w.sync.run({ reason: "local" });
+  eq([r.status, r.calendar.sent], ["ok", 1], "the pass ends without waiting for the question");
+  assert(!w.order.includes("SendMail") && w.questions.length === 0, "nothing is asked or sent under the lock");
+  await until(() => w.questions.length === 1, "the question was never asked");
+  eq([w.clients, w.sync.delivering, w.sync.running, w.cal.mails.length], [clients + 2, true, false, 0], "one client for the pass, one for the delivery");
+  eq(w.questions[0].question, { kind: "invite", summary: "Budget", start: "2026-12-01T09:00:00Z", allDay: false, recipients: [GUEST], from: OWN });
+  // While the window is open, passes run as usual: mail arrives, and a second meeting joins the queue.
+  w.mail.addMessage("1", mime("pendant@x"));
+  w.api.userAdd(w.calendar(), meeting([GUEST], { uid: "m2", summary: "Bilan" }));
+  const during = await w.sync.run({ reason: "timer" });
+  eq([during.status, w.store.mids("/Inbox"), during.calendar.sent], ["ok", ["pendant@x"], 1]);
+  eq([w.questions.length, await w.scheduler.pending()], [1, 2], "one question at a time");
+  w.questions[0].resolve(true);
+  await until(() => w.questions.length === 2, "the second question was never asked");
+  eq(w.cal.mails.length, 1);
+  w.questions[1].resolve(false);
+  await until(() => !w.sync.delivering);
+  eq([w.cal.mails.length, await w.scheduler.pending(), w.notices], [1, 0, []], "the first one left, the second did not: the user did not want it");
+  assert(w.cal.mails[0].saveInSentItems);
+  eq(w.order.filter((c) => c === "SendMail").length, 1);
+});
+
+test("calendar: nothing to deliver, no client and no question; a delivery that cannot start leaves the message queued", async () => {
+  const w = calendarWorld();
+  await w.sync.run({ reason: "user" });
+  const clients = w.clients;
+  await w.sync.run({ reason: "timer" });
+  await ticks(200);
+  eq([w.clients, w.asked.length, w.sync.delivering], [clients + 1, 0, false]);
+  // The client of the delivery cannot be made (the password is locked away): nothing is asked, the message waits.
+  w.api.userAdd(w.calendar(), meeting([GUEST], { uid: "m1", summary: "Budget" }));
+  const second = w.clients + 2; // the pass takes the next client, the delivery the one after
+  w.clientError = (n) => (n === second ? new EasError(ERR.NETWORK, "Mot de passe inaccessible pour le moment.") : null);
+  const r = await w.sync.run({ reason: "local" });
+  eq([r.status, r.calendar.sent], ["ok", 1]);
+  await until(() => w.clients === second && !w.sync.delivering);
+  eq([w.asked.length, w.cal.mails.length, await w.scheduler.pending()], [0, 0, 1]);
+  assert(w.log.lines.some(([level, line]) => level === "warn" && line.startsWith("Messages de réunion non traités")), "said in the log");
+  eq((await w.health()).lastError, null, "not a failure of the synchronization");
+  // The next pass delivers.
+  await w.sync.run({ reason: "timer" });
+  await until(() => !w.sync.delivering && w.cal.mails.length === 1, "delivered at the next pass");
+  eq([w.asked.length, await w.scheduler.pending()], [1, 0]);
+});
+
+test("calendar: close() stops the delivery without waiting for the window; the question is withdrawn, the message stays, the next engine asks again", async () => {
+  const w = calendarWorld();
+  await w.sync.run({ reason: "user" });
+  openQuestions(w);
+  w.api.userAdd(w.calendar(), meeting([GUEST], { uid: "m1", summary: "Budget" }));
+  await w.sync.run({ reason: "local" });
+  await until(() => w.questions.length === 1);
+  const old = w.sync;
+  await old.close(); // resolves although nobody answered
+  eq([old.delivering, await w.scheduler.pending(), w.cal.mails.length], [false, 1, 0]);
+  w.questions[0].resolve(true); // the window of the engine that stopped: its yes counts for nothing
+  await ticks(200);
+  eq(w.cal.mails.length, 0);
+  eq((await old.run({ reason: "user" })).reason, "CLOSED");
+  // The engine that takes the mailbox over asks again, and this yes sends the message once.
+  w.make();
+  w.confirm = null;
+  await w.sync.run({ reason: "user" });
+  await until(() => !w.sync.delivering && w.cal.mails.length === 1, "asked again, then sent");
+  eq([w.asked.length, await w.scheduler.pending()], [2, 0]);
+  // close() during the calendar part: the pass is cancelled and awaited like any other.
+  w.cal.addItem(CAL, event({ uid: "e9", summary: "Tard" }));
+  let release;
+  w.cal.hook("Sync", async () => {
+    await new Promise((resolve) => (release = resolve));
+    return undefined;
+  });
+  const running = w.sync.run({ reason: "timer" });
+  await until(() => typeof release === "function");
+  const closing = w.sync.close();
+  await ticks(100);
+  assert(w.sync.running, "the pass gets control back before close() ends");
+  release();
+  await rejects(running, (e) => e.code === ERR.CANCELLED);
+  await closing;
+  assert(!w.sync.running);
+});
+
+test("calendar: calendar and tasks unchecked, one more pass removes their calendars, then the calendar engine is no longer called", async () => {
+  const w = calendarWorld();
+  w.cal.addItem(CAL, event({ uid: "e1", summary: "Réunion" }));
+  w.cal.addItem(TASKS, task({ uid: "t1", summary: "Rapport" }));
+  await w.sync.run({ reason: "user" });
+  eq(w.api.calendars.size, 1);
+  // Tasks alone unchecked: the calendar part still runs, and takes the tasks away.
+  w.make({ sync: { mail: true, calendar: true, contacts: false, tasks: false } });
+  await w.sync.run({ reason: "user" });
+  eq([w.titles(), await w.records.get("pimActive", null)], [["Réunion"], true]);
+  // Both unchecked.
+  w.make({ sync: { mail: true, calendar: false, contacts: false, tasks: false } });
+  const passes = w.passes.length;
+  const r = await w.sync.run({ reason: "user" });
+  eq([r.status, w.api.calendars.size, w.passes.length, await w.records.get("pimActive", null)], ["ok", 0, passes + 1, null]);
+  eq((await w.records.names()).filter((n) => n.startsWith("pim")), [], "no calendar record is left");
+  const calls = w.api.calls.length;
+  await w.sync.run({ reason: "timer" });
+  eq([w.passes.length, w.api.calls.length], [passes + 1, calls], "nothing more afterwards");
+  // Nothing else chosen that is synchronised (contacts only): one pass tidies all the same, then none asks anything.
+  const c = calendarWorld();
+  c.cal.addItem(CAL, event({ uid: "e1", summary: "Réunion" }));
+  await c.sync.run({ reason: "user" });
+  c.make({ sync: { mail: false, calendar: false, contacts: true, tasks: false } });
+  await c.sync.run({ reason: "user" });
+  eq([c.api.calendars.size, await c.records.get("pimActive", null)], [0, null]);
+  const n = c.order.length;
+  await c.sync.run({ reason: "user" });
+  eq(c.order.length, n);
+});
+
+test("calendar: the folder list starts over while mail is unchecked; when mail comes back, no ServerId is taken at face value", async () => {
+  const w = calendarWorld();
+  w.mail.addMessage("6", mime("p@x"));
+  w.cal.addItem(CAL, event({ uid: "e1", summary: "Réunion" }));
+  await w.sync.run({ reason: "user" });
+  eq([w.store.mids("/Inbox/Projets"), (await loadCollection(w.records, "6")).path], [["p@x"], "/Inbox/Projets"]);
+  const imports = () => w.store.writes.filter((x) => x[0] === "import").length;
+  const imported = imports();
+  // Mail unchecked. The server then renumbers its folders (a partnership reset): "6" now names another
+  // folder, and "Projets" is "9".
+  w.make({ sync: { mail: false, calendar: true, contacts: false, tasks: true } });
+  w.mail = new FakeServer({ folders: [...BOTH.map((f) => (f.id === "6" ? { id: "6", parentId: "0", name: "Autre", type: 12 } : f)), { id: "9", parentId: "1", name: "Projets", type: 12 }] });
+  w.mail.addMessage("9", mime("p@x"));
+  w.mail.addMessage("6", mime("autre@x"));
+  await w.records.set("hierarchy", { syncKey: "999" }); // refused: Status 9, then the whole list again
+  eq((await w.sync.run({ reason: "timer" })).status, "ok");
+  eq([text(w.mail.sent("FolderSync").at(-1), "SyncKey"), (await w.records.getMap("folders")).get("6").name], ["0", "Autre"], "the new list is saved");
+  eq((await w.records.getMap("foldersBefore")).get("6").name, "Projets", "the one the mail tables knew is kept");
+  // A second restart while mail is still unchecked: the list kept stays the one the tables knew.
+  await w.records.set("hierarchy", { syncKey: "998" });
+  await w.sync.run({ reason: "timer" });
+  eq((await w.records.getMap("foldersBefore")).get("6").name, "Projets");
+  eq(w.store.mids("/Inbox/Projets"), ["p@x"], "nothing moved in the mail");
+  // Mail checked again: the tables are matched by place, as after any restart.
+  w.make();
+  eq((await w.sync.run({ reason: "user" })).status, "ok");
+  eq([w.store.mids("/Inbox/Projets"), w.store.mids("/Autre")], [["p@x"], ["autre@x"]], "each folder keeps its messages");
+  eq([(await loadCollection(w.records, "9")).path, (await loadCollection(w.records, "6")).path], ["/Inbox/Projets", "/Autre"]);
+  eq(imports(), imported + 1, "only the message of the new folder is imported");
+  assert(!(await w.records.names()).includes("foldersBefore"), "the list kept is forgotten once the tables are matched");
+  // A mailbox that never had mail keeps nothing.
+  const bare = calendarWorld({ sync: { mail: false, calendar: true, contacts: false, tasks: false } });
+  await bare.sync.run({ reason: "user" });
+  await bare.records.set("hierarchy", { syncKey: "999" });
+  await bare.sync.run({ reason: "timer" });
+  assert(!(await bare.records.names()).includes("foldersBefore"));
+});
+
+test("calendar: the folder list starts over and the calendar folder has another ServerId — the calendar part is told before the list is saved, and nothing is doubled", async () => {
+  const w = calendarWorld();
+  w.mail.addMessage("1", mime("a@x"));
+  for (const i of range(5)) w.cal.addItem(CAL, event({ uid: `e${i}`, summary: `E${i}` }), `i${i}`);
+  await w.sync.run({ reason: "user" });
+  w.api.userAdd(w.calendar(), event({ uid: "l", summary: "Local" }));
+  // A partnership reset: the key of the folder list is refused, and in the new list the calendar folder is "12".
+  w.mail = new FakeServer({ folders: BOTH.map((f) => (f.id === CAL ? { ...f, id: "12" } : f)) });
+  w.mail.addMessage("1", mime("a@x"));
+  const items = w.cal.items.get(CAL);
+  w.cal.removeFolder(CAL);
+  w.cal.addFolder("12", "0", "Calendrier", 8);
+  w.cal.items.set("12", items);
+  await w.records.set("hierarchy", { syncKey: "999" });
+  const told = [];
+  const listRestarted = w.pim.listRestarted.bind(w.pim);
+  w.pim.listRestarted = async () => {
+    told.push((await w.records.getMap("folders")).has(CAL)); // the list stored when the calendar part is told
+    return listRestarted();
+  };
+  const from = w.order.length;
+  let r = await w.sync.run({ reason: "timer" });
+  for (let i = 0; i < 5 && r.moreAvailable; i++) r = await w.sync.run({ reason: "suite" });
+  eq([r.status, r.pendingDeletes], ["ok", 0]);
+  eq(told, [true], "told once, while the list stored is still the one before");
+  eq([(await w.records.getMap("folders")).has(CAL), (await w.records.getMap("folders")).get("12").type], [false, 8], "the new list is saved");
+  eq([w.titles(), w.api.calendars.size], [["E0", "E1", "E2", "E3", "E4", "Local"], 1], "no event twice, no second calendar");
+  eq(w.cal.adds.map((a) => a.cid), ["12"], "the new event went to the calendar folder under the ServerId it has now");
+  assert(w.order.slice(from).includes("Sync 12") && !w.order.slice(from).includes(`Sync ${CAL}`), "the old ServerId is not asked");
+  eq(w.store.mids("/Inbox"), ["a@x"], "mail is matched as before");
+  // A pass that goes on from the key of the list tells nothing.
+  await w.sync.run({ reason: "timer" });
+  eq(told.length, 1);
+  // Mail only: no calendar engine, nothing to tell (and nothing fails).
+  const plain = world({ sync: { mail: true, calendar: false, contacts: false, tasks: false } });
+  await plain.sync.run({ reason: "user" });
+  await plain.records.set("hierarchy", { syncKey: "999" });
+  eq((await plain.sync.run({ reason: "timer" })).status, "ok");
+});
+
+test("calendar: a server that leaves the user's change unanswered pass after pass is a failure the mailbox shows, with its backoff — the change is not undone, and mail goes on", async () => {
+  const w = calendarWorld();
+  w.cal.addItem(CAL, event({ uid: "e1", summary: "Réunion" }));
+  await w.sync.run({ reason: "user" });
+  w.api.userAdd(w.calendar(), event({ uid: "l", summary: "Nouveau" }));
+  // The calendar collection answers "server error" to every request, for an hour.
+  const real = w.cal.onSync.bind(w.cal);
+  w.cal.onSync = (req) => {
+    const c = at(req, "Collections", "Collection");
+    if (text(c, "CollectionId") !== CAL) return real(req);
+    return el("AirSync:Sync", [el("Collections", [el("Collection", [el("SyncKey", text(c, "SyncKey")), el("CollectionId", CAL), el("Status", "5")])])]);
+  };
+  let failures = 0;
+  let skipped = 0;
+  for (let minute = 0; minute < 60; minute++) {
+    w.mail.addMessage("1", mime(`m${minute}@x`));
+    try {
+      const r = await w.sync.run({ reason: "timer" });
+      if (r.reason === "backoff") skipped++;
+    } catch (e) {
+      eq(e.code, "SERVER");
+      failures++;
+    }
+    w.advance(60_000);
+  }
+  assert(failures >= 3 && skipped > failures, `${failures} failures, ${skipped} passes held back by the backoff`);
+  const h = await w.health();
+  eq([h.failures, h.lastError.code, h.blocked], [failures, "SERVER", null], "shown as a failure of the mailbox");
+  eq([w.titles(), w.notices, w.api.calls.filter((c) => c[0] === "dropLocalChange").length], [["Nouveau", "Réunion"], [], 0], "nothing is undone");
+  assert(w.store.mids("/Inbox").length >= failures, "the mail of each pass that ran arrived");
+  // The server is back.
+  w.cal.onSync = real;
+  w.advance(3600_000);
+  let r = await w.sync.run({ reason: "timer" });
+  for (let i = 0; i < 5 && r.moreAvailable; i++) r = await w.sync.run({ reason: "suite" });
+  eq([r.status, w.cal.adds.length, (await w.health()).failures], ["ok", 1, 0]);
+  eq([...w.cal.items.get(CAL).values()].map((x) => x.summary).sort(), ["Nouveau", "Réunion"]);
 });

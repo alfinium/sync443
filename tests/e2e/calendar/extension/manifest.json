@@ -1,0 +1,36 @@
+{
+  "manifest_version": 2,
+  "name": "Sync443 sync443Calendar end-to-end test",
+  "description": "Throw-away test extension: never shipped.",
+  "version": "1.0",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "sync443-calendar-e2e@sync443.test",
+      "strict_min_version": "140.0"
+    }
+  },
+  "permissions": ["storage"],
+  "background": {
+    "scripts": ["background.mjs"],
+    "type": "module"
+  },
+  "experiment_apis": {
+    "sync443Calendar": {
+      "schema": "experiments/sync443Calendar/schema.json",
+      "parent": {
+        "scopes": ["addon_parent"],
+        "paths": [["sync443Calendar"]],
+        "script": "experiments/sync443Calendar/implementation.js",
+        "events": ["startup"]
+      }
+    },
+    "sync443CalendarTest": {
+      "schema": "experiments/sync443CalendarTest/schema.json",
+      "parent": {
+        "scopes": ["addon_parent"],
+        "paths": [["sync443CalendarTest"]],
+        "script": "experiments/sync443CalendarTest/implementation.js"
+      }
+    }
+  }
+}

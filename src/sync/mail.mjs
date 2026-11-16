@@ -85,6 +85,7 @@ import * as v from "../core/sanitize.mjs";
 import { EasError, ERR } from "../transport/client.mjs";
 import { recordName } from "./store.mjs";
 import { validPath } from "./paths.mjs";
+import { folderKind } from "./invitations.mjs";
 import { errorCode } from "../log.mjs";
 
 
@@ -92,10 +93,10 @@ export const WINDOW_SIZE = 50;
 /** Most Sync batches for one collection in one pass (MoreAvailable is bounded). */
 export const MAX_BATCHES = 20;
 /** Mass deletion: more than this many deletions… */
-const MASS_DELETE_COUNT = 50;
+export const MASS_DELETE_COUNT = 50;
 /** …and more than this share of the folder, in one run of deletions or within MASS_DELETE_WINDOW_MS. */
-const MASS_DELETE_RATIO = 0.2;
-const MASS_DELETE_WINDOW_MS = 24 * 3600_000;
+export const MASS_DELETE_RATIO = 0.2;
+export const MASS_DELETE_WINDOW_MS = 24 * 3600_000;
 const QUARANTINE_MAX = 500;
 /** Passes in a row a batch may fail as a whole before its items are only kept for a later fetch (see processCommands). */
 const STUCK_LIMIT = 3;
@@ -753,10 +754,22 @@ export class MailPass {
  *   collectionOf(path) → CollectionState | null   synchronised collection of a local folder
  *   journalOps(coll) → { removed, flags }   waiting local changes of the collection (Journal.messageOps; optional)
  *   stuck        Map kept across passes: batches that failed as a whole, and how often (optional)
+ *   invitations  sync/invitations.mjs InvitationTable of the mailbox (optional): told of every mail added,
+ *                deleted or moved away, and of every collection rebuilt from scratch, with the kind of the
+ *                folder the mail is in (invitationFolder); its calls never throw
  *   pass         MailPass
  */
 
 const inLocalTrash = (ctx, path) => Boolean(ctx.trashPath) && (path === ctx.trashPath || path.startsWith(`${ctx.trashPath}/`));
+
+/**
+ * The kind of folder a collection is, for the invitation table
+ * (invitations.mjs folderKind): the table notes no mail of the server's
+ * Deleted Items, Junk, Sent Items, Drafts or Outbox, where a mail is not
+ * an invitation the user is being asked to answer.
+ */
+const invitationFolder = (ctx, coll) =>
+  folderKind(coll.path, { inTrash: (typeof ctx.serverTrash === "function" && ctx.serverTrash(coll.serverId) === true) || inLocalTrash(ctx, coll.path) });
 
 function checkAbort(ctx) {
   if (ctx.signal?.aborted) throw cancelled();
@@ -899,6 +912,7 @@ async function sendAgedMoves(ctx, coll, plan, outcomes) {
     if (!a) o = "keep";
     else if (a.status === MOVE_DONE || a.status === MOVE_GONE) {
       coll.unage(sid);
+      await ctx.invitations?.forget(coll.serverId, sid);
       o = "done";
     } else o = MOVE_TRANSIENT.has(a.status) ? "keep" : "drop";
     for (const id of d.ids) mergeOutcome(outcomes, id, o);
@@ -930,6 +944,7 @@ export async function syncBatch(ctx, coll, { uploads = [], fetch = [] } = {}) {
   for (const sid of fetch) if (coll.items.has(sid)) coll.failed.delete(sid); // linked meanwhile
   const fetches = coll.syncKey === "0" ? [] : fetch.filter((sid) => !coll.items.has(sid));
   const initial = coll.syncKey === "0";
+  if (initial) await ctx.invitations?.forgetCollection(coll.serverId); // rebuilt from scratch: its Adds say again which mails invite
   const doc = await sendSync(ctx, coll, st, [...(plan?.commands ?? []), ...fetches.map(fetchCommand)]);
   st.batches++;
 
@@ -987,6 +1002,7 @@ export async function syncBatch(ctx, coll, { uploads = [], fetch = [] } = {}) {
     }
     for (const [sid, del] of plan.deletes) {
       if (coll.unlink(sid) === null) coll.unage(sid);
+      await ctx.invitations?.forget(coll.serverId, sid);
       ctx.pass.index(ctx.mailStore, coll.path).invalidate(del.mid);
       for (const id of del.ids) mergeOutcome(outcomes, id, "done");
     }
@@ -1071,6 +1087,7 @@ async function processCommands(ctx, coll, st, commands) {
           attempts++;
           await applyAdd(ctx, coll, cmd, index, ops);
           coll.failed.delete(sid);
+          if (ctx.invitations) await ctx.invitations.noteMail(coll.serverId, sid, readEmail(cmd.data), invitationFolder(ctx, coll));
           break;
         case "change":
           attempts++;
@@ -1080,6 +1097,7 @@ async function processCommands(ctx, coll, st, commands) {
           const hash = coll.hashOf(sid);
           const mid = coll.unlink(sid) ?? coll.unage(sid); // the local action waits for the end of the run (threshold)
           coll.failed.delete(sid);
+          await ctx.invitations?.forget(coll.serverId, sid);
           if (mid !== null) deferred.push([sid, mid, hash]);
           break;
         }
@@ -1537,11 +1555,13 @@ export async function replayMoves(ctx, entries, collectionOf, destinationOf = co
           o = "keep";
         } else if (a.status === MOVE_DONE) {
           if (m.from.unlink(m.serverId) === null) m.from.unage(m.serverId);
+          await ctx.invitations?.moved(m.from.serverId, m.serverId, m.to.serverId, a.dstMsgId, invitationFolder(ctx, m.to));
           if (a.dstMsgId) m.to.link(a.dstMsgId, m.mid, m.hash);
           touched.add(m.from).add(m.to);
           o = "done";
         } else if (a.status === MOVE_GONE) {
           if (m.from.unlink(m.serverId) === null) m.from.unage(m.serverId); // no longer in the source folder on the server
+          await ctx.invitations?.forget(m.from.serverId, m.serverId);
           touched.add(m.from);
           o = "drop";
         } else {

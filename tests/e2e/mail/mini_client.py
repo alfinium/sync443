@@ -10,9 +10,14 @@ is required and nothing may follow the announced body.
     c.provision()
     folders = c.folder_sync("0")
     resp, doc = c.command("Sync", el("AirSync:Sync", [...]))
+
+Calendar and tasks: sync(..., supported=...) for the first Sync, add_item,
+change_item and delete_item for one client command, event_data and task_data
+to write ApplicationData, meeting_response for MeetingResponse.
 """
 
 import base64
+import datetime
 import socket
 import ssl
 import sys
@@ -183,10 +188,14 @@ class MiniEasClient:
         return {"status": doc.text("Status"), "key": doc.text("SyncKey"), "changes": changes, "doc": doc}
 
     def sync(self, collection_id, key, *, commands=None, window=None, options=None, get_changes=None,
-             deletes_as_moves=None, top=()):
+             deletes_as_moves=None, top=(), supported=None):
         """One-collection Sync. -> {"status", "key", "commands": [(op, server_id, data)], "responses",
-        "more", "doc"} (doc None for an empty response)."""
+        "more", "doc"} (doc None for an empty response).
+        supported: the children of Supported (elements, or names of the collection's class given as
+        "Calendar:Subject"); an empty list sends an empty Supported; None sends none."""
         children = [el("SyncKey", key), el("CollectionId", collection_id)]
+        if supported is not None:
+            children.append(el("Supported", [x if isinstance(x, wbxml.Element) else el(x) for x in supported]))
         if deletes_as_moves is not None:
             children.append(el("DeletesAsMoves", "1" if deletes_as_moves else "0"))
         if get_changes is not None:
@@ -201,6 +210,41 @@ class MiniEasClient:
                                                              *top]))
         assert resp.status == 200, resp
         return parse_sync(doc)
+
+    def add_item(self, collection_id, key, data, client_id="c1", **kw):
+        """Sync with one Add. -> (ServerId or None, Status, the parsed Sync)"""
+        r = self.sync(collection_id, key, commands=[el("Add", [el("ClientId", client_id),
+                                                              el("ApplicationData", data)])], **kw)
+        answer = next((x for op, _, _, x in r["responses"] if op == "Add" and x.text("ClientId") == client_id), None)
+        if answer is None:
+            return None, None, r
+        return answer.text("ServerId"), answer.text("Status"), r
+
+    def change_item(self, collection_id, key, server_id, data, **kw):
+        """Sync with one Change. -> (Status: "1" when the server says nothing, the parsed Sync)"""
+        r = self.sync(collection_id, key, commands=[el("Change", [el("ServerId", server_id),
+                                                                 el("ApplicationData", data)])], **kw)
+        status = next((st for op, sid, st, _ in r["responses"] if op == "Change" and sid == server_id), None)
+        return (status or ("1" if r["status"] == "1" else None)), r
+
+    def delete_item(self, collection_id, key, server_id, **kw):
+        """Sync with one Delete. -> the parsed Sync"""
+        return self.sync(collection_id, key, commands=[el("Delete", [el("ServerId", server_id)])], **kw)
+
+    def meeting_response(self, *requests):
+        """MeetingResponse. Each request: (UserResponse, CollectionId, RequestId[, InstanceId]).
+        -> (HttpResponse, [(RequestId, Status, CalendarId)], top-level Status, the decoded document)"""
+        body = []
+        for req in requests:
+            children = [el("UserResponse", req[0]), el("CollectionId", req[1]), el("RequestId", req[2])]
+            if len(req) > 3 and req[3] is not None:
+                children.append(el("InstanceId", req[3]))
+            body.append(el("Request", children))
+        resp, doc = self.command("MeetingResponse", el("MeetingResponse:MeetingResponse", body))
+        if doc is None:
+            return resp, [], None, None
+        results = [(r.text("RequestId"), r.text("Status"), r.text("CalendarId")) for r in doc.children_named("Result")]
+        return resp, results, doc.text("Status"), doc
 
 
 def parse_sync(doc, collection_index=0):
@@ -222,3 +266,92 @@ def parse_sync(doc, collection_index=0):
 MAIL_OPTIONS = [el("AirSync:FilterType", "0"),
                 el("AirSyncBase:BodyPreference", [el("Type", "4")]),
                 el("AirSync:MIMESupport", "2")]
+
+# Calendar and tasks.
+
+PIM_OPTIONS = [el("AirSync:FilterType", "0"), el("AirSyncBase:BodyPreference", [el("Type", "1")])]
+# Children of Supported for the Calendar class ([MS-ASCMD] 2.2.3.179): the required ones, then the optional ones.
+SUPPORTED_REQUIRED = ("DtStamp", "Categories", "Sensitivity", "BusyStatus", "UID", "Timezone", "StartTime", "Subject",
+                      "Location", "EndTime", "Recurrence", "AllDayEvent", "Reminder", "Exceptions")
+SUPPORTED_OPTIONAL = ("Attendees", "OrganizerName", "OrganizerEmail", "MeetingStatus", "ResponseRequested",
+                      "DisallowNewTimeProposal")
+
+
+def calendar_supported(version="14.1", without=()):
+    """Every calendar element a client can declare in Supported for a protocol version, but `without`."""
+    names = SUPPORTED_REQUIRED + SUPPORTED_OPTIONAL
+    if version.startswith("12."):
+        names = [n for n in names if n not in ("ResponseRequested", "DisallowNewTimeProposal")]
+    return [f"Calendar:{n}" for n in names if n not in without]
+
+
+def compact(when):
+    """Compact DateTime ("20261120T093000Z") of a datetime (naive: UTC)."""
+    if when.tzinfo is not None:
+        when = when.astimezone(datetime.timezone.utc)
+    return when.strftime("%Y%m%dT%H%M%SZ")
+
+
+def long_date(when):
+    """dateTime ("2026-11-20T09:30:00.000Z") of a datetime (naive: UTC)."""
+    if when.tzinfo is not None:
+        when = when.astimezone(datetime.timezone.utc)
+    return when.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+
+def body_element(text):
+    return el("AirSyncBase:Body", [el("Type", "1"), el("Data", text)])
+
+
+def _recurrence(ns, fields):
+    order = ("Type", "Start", "Until", "Occurrences", "Interval", "WeekOfMonth", "DayOfWeek", "MonthOfYear",
+             "DayOfMonth", "Regenerate", "DeadOccur", "CalendarType", "IsLeapMonth", "FirstDayOfWeek")
+    unknown = set(fields) - set(order)
+    assert not unknown, unknown
+    return el(f"{ns}:Recurrence", [el(name, fields[name]) for name in order if name in fields])
+
+
+def event_data(**fields):
+    """Calendar ApplicationData children. Keys are element names (Subject="…", StartTime=datetime or text,
+    AllDayEvent=0…); Attendees=[{Email, Name, AttendeeStatus, AttendeeType}], Categories=[…],
+    Recurrence={Type: 1, …}, Exceptions=[{ExceptionStartTime: …, Deleted: 1, Subject: …}], Body="text",
+    Timezone=bytes or base64 text. A value None writes an empty element."""
+    out = []
+    for name, value in fields.items():
+        if isinstance(value, datetime.datetime):
+            value = compact(value)
+        if name == "Body":
+            out.append(body_element(value))
+        elif name == "Timezone" and isinstance(value, (bytes, bytearray)):
+            out.append(el("Calendar:Timezone", base64.b64encode(bytes(value)).decode("ascii")))
+        elif name == "Attendees":
+            out.append(el("Calendar:Attendees", [el("Attendee", [el(k, v) for k, v in a.items()]) for a in value]))
+        elif name == "Categories":
+            out.append(el("Calendar:Categories", [el("Category", c) for c in value]))
+        elif name == "Recurrence":
+            rec = {k: compact(v) if isinstance(v, datetime.datetime) else v for k, v in value.items()}
+            out.append(_recurrence("Calendar", rec))
+        elif name == "Exceptions":
+            out.append(el("Calendar:Exceptions", [el("Exception", event_data(**x)) for x in value]))
+        else:
+            out.append(el(f"Calendar:{name}", value))
+    return out
+
+
+def task_data(**fields):
+    """Tasks ApplicationData children. Keys are element names (Subject="…", Complete=0, DueDate=datetime…);
+    Categories=[…], Recurrence={Type: 0, Start: datetime, …}, Body="text"."""
+    out = []
+    for name, value in fields.items():
+        if isinstance(value, datetime.datetime):
+            value = long_date(value)
+        if name == "Body":
+            out.append(body_element(value))
+        elif name == "Categories":
+            out.append(el("Tasks:Categories", [el("Category", c) for c in value]))
+        elif name == "Recurrence":
+            rec = {k: long_date(v) if isinstance(v, datetime.datetime) else v for k, v in value.items()}
+            out.append(_recurrence("Tasks", rec))
+        else:
+            out.append(el(f"Tasks:{name}", value))
+    return out

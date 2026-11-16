@@ -1,0 +1,59 @@
+<!-- SPDX-License-Identifier: MIT -->
+<!-- Copyright (c) 2026 alfinium -->
+<!-- Window that asks before a meeting message is sent (confirm.mjs). Texts: data-i18n="key", from _locales/<language>/messages.json (i18n.mjs). -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title data-i18n="confirmTitle"></title>
+  <link rel="stylesheet" href="confirm.css">
+  <script type="module" src="confirm.mjs"></script>
+</head>
+<body>
+  <main>
+    <!-- The question: shown once the background has said what would be sent, and to whom. -->
+    <section id="ask" class="pane" aria-labelledby="question" hidden>
+      <div class="content">
+        <header class="head">
+          <img src="../icons/sync443.svg" alt="" width="32" height="32">
+          <h1 id="question"></h1>
+        </header>
+        <dl class="facts">
+          <div>
+            <dt data-i18n="confirmLabelEvent"></dt>
+            <dd id="summary" class="summary" dir="auto"></dd>
+          </div>
+          <div>
+            <dt data-i18n="confirmLabelWhen"></dt>
+            <dd id="when"></dd>
+          </div>
+          <div>
+            <dt data-i18n="confirmLabelFrom"></dt>
+            <dd id="from"></dd>
+          </div>
+        </dl>
+        <h2 id="count"></h2>
+        <ul id="recipients" class="recipients" tabindex="0" aria-labelledby="count"></ul>
+        <p class="hint" data-i18n="confirmHint"></p>
+      </div>
+      <div class="actions">
+        <button type="button" id="send" class="primary" data-i18n="confirmSend" aria-describedby="question count"></button>
+        <button type="button" id="dont-send" data-i18n="confirmDontSend" aria-describedby="question"></button>
+        <p id="progress" class="progress" role="status" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <!-- Nothing to confirm (any more): why, and a way out. -->
+    <section id="over" class="pane" aria-labelledby="over-text" hidden>
+      <div class="content">
+        <p id="over-text" class="over-text" role="alert"></p>
+      </div>
+      <div class="actions">
+        <button type="button" id="close" data-i18n="confirmClose"></button>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

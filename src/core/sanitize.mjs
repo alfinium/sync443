@@ -19,6 +19,25 @@ const BLANK_LOOKALIKES = new RegExp(`[${String.fromCodePoint(0x2800, 0x3164, 0xf
 // Invisible characters (zero-width, soft hyphen, BOM): they make two names look alike.
 const INVISIBLE = /[\u00ad\u180e\u200b-\u200d\u2060\ufeff]/g;
 
+/**
+ * A character class from code points and [first, last] ranges, built when
+ * the module loads: such characters are never typed in a source file.
+ */
+const classOf = (...parts) =>
+  parts.map((p) => (Array.isArray(p) ? `${String.fromCodePoint(p[0])}-${String.fromCodePoint(p[1])}` : String.fromCodePoint(p))).join("");
+/**
+ * What contentText removes besides controls: every character of BIDI and
+ * of INVISIBLE except the two joiners U+200C and U+200D, the interlinear
+ * annotation marks U+FFF9 to U+FFFB, the noncharacters U+FFFE and U+FFFF,
+ * and the tag characters U+E0000 to U+E007F.
+ */
+const HIDDEN_CLASS = classOf(
+  0x00ad, 0x061c, 0x180e, 0x200b, 0x200e, 0x200f, [0x202a, 0x202e], 0x2060, [0x2066, 0x2069], 0xfeff,
+  [0xfff9, 0xfffb], 0xfffe, 0xffff, [0xe0000, 0xe007f],
+);
+const HIDDEN = new RegExp(`[${HIDDEN_CLASS}]`, "u");
+const HIDDEN_ALL = new RegExp(`[${HIDDEN_CLASS}]`, "gu");
+
 /** Cut to at most `max` UTF-16 units without splitting a surrogate pair. */
 export function cut(s, max) {
   if (s.length <= max) return s;
@@ -39,6 +58,38 @@ export function cleanText(value, { max = 64 * 1024, singleLine = false, stripBid
   if (singleLine) s = s.replace(/[\t\n]+/g, " ");
   if (stripBidi) s = s.replace(BIDI, "").replace(INVISIBLE, "");
   return cut(s, max);
+}
+
+/**
+ * The content of a calendar item or of a task (a subject, a location, a
+ * body, a category), which is written back to the server when the user
+ * changes the item. Cleaned like cleanText, except that the zero-width
+ * non-joiner and joiner (U+200C, U+200D) stay: Persian and Indic words and
+ * emoji sequences are spelled with them, and a text read without them
+ * would be sent back as another text.
+ * The other invisible characters and the bidirectional ones are removed,
+ * with the annotation marks, the two noncharacters of the basic plane and
+ * the tag characters: hasHidden says when that happened, so that the
+ * caller does not take the result for the server's text.
+ * A lone surrogate becomes U+FFFD first: text it is not, and next to one
+ * a character class does not match in every engine.
+ */
+export function contentText(value, { max = 64 * 1024, singleLine = false } = {}) {
+  if (typeof value !== "string") return "";
+  const text = value.isWellFormed() ? value : value.toWellFormed();
+  let s = text.replace(LINE_BREAKS, "\n").replace(CONTROLS, "");
+  if (singleLine) s = s.replace(/[\t\n]+/g, " ");
+  return cut(s.replace(HIDDEN_ALL, ""), max);
+}
+
+/**
+ * Whether contentText removes from `value` more than control characters
+ * and line breaks: a character that is part of the text for the server,
+ * and that the cleaned text no longer has. A lone surrogate, which
+ * contentText replaces, is one.
+ */
+export function hasHidden(value) {
+  return typeof value === "string" && (!value.isWellFormed() || HIDDEN.test(value));
 }
 
 /** No control character (including tab and line breaks) at all. */

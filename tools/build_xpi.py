@@ -58,7 +58,7 @@ HOOKS_FILE = "background.mjs"
 HOOK_BEGIN = "// <test-hooks>"
 HOOK_END = "// </test-hooks>"
 # What must be gone once they are removed.
-HOOK_LEFTOVERS = ("test-config.json", "test-scenario.mjs", "runScenario", "loadTestConfig")
+HOOK_LEFTOVERS = ("test-config.json", "test-scenario.mjs", "runScenario", "loadTestConfig", "testMeetings")
 VERSION = re.compile(r"^(?:0|[1-9][0-9]{0,8})(?:\.(?:0|[1-9][0-9]{0,8})){1,3}$")
 
 # Relative module specifiers: static imports and re-exports (statements

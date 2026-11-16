@@ -23,7 +23,7 @@ Thunderbird 140 ESR or later.
 
 ```
 src/
-  background.mjs          orchestration: mailboxes, engines, timers, menus, button
+  background.mjs          orchestration: mailboxes, engines, timers, menus, button, confirmation window
   send.mjs                closed sending: a message from a Sync443 account goes through ActiveSync or not at all
   log.mjs                 diagnostic log (no personal content), debugging limited to one hour; in French
   i18n.mjs                interface texts (browser.i18n); engine failures shown according to their code
@@ -42,7 +42,13 @@ src/
     mime.mjs              headers: strict Message-ID, internal headers removed, draft cleaned before sending
     mail-codec.mjs        ActiveSync mail items read into validated objects
     folder-tree.mjs       server folder tree → local paths valid on all systems
-    ical.mjs, vcard.mjs, recurrence.mjs, timezones.mjs   (later stages)
+    calendar-item.mjs     ActiveSync events ↔ validated item descriptions [MS-ASCAL]
+    task-item.mjs         ActiveSync tasks ↔ validated item descriptions [MS-ASTASK]
+    recurrence.mjs        recurrence rules, bounded; shapes Thunderbird cannot hold are turned away
+    eas-timezone.mjs      the ActiveSync time zone structure, read and written
+    meeting-request.mjs   the meeting request carried by an invitation mail, read into a validated object
+    itip.mjs              meeting messages written by the extension (RFC 5546, RFC 6047)
+    vcard.mjs             (stage 5)
   transport/
     client.mjs            ActiveSync over a verified connection: certificate assessed before any write, typed errors
   sync/
@@ -52,19 +58,28 @@ src/
     mail.mjs              one mail collection: receiving, sending changes, rebuilding
     journal.mjs           pending local actions, acknowledged one by one, stored in chunks
     echo.mjs              the extension's own writes recognized, so as not to send them back to the server
-    push.mjs              immediate delivery (Ping)
-    calendar.mjs, contacts.mjs   (later stages)
+    push.mjs              immediate delivery (Ping), for mail, calendar and task folders
+    pim.mjs               calendar and task collections: receiving, sending changes, rebuilding, deletion guard
+    invitations.mjs       which invitation mail an answer names, never chosen by a sender's UID alone
+    scheduling.mjs        what a local change means for other people; the queue of meeting messages
+    contacts.mjs          (stage 5)
   tb/
     mail-store.mjs        writes to the mailbox's Thunderbird account, and to it only
     events.mjs            user actions in Thunderbird → intents for the journal
+    calendar-store.mjs    the calendars of one mailbox, through sync443Calendar, and those only
   experiments/
     sync443Net/           verified connection: direct TCP or through the proxy, TLS, certificate information,
                           then only writing and reading bytes
     sync443Account/       marked accounts, protected "Local Folders", neutral outgoing server,
                           passwords (Thunderbird's password manager)
+    sync443Calendar/      Sync443's own calendar type: items built from validated descriptions, journal of
+                          local changes, no sending by Thunderbird
   options/                settings page
+  confirm/                the window that asks before a meeting message is sent
 tests/unit/               unit and randomized tests (JavaScriptCore or Node)
-tests/e2e/                end to end in a real Thunderbird: net (connection), account (accounts), mail (mail)
+tests/e2e/                end to end in a real Thunderbird: net (connection), account (accounts), calendar
+                          (the calendar module), mail (mail, then calendar, tasks and meetings, against a
+                          simulated ActiveSync server)
 tools/                    test runner (any system), source code and provenance checks, .xpi build
 ```
 
@@ -78,12 +93,13 @@ tasks**. One, several or all four; at least one is required.
 | Default | all four |
 | What is not chosen | never requested from the server, nor stored in Thunderbird; the corresponding folders are ignored in the folder list, and left out of "As soon as mail arrives" monitoring (Ping) |
 | Adding an item | creation of what is needed in Thunderbird, then a first synchronization of that item |
-| Removing an item | the synchronization of that item stops at once, and local actions on its copies are no longer recorded. Planned for stage 6: after confirmation, the local copies are deleted (calendars, address books, or mail account). Nothing is ever touched on the server. In 0.1.0, the local mail copies stay in place |
-| Calendar without mail | to be decided in stage 4. To send invitations, Thunderbird needs a mail identity, and therefore an account: either a minimal account with no synchronized folder, or a calendar that sends no invitations |
+| Removing an item | the synchronization of that item stops at once, and local actions on its copies are no longer recorded. Calendar and tasks: after confirmation, the mailbox's calendars are removed from Thunderbird, with the changes not yet sent. Mail: the local copies stay in place (their removal is planned for stage 6). Nothing is ever touched on the server |
+| Calendar without mail | supported. The mailbox keeps its Thunderbird account, with no synchronized folder, and meeting messages go through ActiveSync as always. One limit: with ActiveSync 12.1 and 14.0 an answer to an invitation names the invitation mail, so answering needs mail to be synchronized; the user is told when it is not |
 
 The model has been in place since stage 1 (`sync` in `src/sync/store.mjs`, validated and tested for
 all 15 combinations). The settings page has presented it as check boxes since
-0.1.0, and every synchronization stage respects it: in 0.1.0, only mail is synchronized.
+0.1.0, and every synchronization stage respects it: mail since 0.1.0, calendar and tasks since
+0.3.0. Contacts are not synchronized yet.
 
 ## Stages
 

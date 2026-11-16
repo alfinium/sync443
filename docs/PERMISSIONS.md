@@ -11,10 +11,10 @@ manifest (`src/manifest.json`); any added permission must be justified here.
 
 | Permission | What it allows | Why Sync443 needs it |
 |---|---|---|
-| `storage` | the extension's local storage | Mailbox settings, synchronization state (keys, message mapping, local change journal), diagnostic log. Never any password. |
+| `storage` | the extension's local storage | Mailbox settings, synchronization state (keys, message mapping, local change journal), calendar and task changes waiting for the server, meeting messages waiting for the user's confirmation, diagnostic log. Never any password. |
 | `alarms` | timers that survive sleep mode | Periodic refresh (1, 5, 15, 30 or 60 min) and spaced-out retries after an error. |
 | `menus` | context menu items | "Synchronize" command on Sync443 accounts and folders. |
-| `notifications` | system notifications | Explain why a message was not sent (closed sending), report a stopped mailbox. |
+| `notifications` | system notifications | Explain why a message was not sent (closed sending), report a stopped mailbox, tell why a change to an event or a task was undone or why a meeting message was not sent. |
 | `accountsRead` | reading accounts, identities and folders; folder events | Find each mailbox's account and its folders; track folders created, renamed, moved or deleted by the user. |
 | `accountsFolders` | creating, renaming, moving and deleting folders | Reproduce the server's folder tree in Thunderbird. |
 | `messagesRead` | reading messages (headers, raw content); message events | Track messages read, flagged, moved or deleted, to apply these changes on the server; check that the draft to be sent is in the sender's account (`messages.get`) and read it (`messages.getRaw`). |
@@ -67,6 +67,7 @@ host and port) for which it was entered.
 |---|---|
 | `sync443Net` | TLS connection whose certificate is assessed before a single byte is written, either direct or through Thunderbird's proxy. |
 | `sync443Account` | Sync443's marked local accounts and their neutral outgoing server (closed sending), passwords in Thunderbird's password manager (`Sync443` realm). |
+| `sync443Calendar` | Sync443's own calendar type and the calendars of each mailbox. It builds Thunderbird items from validated, bounded descriptions only (no calendar text from outside is parsed), records the user's changes for the engine, and answers Thunderbird that the provider handles meeting messages itself, so that Thunderbird sends none. Calendars that are not Sync443's are invisible to it (rules 20 to 25 of [SECURITY-MODEL.md](SECURITY-MODEL.md)). |
 
 These APIs run with all of Thunderbird's privileges: they are reduced to the strict minimum,
 validate every argument and are accepted only from the background page
@@ -84,6 +85,7 @@ and no page can be embedded elsewhere.
 ## Not requested
 
 - `compose.send`: Sync443 never sends through Thunderbird's own path.
-- `accountsIdentities`, `addressBooks`, `tabs`, `webRequest`, `<all_urls>`: not needed for
-  mail. Calendar and contacts (stages 4 and 5) will add their own permissions where
-  needed, justified here.
+- `accountsIdentities`, `addressBooks`, `tabs`, `webRequest`, `<all_urls>`: not needed.
+  Calendar, tasks and meetings added no WebExtension permission: Thunderbird has no calendar
+  permission, and the confirmation window is opened with `windows.create`, which needs none.
+  Contacts (stage 5) will add their own permissions where needed, justified here.

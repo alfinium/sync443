@@ -90,7 +90,7 @@
     "message": "Abbrechen"
   },
   "removeQuestion": {
-    "message": "Postfach „$NAME$“ entfernen? Das zugehörige Konto, seine lokalen Ordner und sein Passwort werden aus Thunderbird entfernt. Auf dem Server wird nichts gelöscht.",
+    "message": "Postfach „$NAME$“ entfernen? Das zugehörige Konto, seine lokalen Ordner und sein Passwort werden aus Thunderbird entfernt. Auf dem Server wird nichts gelöscht. Noch nicht an den Server gesendete Änderungen gehen verloren.",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -98,7 +98,39 @@
     }
   },
   "discardConfirm": {
-    "message": "Die auf dem Server vorgenommenen Löschungen werden nicht übernommen: Die Nachrichten bleiben in Thunderbird, und die betroffenen Ordner werden erneut mit dem Server synchronisiert. Ein auf dem Server gelöschter Ordner bleibt hier erhalten, jedoch ohne Synchronisation."
+    "message": "Die auf dem Server vorgenommenen Löschungen werden nicht übernommen: Die betroffenen Nachrichten, Termine und Aufgaben bleiben in Thunderbird. Die betroffenen E-Mail-Ordner werden erneut mit dem Server synchronisiert; die behaltenen Termine und Aufgaben sind nicht mehr mit dem Server verknüpft. Ein auf dem Server gelöschter Ordner bleibt hier erhalten, jedoch ohne Synchronisation."
+  },
+  "uncheckCalendarConfirm": {
+    "message": "Den Kalender von „$NAME$“ nicht mehr synchronisieren? Seine Termine werden aus Thunderbird entfernt. Auf dem Server wird nichts gelöscht. Noch nicht an den Server gesendete Änderungen gehen verloren.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "uncheckTasksConfirm": {
+    "message": "Die Aufgaben von „$NAME$“ nicht mehr synchronisieren? Seine Aufgaben werden aus Thunderbird entfernt. Auf dem Server wird nichts gelöscht. Noch nicht an den Server gesendete Änderungen gehen verloren.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "uncheckBothConfirm": {
+    "message": "Kalender und Aufgaben von „$NAME$“ nicht mehr synchronisieren? Seine Kalender werden mit ihren Terminen und Aufgaben aus Thunderbird entfernt. Auf dem Server wird nichts gelöscht. Noch nicht an den Server gesendete Änderungen gehen verloren.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "moveConfirm": {
+    "message": "Server oder Benutzername von „$NAME$“ ändern? Seine Kalender und Aufgaben werden aus Thunderbird entfernt und anschließend erneut vom Server synchronisiert. Noch nicht an den Server gesendete Änderungen gehen verloren.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
   },
   "noAnswer": {
     "message": "Die Erweiterung antwortet nicht. Laden Sie diese Seite neu."
@@ -213,11 +245,20 @@
   "fieldPeriod": {
     "message": "Zeitraum für E-Mails"
   },
+  "fieldCalendarPeriod": {
+    "message": "Zeitraum für den Kalender"
+  },
+  "calendarPeriodHint": {
+    "message": "Termine, die älter als dieser Zeitraum sind, werden nicht synchronisiert. Künftige Termine werden immer synchronisiert."
+  },
+  "fieldTaskFilter": {
+    "message": "Zu synchronisierende Aufgaben"
+  },
   "fieldKinds": {
     "message": "Zu synchronisierende Elemente"
   },
   "kindsHint": {
-    "message": "In dieser Version werden nur E-Mails synchronisiert. Die übrige Auswahl wird für später gespeichert."
+    "message": "In dieser Version werden Kontakte noch nicht synchronisiert. Diese Auswahl wird für später gespeichert."
   },
   "soon": {
     "message": "demnächst"
@@ -268,11 +309,23 @@
   "period1Month": {
     "message": "1 Monat"
   },
+  "period3Months": {
+    "message": "3 Monate"
+  },
+  "period6Months": {
+    "message": "6 Monate"
+  },
   "periodAll": {
     "message": "Alle"
   },
   "periodUnknown": {
     "message": "Unbekannt"
+  },
+  "taskFilterAll": {
+    "message": "Alle Aufgaben"
+  },
+  "taskFilterIncomplete": {
+    "message": "Nur unerledigte Aufgaben"
   },
   "kindMail": {
     "message": "E-Mail"
@@ -336,6 +389,12 @@
   "choosePeriod": {
     "message": "Wählen Sie den Zeitraum der zu synchronisierenden E-Mails."
   },
+  "chooseCalendarPeriod": {
+    "message": "Wählen Sie den Zeitraum der zu synchronisierenden Termine."
+  },
+  "chooseTaskFilter": {
+    "message": "Wählen Sie die zu synchronisierenden Aufgaben."
+  },
   "chooseKind": {
     "message": "Wählen Sie mindestens ein zu synchronisierendes Element."
   },
@@ -382,7 +441,7 @@
     }
   },
   "statusMassDelete": {
-    "message": "Synchronisation angehalten: Der Server hat $COUNT$ Nachrichten auf einmal gelöscht. Diese Löschungen werden erst nach Ihrer Bestätigung übernommen; Sie können auch die lokalen Kopien behalten.",
+    "message": "Synchronisation angehalten: Der Server hat $COUNT$ Elemente auf einmal gelöscht (Nachrichten, Termine oder Aufgaben). Diese Löschungen werden erst nach Ihrer Bestätigung übernommen; Sie können auch die lokalen Kopien behalten.",
     "placeholders": {
       "count": {
         "content": "$1"
@@ -390,7 +449,7 @@
     }
   },
   "statusMassDeleteMany": {
-    "message": "Synchronisation angehalten: Der Server hat viele Nachrichten auf einmal gelöscht. Diese Löschungen werden erst nach Ihrer Bestätigung übernommen; Sie können auch die lokalen Kopien behalten."
+    "message": "Synchronisation angehalten: Der Server hat viele Elemente auf einmal gelöscht (Nachrichten, Termine oder Aufgaben). Diese Löschungen werden erst nach Ihrer Bestätigung übernommen; Sie können auch die lokalen Kopien behalten."
   },
   "statusBlocked": {
     "message": "Angehalten: $REASON$ Es erfolgt kein automatischer Versuch mehr: Klicken Sie auf „Synchronisieren“, um fortzufahren.",
@@ -446,6 +505,17 @@
   },
   "failedMany": {
     "message": "$COUNT$ Nachrichten konnten nicht importiert werden: Der Import wird automatisch wiederholt.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "failedCalendarOne": {
+    "message": "1 Termin oder Aufgabe konnte nicht importiert werden."
+  },
+  "failedCalendarMany": {
+    "message": "$COUNT$ Termine oder Aufgaben konnten nicht importiert werden.",
     "placeholders": {
       "count": {
         "content": "$1"
@@ -848,5 +918,335 @@
   },
   "sentLeftoverBoth": {
     "message": "Nachricht gesendet, aber ihr Entwurf konnte nicht gelöscht und das Verfassen-Fenster nicht geschlossen werden: Senden Sie sie nicht erneut."
+  },
+  "confirmTitle": {
+    "message": "Sync443 – Senden bestätigen"
+  },
+  "confirmAskInvite": {
+    "message": "Einladung zu dieser Besprechung senden?"
+  },
+  "confirmAskUpdate": {
+    "message": "Aktualisierte Einladung zu dieser Besprechung senden?"
+  },
+  "confirmAskCancel": {
+    "message": "Absage dieser Besprechung senden?"
+  },
+  "confirmHint": {
+    "message": "Ihre Änderung ist bereits gespeichert. Ohne diese Nachricht werden die Empfänger nicht darüber informiert."
+  },
+  "confirmLabelEvent": {
+    "message": "Termin"
+  },
+  "confirmLabelWhen": {
+    "message": "Datum"
+  },
+  "confirmLabelFrom": {
+    "message": "Von"
+  },
+  "confirmAllDay": {
+    "message": "$DATE$ (ganztägig)",
+    "placeholders": {
+      "date": {
+        "content": "$1"
+      }
+    }
+  },
+  "confirmRecipientsOne": {
+    "message": "1 Empfänger"
+  },
+  "confirmRecipientsMany": {
+    "message": "$COUNT$ Empfänger",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "confirmSend": {
+    "message": "Senden"
+  },
+  "confirmDontSend": {
+    "message": "Nicht senden"
+  },
+  "confirmSending": {
+    "message": "Wird gesendet…"
+  },
+  "confirmClose": {
+    "message": "Schließen"
+  },
+  "confirmExpired": {
+    "message": "Diese Anfrage ist nicht mehr gültig: Sie wurde bereits beantwortet oder ist abgelaufen."
+  },
+  "confirmNothingSent": {
+    "message": "Aus diesem Fenster wird nichts gesendet."
+  },
+  "confirmUncertain": {
+    "message": "Sync443 hat nicht geantwortet: Die Nachricht wurde möglicherweise nicht gesendet. Überprüfen Sie den Ordner „Gesendet“, bevor Sie sie erneut senden."
+  },
+  "meetingSubjectInvite": {
+    "message": "Einladung: $SUMMARY$",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingSubjectUpdate": {
+    "message": "Aktualisierte Einladung: $SUMMARY$",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingSubjectCancel": {
+    "message": "Abgesagt: $SUMMARY$",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingSubjectAccepted": {
+    "message": "Zugesagt: $SUMMARY$",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingSubjectTentative": {
+    "message": "Vorläufig zugesagt: $SUMMARY$",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingSubjectDeclined": {
+    "message": "Abgelehnt: $SUMMARY$",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingTextWhen": {
+    "message": "Wann: $WHEN$",
+    "placeholders": {
+      "when": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingTextWhere": {
+    "message": "Wo: $LOCATION$",
+    "placeholders": {
+      "location": {
+        "content": "$1"
+      }
+    }
+  },
+  "meetingNoTitle": {
+    "message": "(kein Titel)"
+  },
+  "calendarSendFailed": {
+    "message": "Die Besprechungsnachricht für „$SUMMARY$“ wurde nicht gesendet: $REASON$ Der Termin ist gespeichert, aber die Teilnehmer wurden nicht informiert.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      },
+      "reason": {
+        "content": "$2"
+      }
+    }
+  },
+  "calendarSendUncertain": {
+    "message": "Die Besprechungsnachricht für „$SUMMARY$“ wurde möglicherweise nicht gesendet: Die Verbindung wurde unterbrochen. Überprüfen Sie den Ordner „Gesendet“, bevor Sie sie erneut senden.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarTooManyAttendees": {
+    "message": "„$SUMMARY$“ hat mehr als $MAX$ Teilnehmer: Sync443 kann die Einladungen dazu nicht senden. Die Änderung wurde rückgängig gemacht.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      },
+      "max": {
+        "content": "$2"
+      }
+    }
+  },
+  "calendarAnswerFailed": {
+    "message": "Ihre Antwort auf „$SUMMARY$“ konnte nicht gesendet werden: $REASON$ Der Termin wurde auf den vorherigen Stand zurückgesetzt.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      },
+      "reason": {
+        "content": "$2"
+      }
+    }
+  },
+  "calendarAnswerNoInvitation": {
+    "message": "Ihre Antwort auf „$SUMMARY$“ konnte nicht gesendet werden: Die zugehörige Einladung wurde auf dem Server nicht gefunden. Der Termin wurde auf den vorherigen Stand zurückgesetzt.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarAnswerNeedsMail": {
+    "message": "Ihre Antwort auf „$SUMMARY$“ konnte nicht gesendet werden: Um auf diesem Server Einladungen zu beantworten, müssen die E-Mails dieses Postfachs synchronisiert werden.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarChangeRefused": {
+    "message": "Der Server hat eine Änderung an „$SUMMARY$“ abgelehnt. Die Version des Servers wurde wiederhergestellt.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarRecurrenceUnsupported": {
+    "message": "Die Wiederholung von „$SUMMARY$“ kann auf einem ActiveSync-Server nicht gespeichert werden. Die Änderung wurde rückgängig gemacht.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarReadOnly": {
+    "message": "„$SUMMARY$“ kann in Thunderbird nicht geändert werden. Die Änderung wurde rückgängig gemacht.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarTooLarge": {
+    "message": "„$SUMMARY$“ ist zu groß, um auf dem Server gespeichert zu werden. Die Änderung wurde rückgängig gemacht.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarKeptLocal": {
+    "message": "„$SUMMARY$“ konnte nicht auf dem Server gespeichert werden. Das Element bleibt in Thunderbird als lokale Kopie erhalten, die nicht mehr synchronisiert wird.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarServerChanged": {
+    "message": "„$SUMMARY$“ wurde auf dem Server geändert, bevor Ihre Änderung gesendet wurde. Die Version des Servers wird angezeigt; Ihre Änderung wurde nicht gesendet.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarDetached": {
+    "message": "„$SUMMARY$“ ist auf dem Server nicht mehr dasselbe Element. Ihre Version bleibt in Thunderbird als lokale Kopie erhalten, die nicht mehr synchronisiert wird.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarRestoreUnsupported": {
+    "message": "Ein geänderter oder gelöschter Einzeltermin von „$SUMMARY$“ kann auf einem ActiveSync-Server nicht wieder in seine Serie eingefügt werden. Die Änderung wurde rückgängig gemacht.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarOrganizerChanged": {
+    "message": "Der Organisator von „$SUMMARY$“ wurde in Thunderbird geändert: An die Teilnehmer wurde keine Nachricht gesendet.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarNotSentExpired": {
+    "message": "Die Besprechungsnachricht für „$SUMMARY$“ wurde nicht gesendet: Die Bestätigung wurde nicht rechtzeitig beantwortet. Der Termin ist gespeichert, aber die Teilnehmer wurden nicht informiert.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarNotSentFull": {
+    "message": "Die Besprechungsnachricht für „$SUMMARY$“ wurde nicht gesendet: Es warten bereits zu viele Nachrichten. Der Termin ist gespeichert, aber die Teilnehmer wurden nicht informiert.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarNotSentOld": {
+    "message": "Die Besprechungsnachricht für „$SUMMARY$“ wurde nicht gesendet: Sie wartete seit mehr als einem Tag. Der Termin ist gespeichert, aber die Teilnehmer wurden nicht informiert.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarChangesDroppedOne": {
+    "message": "Eine in Thunderbird vorgenommene Änderung wurde nicht gesendet: Der zugehörige Kalender wird nicht mehr mit dem Server synchronisiert. Ein neues Element bleibt in Thunderbird als lokale Kopie erhalten."
+  },
+  "calendarChangesDroppedMany": {
+    "message": "$COUNT$ in Thunderbird vorgenommene Änderungen wurden nicht gesendet: Der zugehörige Kalender wird nicht mehr mit dem Server synchronisiert. Neue Elemente bleiben in Thunderbird als lokale Kopien erhalten.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarReplyNotSent": {
+    "message": "Ihre Antwort auf „$SUMMARY$“ ist in Ihrem Kalender gespeichert, aber an den Organisator wurde keine Antwort gesendet: Die Einladung wurde in diesem Postfach nicht gefunden.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarKeptLocalTooManyAttendees": {
+    "message": "„$SUMMARY$“ hat mehr als $MAX$ Teilnehmer: Sync443 kann die Einladungen dazu nicht senden. Das Element bleibt in Thunderbird als lokale Kopie erhalten, die nicht mehr synchronisiert wird.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      },
+      "max": {
+        "content": "$2"
+      }
+    }
+  },
+  "calendarKeptLocalRecurrence": {
+    "message": "Die Wiederholung von „$SUMMARY$“ kann auf einem ActiveSync-Server nicht gespeichert werden. Das Element bleibt in Thunderbird als lokale Kopie erhalten, die nicht mehr synchronisiert wird.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
+  },
+  "calendarKeptLocalTooLarge": {
+    "message": "„$SUMMARY$“ ist zu groß, um auf dem Server gespeichert zu werden. Das Element bleibt in Thunderbird als lokale Kopie erhalten, die nicht mehr synchronisiert wird.",
+    "placeholders": {
+      "summary": {
+        "content": "$1"
+      }
+    }
   }
 }

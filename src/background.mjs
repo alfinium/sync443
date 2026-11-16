@@ -6,9 +6,16 @@
  *
  *  - one MailboxSync per mailbox (sync/mailbox.mjs), one MailStore per
  *    Thunderbird account (tb/mail-store.mjs), one shared EchoRegistry;
+ *  - per mailbox, the calendar objects (invitation table, calendar store,
+ *    scheduler, calendar engine), handed to its MailboxSync and rebuilt with
+ *    it; Thunderbird's calendars themselves are made by the first pass that
+ *    needs them, never at load time;
+ *  - the confirmation window of meeting messages (confirm/confirm.mjs): one
+ *    question at a time, each under a one-use token;
  *  - every request goes through a verified connection (sync443Net) and an
  *    EasClient built with the mailbox's own origin, password and pins;
  *  - local actions (tb/events.mjs) become journal entries, sent shortly after;
+ *    so are the changes the user makes in the mailbox's calendars;
  *  - fail-closed sending (send.mjs), installed before anything else;
  *  - the settings page talks to us through runtime.sendMessage (protocol in
  *    options/options.mjs) and follows our records through storage.onChanged;
@@ -19,10 +26,10 @@
  * that uses it.
  */
 
-import { Store, checkMailbox, newIds, SYNC_KINDS } from "./sync/store.mjs";
+import { Store, checkMailbox, newIds, SYNC_KINDS, CALENDAR_PERIODS, TASK_FILTERS } from "./sync/store.mjs";
 import { parseServer } from "./core/server.mjs";
 import { EasClient, EasError, ERR } from "./transport/client.mjs";
-import { emailAddress, cleanText, personName } from "./core/sanitize.mjs";
+import { emailAddress, personName } from "./core/sanitize.mjs";
 import { userInformationRequest, parseUserInformation } from "./core/protocol.mjs";
 import { log, setDebugFor, getLog, clearLog, loadLog, errorCode } from "./log.mjs";
 import { installSendHandler } from "./send.mjs";
@@ -31,7 +38,13 @@ import { MailboxSync } from "./sync/mailbox.mjs";
 import { MailStore } from "./tb/mail-store.mjs";
 import { LocalEvents } from "./tb/events.mjs";
 import { EchoRegistry } from "./sync/echo.mjs";
-import { t, uiLanguage, errorText, errorDetail, serverErrorText } from "./i18n.mjs";
+import { InvitationTable } from "./sync/invitations.mjs";
+import { CalendarStore } from "./tb/calendar-store.mjs";
+import { Scheduler, EXPIRED } from "./sync/scheduling.mjs";
+import { PimSync } from "./sync/pim.mjs";
+import { MAX_MEETING_RECIPIENTS } from "./core/itip.mjs";
+import { toHex } from "./core/sha256.mjs";
+import { t, uiLanguage, errorText, errorDetail, serverErrorText, calendarNotice, cleanLine } from "./i18n.mjs";
 
 const api = globalThis.browser;
 const ALARM = "sync443:";
@@ -42,12 +55,17 @@ const MAX_ROUNDS = 10; // passes in a row while the server has more to send
 const MAX_HANDOVER = 10_000; // local actions kept while an engine is being replaced
 const FREQUENCIES = new Set([0, 1, 5, 15, 30, 60]);
 const PERIODS = new Set(["0", "1", "2", "3", "4", "5"]);
+const CONFIRM_PAGE = "confirm/confirm.html";
+const CONFIRM_TTL_MS = 600_000; // a question nobody answers means "Don't send" after 10 minutes
+const CONFIRM_WINDOW = Object.freeze({ width: 520, height: 440 });
+const CONFIRM_CLOSE_MS = 2000; // a window that was given its answer closes itself; after this long, it is closed for it
+const MEETING_KINDS = new Set(["invite", "update", "cancel"]);
 // Refused in a sign-in name, as the account experiment refuses them (controls, invisible, bidirectional).
 const LOGIN_REFUSED = /[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u2064\u2066-\u206f\ufeff\ufff9-\ufffb]/;
 
 const store = new Store(api.storage.local);
 const echo = new EchoRegistry();
-const entries = new Map(); // mailbox id -> { mailbox, sync, inFlight, again, againUser, againConfirm, timer, closing, buffer, handover }
+const entries = new Map(); // mailbox id -> { mailbox, sync, calendar, stopCalendar, inFlight, again, againUser, againConfirm, timer, closing, buffer, handover }
 const marked = new Set(); // account keys of our mailboxes
 // Test builds only. The blocks between "// <test-hooks>" and "// </test-hooks>"
 // are removed by tools/build_xpi.py: in a published package this stays null.
@@ -62,9 +80,10 @@ const cancelTimer = (t) => {
   if (t !== null && t !== undefined && typeof clearTimeout === "function") clearTimeout(t);
 };
 
+// A notification is one clean line, whatever it quotes (a title, a reason): cleaned here, where it is shown.
 const notify = (message) =>
   api.notifications
-    .create({ type: "basic", title: "Sync443", message: cleanText(String(message), { max: 300, singleLine: true, stripBidi: true }) })
+    .create({ type: "basic", title: "Sync443", message: cleanLine(String(message), 300) })
     .catch(() => {});
 
 // ── Sending: installed first, so no message can leave before it exists ─────
@@ -116,6 +135,214 @@ async function clientFor(mb, password = null) {
   });
 }
 
+// ── Meeting messages: the confirmation window ────────────────────────────
+
+/**
+ * No invitation, update or cancellation leaves without the user's own yes
+ * (security rule 23). Each question gets a window of its own
+ * (confirm/confirm.html?token=…, opened with windows.create as a popup) and
+ * a random token that names it, usable once and for 10 minutes. One window
+ * at a time: further questions wait their turn. Only `true`, given by that
+ * very page for the token in force, sends; a window closed, a token that
+ * ran out, an engine stopped or the extension restarted all mean "Don't
+ * send" (after a restart no token is known any more: the scheduler asks
+ * again). A token that ran out is told apart ("expired"), so that the
+ * scheduler can tell the user that the message was not sent.
+ */
+const questions = []; // waiting their turn: { mailboxId, info, resolve }
+let asked = null; // the question whose window is open: { mailboxId, info, resolve, token, url, windowId, tabId, expiresAt, timer }
+
+/**
+ * What a question says, copied field by field (the window checks every value again); null when it is not one.
+ * `from`: the address of the mailbox that sends, shown in the window so that the user knows which one writes.
+ */
+function meetingInfo(q) {
+  if (!q || typeof q !== "object" || !MEETING_KINDS.has(q.kind)) return null;
+  if (typeof q.summary !== "string" || typeof q.start !== "string" || typeof q.allDay !== "boolean") return null;
+  const list = q.recipients;
+  if (!Array.isArray(list) || list.length < 1 || list.length > MAX_MEETING_RECIPIENTS || list.some((r) => typeof r !== "string")) return null;
+  if (typeof q.from !== "string" || emailAddress(q.from) !== q.from) return null;
+  return Object.freeze({ kind: q.kind, summary: q.summary, start: q.start, allDay: q.allDay, recipients: Object.freeze([...list]), from: q.from });
+}
+
+/**
+ * The scheduler's `confirm` for a mailbox: → true for Send, "expired" when
+ * nobody answered within the life of the question, false for anything
+ * else. Never rejects.
+ */
+function askMeeting(mailboxId, question) {
+  return new Promise((resolve) => {
+    const info = meetingInfo(question);
+    if (!info) {
+      resolve(false);
+      return;
+    }
+    questions.push({ mailboxId, info, resolve });
+    nextQuestion();
+  });
+}
+
+/** Open the window of the next question, unless one is open. */
+function nextQuestion() {
+  while (!asked && questions.length) {
+    const q = questions.shift();
+    let token;
+    try {
+      token = toHex(globalThis.crypto.getRandomValues(new Uint8Array(32)));
+    } catch {
+      q.resolve(false); // no token, no question: not a yes
+      continue;
+    }
+    const ttl = Number.isFinite(testConfig?.confirmTtlMs) ? testConfig.confirmTtlMs : CONFIRM_TTL_MS;
+    const current = { ...q, token, url: api.runtime.getURL(`${CONFIRM_PAGE}?token=${token}`), windowId: null, tabId: null, expiresAt: Date.now() + ttl, timer: null };
+    asked = current;
+    current.timer = setTimeout(() => settleQuestion(current, EXPIRED), ttl);
+    Promise.resolve()
+      .then(() => api.windows.create({ url: current.url, type: "popup", ...CONFIRM_WINDOW }))
+      .then(
+        (win) => {
+          if (!Number.isInteger(win?.id)) return;
+          if (asked === current) current.windowId ??= win.id;
+          else closeWindow(win.id, CONFIRM_CLOSE_MS); // settled before the window was known: its page may be closing it
+        },
+        (e) => {
+          if (asked !== current) return;
+          log.warn(`Fenêtre de confirmation non ouverte (${errorCode(e)}) : message de réunion non envoyé.`);
+          notify(calendarNotice("sendFailed", current.info.summary, t("sendReasonUnexpected")));
+          settleQuestion(current, false);
+        },
+      );
+  }
+}
+
+/** Close a confirmation window, now or after `delayMs`; one that is gone already is no error. */
+function closeWindow(windowId, delayMs = 0) {
+  const close = () => Promise.resolve().then(() => api.windows.remove(windowId)).catch(() => {});
+  if (delayMs > 0) setTimeout(close, delayMs);
+  else close();
+}
+
+/**
+ * The question is over: its token dies with it, its window goes, the next
+ * one opens. `send`: true for Send, EXPIRED for a question nobody answered
+ * in time, anything else for Don't send; the scheduler is given true,
+ * EXPIRED or false. `byPage`: the answer came from the window's own page, which
+ * closes itself once it has our reply; closing it under that reply would
+ * leave its message unanswered (an error in Thunderbird's console), so the
+ * window is only closed for it if it is still there a moment later.
+ * → false when the question was over already.
+ */
+function settleQuestion(q, send, { byPage = false } = {}) {
+  if (asked !== q) return false;
+  asked = null;
+  cancelTimer(q.timer);
+  q.resolve(send === true ? true : send === EXPIRED ? EXPIRED : false);
+  if (q.windowId !== null) closeWindow(q.windowId, byPage ? CONFIRM_CLOSE_MS : 0);
+  nextQuestion();
+  return true;
+}
+
+/** The questions of a mailbox whose engine stops: none is asked any more (their messages stay queued). */
+function withdrawQuestions(mailboxId) {
+  for (let i = questions.length - 1; i >= 0; i--) {
+    if (questions[i].mailboxId === mailboxId) questions.splice(i, 1)[0].resolve(false);
+  }
+  if (asked?.mailboxId === mailboxId) settleQuestion(asked, false);
+}
+
+/**
+ * The open question, for a message of its own window: the token in force,
+ * sent by the very page opened for it (this extension's confirmation page,
+ * with that token in its address), from the tab and the window it was
+ * first seen in. → the question, or null.
+ */
+function questionOf(msg, sender) {
+  const q = asked;
+  if (!q || typeof msg?.token !== "string" || msg.token !== q.token || sender?.url !== q.url) return null;
+  if (Date.now() >= q.expiresAt) {
+    settleQuestion(q, EXPIRED);
+    return null;
+  }
+  const tabId = Number.isInteger(sender.tab?.id) ? sender.tab.id : null;
+  const windowId = Number.isInteger(sender.tab?.windowId) ? sender.tab.windowId : null;
+  if ((q.tabId !== null && tabId !== q.tabId) || (q.windowId !== null && windowId !== null && windowId !== q.windowId)) return null;
+  q.tabId ??= tabId;
+  q.windowId ??= windowId;
+  return q;
+}
+
+/** { type: "meetingConfirmInfo", token }: what the window shows. */
+function meetingConfirmInfo(msg, sender) {
+  const q = questionOf(msg, sender);
+  return q ? { ok: true, ...q.info, recipients: [...q.info.recipients] } : { ok: false };
+}
+
+/** { type: "meetingConfirm", token, send }: the user's answer, taken once. Only `true` is Send; nothing a page says is "expired". */
+function meetingConfirm(msg, sender) {
+  const q = questionOf(msg, sender);
+  if (!q) return { ok: false };
+  settleQuestion(q, msg.send === true, { byPage: true });
+  return { ok: true };
+}
+
+// A confirmation window closed without an answer: "Don't send".
+api.windows.onRemoved.addListener((windowId) => {
+  if (asked && asked.windowId === windowId) settleQuestion(asked, false);
+});
+
+// ── Calendar, tasks and meetings: the objects of a mailbox ────────────────
+
+/** The name the user writes under, for the From field of meeting messages: that of the account's identity; "" when none. */
+async function senderNameOf(mb) {
+  try {
+    const account = mb.accountKey ? await api.accounts.get(mb.accountKey) : null;
+    return personName(String(account?.identities?.[0]?.name ?? "")) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * The calendar objects of a mailbox, built in this order: the invitation
+ * table (the same one for the mail engine and the scheduler), the calendar
+ * store, the scheduler, the calendar engine. Building them touches none of
+ * Thunderbird's calendars: those are made by the first pass that
+ * synchronises the calendar or the tasks. → null when Thunderbird's
+ * calendars cannot be reached: the mailbox then synchronises mail only.
+ */
+function calendarParts(mb, senderName = "") {
+  try {
+    const records = store.mailbox(mb.id);
+    const invitations = new InvitationTable({ records, log });
+    const calendarStore = new CalendarStore({ mailboxId: mb.id, ownEmail: mb.email, api: api.sync443Calendar });
+    const scheduler = new Scheduler({ mailbox: mb, records, invitations, confirm: (question) => askMeeting(mb.id, question), notify, log, senderName });
+    const pim = new PimSync({ mailbox: mb, records, calendarStore, scheduler, log });
+    return { invitations, calendarStore, scheduler, pim };
+  } catch (e) {
+    log.warn(`Agenda indisponible (${label(mb)}) : ${errorCode(e)}.`);
+    return null;
+  }
+}
+
+/**
+ * Calendars of ours whose mailbox no longer exists (a removal that could
+ * not finish): removed from Thunderbird, where the user has no other way to
+ * remove them. Nothing waits for this, and nothing depends on it.
+ */
+async function sweepCalendars() {
+  const calendars = api.sync443Calendar;
+  if (typeof calendars?.listCalendars !== "function") return;
+  // Listed first, the mailboxes read after: a mailbox is stored before its first calendar exists.
+  const list = await calendars.listCalendars();
+  const known = new Set((await store.listMailboxes()).map((m) => m.id));
+  let removed = 0;
+  for (const c of Array.isArray(list) ? list : []) {
+    if (typeof c?.calendarId !== "string" || typeof c.mailboxId !== "string" || known.has(c.mailboxId)) continue;
+    if (await calendars.removeCalendar(c.calendarId)) removed++;
+  }
+  if (removed) log.info(`${removed} agenda(s) d'une boîte disparue retiré(s) de Thunderbird.`);
+}
+
 // ── One engine per mailbox ───────────────────────────────────────────────
 
 /**
@@ -126,23 +353,32 @@ async function clientFor(mb, password = null) {
 async function retire(entry) {
   entry.closing = true;
   cancelTimer(entry.timer);
+  // The user's calendar changes are no longer listened to; the next engine reads those made meanwhile.
+  entry.stopCalendar?.();
+  entry.stopCalendar = null;
   if (!entry.sync) return;
-  await entry.sync.close().catch((e) => log.warn(`Arrêt du moteur (${label(entry.mailbox)}) : ${errorCode(e)}.`));
+  const closed = entry.sync.close().catch((e) => log.warn(`Arrêt du moteur (${label(entry.mailbox)}) : ${errorCode(e)}.`));
+  // Its delivery of meeting messages has stopped: the question it was asking, if any, is withdrawn (its message stays queued).
+  withdrawQuestions(entry.mailbox.id);
+  await closed;
   await entry.inFlight?.catch(() => {});
 }
 
 /**
  * (Re)start the engine of a mailbox. The previous engine, if any, is fully
  * stopped first, so two engines never work on the same records; actions
- * recorded in between are handed over in order.
+ * recorded in between are handed over in order. The calendar objects are
+ * built anew with each engine, from the mailbox as it is now.
  */
 async function attach(mb) {
+  const senderName = await senderNameOf(mb);
   const old = entries.get(mb.id);
   if (old) await retire(old);
   if (old?.mailbox.accountKey && old.mailbox.accountKey !== mb.accountKey) marked.delete(old.mailbox.accountKey);
-  const entry = { mailbox: mb, inFlight: null, again: false, timer: null, sync: null, closing: false, buffer: old?.buffer ?? [], handover: true };
+  const entry = { mailbox: mb, inFlight: null, again: false, timer: null, sync: null, calendar: null, stopCalendar: null, closing: false, buffer: old?.buffer ?? [], handover: true };
   if (mb.accountKey) {
     marked.add(mb.accountKey);
+    entry.calendar = calendarParts(mb, senderName);
     entry.sync = new MailboxSync({
       mailbox: mb,
       store,
@@ -150,7 +386,12 @@ async function attach(mb) {
       mailStore: new MailStore({ accountKey: mb.accountKey, echo }),
       log,
       now: () => Date.now(),
+      ...(entry.calendar ? { invitations: entry.calendar.invitations, scheduler: entry.calendar.scheduler, pim: entry.calendar.pim } : {}),
     });
+    // A change the user makes in one of the mailbox's calendars is sent shortly after, like a local mail action.
+    entry.stopCalendar = entry.calendar?.calendarStore.onLocalChange(() => {
+      if (entries.get(mb.id) === entry && !entry.closing) scheduleLocal(entry);
+    }) ?? null;
   }
   entries.set(mb.id, entry);
   // Actions that arrive while the buffer drains join its end: order is kept.
@@ -320,7 +561,13 @@ function checkInput(input) {
   if (!PERIODS.has(filterType)) throw new FieldError("filterType", t("invalidPeriod"));
   const sync = Object.fromEntries(SYNC_KINDS.map((k) => [k, input.sync?.[k] === true]));
   if (!SYNC_KINDS.some((k) => sync[k])) throw new FieldError("sync", t("chooseKind"));
-  return { email, username, name, server, syncMinutes, filterType, sync };
+  // The calendar period and the task filter. Absent: the mailbox keeps its own (a new one takes the defaults).
+  const choice = (value) => (value === undefined || value === null ? null : typeof value === "string" || typeof value === "number" ? String(value) : "");
+  const calendarPeriod = choice(input.calendarPeriod);
+  if (calendarPeriod !== null && !CALENDAR_PERIODS.includes(calendarPeriod)) throw new FieldError("calendarPeriod", t("chooseCalendarPeriod"));
+  const taskFilter = choice(input.taskFilter);
+  if (taskFilter !== null && !TASK_FILTERS.includes(taskFilter)) throw new FieldError("taskFilter", t("chooseTaskFilter"));
+  return { email, username, name, server, syncMinutes, filterType, sync, calendarPeriod, taskFilter };
 }
 
 /** Errors of the connection check, pointed at the field the user can fix. */
@@ -395,6 +642,9 @@ async function saveMailboxChecked(input, password) {
     deviceId: ids.deviceId,
     syncMinutes: v.syncMinutes,
     filterType: v.filterType,
+    // (undefined: checkMailbox gives the default.) A change of either restarts its collections at the pass that follows.
+    calendarPeriod: v.calendarPeriod ?? existing?.calendarPeriod,
+    taskFilter: v.taskFilter ?? existing?.taskFilter,
     accountKey: existing?.accountKey ?? null,
     // Pins hold for one server only (rule 3).
     tlsPins: existing && !originChanged ? existing.tlsPins : testConfig?.pins ?? [],
@@ -443,9 +693,15 @@ async function saveMailboxChecked(input, password) {
   }
 
   // 3. Another server or sign-in name: what we learned no longer holds (the
-  //    old engine stops first, so it cannot write any more).
+  //    old engine stops first, so it cannot write any more). The calendars
+  //    made from the old server leave Thunderbird as they do when a mailbox
+  //    is removed, before the new server is read: their items belong to
+  //    collections the new server does not have, and would otherwise sit
+  //    among its own. Nothing is touched on either server.
   if (moved) {
+    const calendar = entries.get(existing.id)?.calendar ?? calendarParts(existing);
     await detach(existing.id);
+    await calendar?.pim.removeLocal().catch((e) => log.warn(`Agendas non retirés de Thunderbird (${label(existing)}) : ${errorCode(e)}.`));
     await store.mailbox(existing.id).clear();
   }
 
@@ -490,7 +746,10 @@ async function removeMailboxChecked(id, { accountGone = false } = {}) {
 }
 
 async function removeMailboxNow(mb, accountGone) {
+  const calendar = entries.get(mb.id)?.calendar ?? calendarParts(mb);
   await detach(mb.id);
+  // The mailbox's calendars leave Thunderbird with it, and so does everything the calendar engine recorded.
+  await calendar?.pim.removeLocal().catch((e) => log.warn(`Agendas non retirés de Thunderbird (${label(mb)}) : ${errorCode(e)}.`));
   if (mb.accountKey && !accountGone) {
     await api.sync443Account.removeAccount(mb.accountKey).catch((e) =>
       // FILES: the account is gone, but its folder was not where Thunderbird keeps mail, so its files were left alone.
@@ -534,6 +793,8 @@ async function mailboxView(mb) {
     server: serverOf(mb.origin).display,
     syncMinutes: mb.syncMinutes,
     filterType: mb.filterType,
+    calendarPeriod: mb.calendarPeriod,
+    taskFilter: mb.taskFilter,
     sync: mb.sync,
     status: {
       running: Boolean(entry?.inFlight),
@@ -541,8 +802,10 @@ async function mailboxView(mb) {
       nextAttemptAt: health.nextAttemptAt,
       lastError: health.lastError,
       blocked: health.blocked,
+      // Both counts are the mailbox's whole: messages, events and tasks.
       pendingDeletes: pending,
       failedItems: health.failedItems ?? 0,
+      failedCalendarItems: health.failedCalendarItems ?? 0, // the events and tasks among failedItems
     },
   };
 }
@@ -577,7 +840,7 @@ api.runtime.onMessage.addListener((msg, sender) => {
         }),
       );
     case "discardDeletes":
-      // The user keeps the local copies instead of applying the retained deletions.
+      // The user keeps the local copies instead of applying the retained deletions (messages, events and tasks).
       return answer(
         ready.then(async () => {
           const entry = entries.get(String(msg.id));
@@ -587,6 +850,11 @@ api.runtime.onMessage.addListener((msg, sender) => {
           runSync(entry.mailbox.id, { reason: "user" });
         }),
       );
+    case "meetingConfirmInfo":
+      // The confirmation window asks what it is to show (see questionOf: its own page and token only).
+      return Promise.resolve(meetingConfirmInfo(msg, sender));
+    case "meetingConfirm":
+      return Promise.resolve(meetingConfirm(msg, sender));
     case "getLog":
       return answer(Promise.resolve({ entries: getLog(), debugUntil: log.debugUntil }));
     case "clearLog":
@@ -663,6 +931,26 @@ api.menus.onClicked.addListener((info) => {
 // ── Start-up ─────────────────────────────────────────────────────────────
 
 // <test-hooks>
+/**
+ * The confirmation window, for the tests: what is asked, and a way to answer
+ * as the window would without driving it.
+ *   current() → { mailboxId, token, url, kind, summary, start, allDay, recipients } | null   the open question
+ *   waiting() → [{ mailboxId, kind, … }]   those waiting their turn
+ *   answer(send) → boolean                 true (Send) or false (Don't send) for the open question; false: none open
+ *   ask(mailboxId, question) → Promise<boolean | "expired">   what a scheduler's `confirm` calls
+ *   notify(message)                        shows a notification, as the schedulers and the send handler do
+ * testConfig.confirmTtlMs shortens the life of a question.
+ */
+function testMeetings() {
+  return {
+    current: () => (asked ? { mailboxId: asked.mailboxId, token: asked.token, url: asked.url, ...asked.info } : null),
+    waiting: () => questions.map((q) => ({ mailboxId: q.mailboxId, ...q.info })),
+    answer: (send) => (asked ? settleQuestion(asked, send === true) : false),
+    ask: askMeeting,
+    notify, // the notification itself, as every module of the mailbox is given it
+  };
+}
+
 async function loadTestConfig() {
   // Packaged by the end-to-end runner only.
   try {
@@ -695,6 +983,8 @@ async function startup() {
   events.start();
   await scheduleAlarms();
   updateBadge();
+  // Not waited for: nothing at start-up depends on Thunderbird's calendars.
+  sweepCalendars().catch((e) => log.warn(`Agendas sans boîte non vérifiés : ${errorCode(e)}.`));
 }
 
 ready = startup().catch((e) => {
@@ -706,7 +996,7 @@ ready.then(async () => {
   if (testConfig?.scenario) {
     // Packaged by the end-to-end runner only (never in a release build).
     const { runScenario } = await import(api.runtime.getURL("test-scenario.mjs"));
-    await runScenario({ api, store, saveMailbox, removeMailbox, runSync, entries, echo, log, testConfig, attach, detach, onLocalIntent });
+    await runScenario({ api, store, saveMailbox, removeMailbox, runSync, entries, echo, log, testConfig, attach, detach, onLocalIntent, meetings: testMeetings() });
     return;
   }
   // </test-hooks>

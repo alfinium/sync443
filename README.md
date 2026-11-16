@@ -6,9 +6,9 @@ Sync443 is a Thunderbird extension that provides native support for the **Exchan
 (EAS) protocol. Each ActiveSync mailbox becomes a regular Thunderbird account, with no gateway
 and no IMAP or SMTP configuration: all traffic goes over a single HTTPS connection to the server.
 
-**Current version: 0.2.0.** It supports mail: folders, messages and sending, with an interface in
-ten languages. Calendar, tasks and contacts are planned for later versions
-([roadmap](docs/ARCHITECTURE.md)).
+**Current version: 0.3.0.** It supports mail (folders, messages and sending), calendars, tasks
+and meeting invitations, with an interface in ten languages. Contacts are planned for a later
+version ([roadmap](docs/ARCHITECTURE.md)).
 
 ## Features
 
@@ -17,10 +17,11 @@ ten languages. Calendar, tasks and contacts are planned for later versions
 | Mail: folders, messages, read and flag status, moves and deletions, in both directions | 0.1.0 |
 | Immediate delivery (push) or periodic synchronization | 0.1.0 |
 | Sending through ActiveSync, with a copy in the server's Sent Items | 0.1.0 |
-| Multiple mailboxes; per-mailbox choice of the items to synchronize | 0.1.0 (mail only) |
+| Multiple mailboxes; per-mailbox choice of the items to synchronize | 0.1.0 (mail), 0.3.0 (calendar, tasks) |
 | Settings page, manual synchronization, diagnostic log | 0.1.0 |
 | Interface in ten languages ([Languages](#languages)) | 0.2.0 |
-| Calendar, tasks and meeting invitations | planned |
+| Calendar and tasks, in both directions, in Thunderbird's own calendar ([details](#calendar-tasks-and-meetings)) | 0.3.0 |
+| Meeting invitations: answering those received, sending those of the meetings you organize | 0.3.0 |
 | Contacts | planned |
 
 ## Compatibility
@@ -54,6 +55,22 @@ Any other language falls back to English. Regional variants use the closest tran
 example, Latin American Spanish uses Spanish, European Portuguese uses Brazilian Portuguese). The
 diagnostic log is written in French.
 
+## Calendar, tasks and meetings
+
+The calendars and task lists of each mailbox appear in Thunderbird's Calendar and Tasks tabs.
+Events and tasks are synchronized in both directions, with recurring series and their exceptions,
+time zones, reminders, categories, free/busy status and privacy.
+
+| | |
+|---|---|
+| Invitations received | Accepting, accepting tentatively or declining in Thunderbird is recorded on the server. A reply is sent to the organizer only when you choose to send one. |
+| Meetings you organize | Invitations, updates and cancellations are sent to the attendees you chose, each one after you confirm it in a Sync443 window that lists every recipient. A meeting has at most 100 attendees. |
+| Sending | Every meeting message goes through ActiveSync. Thunderbird never sends one by SMTP for a Sync443 calendar. |
+| Shown read-only | Items that ActiveSync stores in a form Thunderbird cannot edit without loss: recurrences of non-Gregorian calendars, tasks that regenerate after completion, and a few rare recurrence patterns. |
+| Not supported | Proposing a new time, forwarding an invitation, attachments of events, free/busy lookup. |
+
+Design and limits: [docs/CALENDAR-DESIGN.md](docs/CALENDAR-DESIGN.md).
+
 ## Installation
 
 1. Download `sync443-<version>.xpi` from the
@@ -77,7 +94,8 @@ Each published file is built by GitHub Actions, reproducibly. It can be verified
 - the account name shown in Thunderbird;
 - the server, as `mail.example.com`;
 - the items to synchronize: mail, calendar, contacts, tasks;
-- the synchronization frequency and the period of mail to keep.
+- the synchronization frequency, the period of mail and of calendar to keep, and whether completed
+  tasks are synchronized.
 
 The connection (server, certificate, credentials) is verified before anything is saved. Where the
 server allows it, an application password dedicated to ActiveSync is recommended.
@@ -97,19 +115,23 @@ connection is refused before anything is sent.
 - Remote wipe requests are always refused.
 - Data received from the server is validated and bounded before use.
 - After an authentication failure, no further automatic attempt is made.
+- No meeting message is sent without your own action, and none is sent because of a change coming
+  from the server.
+- A large number of deletions requested by the server at once (messages, events or tasks) is
+  applied only after your confirmation.
 
 ActiveSync usually relies on "Basic" authentication, in which the password accompanies every
 request. This risk is reduced by the measures above and by the use of an application password.
 
 Security model: [docs/SECURITY-MODEL.md](docs/SECURITY-MODEL.md). Audits: [docs/audits/](docs/audits/).
-Reporting a vulnerability: [SECURITY.md](SECURITY.md). The design and security documents are
-written in French.
+Reporting a vulnerability: [SECURITY.md](SECURITY.md).
 
 ## Privacy
 
 No telemetry. Only the configured ActiveSync server is contacted, and only the selected items
 are downloaded. Passwords are stored in Thunderbird's password manager. The diagnostic log
-contains no message content, subject or address.
+contains no message content, subject or address, and no title, place, attendee or description of
+an event or a task.
 
 ## Development
 
@@ -123,6 +145,8 @@ with `py -3`.
 | `python3 -I tests/e2e/net/run_net_test.py` | end-to-end tests: connection |
 | `python3 -I tests/e2e/account/run_account_test.py` | end-to-end tests: accounts and passwords |
 | `python3 -I tests/e2e/mail/run_mail_test.py` | end-to-end tests: mail, against a simulated ActiveSync server |
+| `python3 -I tests/e2e/calendar/run_calendar_test.py` | end-to-end tests: the calendar module, in Thunderbird |
+| `python3 -I tests/e2e/mail/run_calendar_sync_test.py` | end-to-end tests: calendar, tasks and meetings, against the simulated server |
 | `python3 -I tools/build_xpi.py` | reproducible build of `dist/sync443-<version>.xpi` |
 | `python3 -I tools/check_source_chars.py` | rejects invisible or bidirectional characters |
 | `python3 -I tools/provenance_check.py --ref <directory>` | checks that no code was taken from another project |
@@ -132,8 +156,8 @@ The end-to-end tests use a throw-away profile. The Thunderbird executable can be
 `fr`).
 
 The code is written from the public specifications (Microsoft MS-ASCMD, MS-ASWBXML, MS-ASPROV,
-MS-ASHTTP, MS-ASDTYPE; IETF RFC 9110, 9112, 5322, 5545 and 6350), without code from other
-projects. Architecture and method: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+MS-ASHTTP, MS-ASDTYPE, MS-ASEMAIL, MS-ASCAL and MS-ASTASK; IETF RFC 9110, 9112, 5322, 5545, 5546
+and 6047), without code from other projects. Architecture and method: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## License
 

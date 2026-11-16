@@ -2,7 +2,12 @@
 // Copyright (c) 2026 alfinium
 
 import { test, eq, assert, rejects, throws } from "./harness.mjs";
-import { Store, StoreError, SCHEMA, checkMailbox, toMap, fromMap, newIds, recordName, SYNC_KINDS } from "../../src/sync/store.mjs";
+import {
+  Store, StoreError, SCHEMA, checkMailbox, toMap, fromMap, newIds, recordName, SYNC_KINDS,
+  CALENDAR_PERIODS, DEFAULT_CALENDAR_PERIOD, TASK_FILTERS, DEFAULT_TASK_FILTER,
+} from "../../src/sync/store.mjs";
+import { CALENDAR_FILTER_TYPES } from "../../src/core/calendar-item.mjs";
+import { TASK_FILTER_TYPES } from "../../src/core/task-item.mjs";
 
 /** storage.local double: values go through a JSON round trip, like a real store would serialise them. */
 function memoryArea() {
@@ -72,7 +77,7 @@ test("boîtes : champs invalides refusés à l'écriture", () => {
 
 test("boîtes : champs inconnus non conservés (pas d'injection de propriétés)", () => {
   const clean = checkMailbox({ ...mailbox(), __proto__: { evil: 1 }, extra: "x" });
-  eq(Object.keys(clean).sort(), ["accountKey", "deviceId", "email", "filterType", "id", "name", "origin", "sync", "syncMinutes", "tlsPins", "username"]);
+  eq(Object.keys(clean).sort(), ["accountKey", "calendarPeriod", "deviceId", "email", "filterType", "id", "name", "origin", "sync", "syncMinutes", "taskFilter", "tlsPins", "username"]);
 });
 
 test("boîtes : une entrée endommagée est ignorée à la lecture", async () => {
@@ -165,4 +170,46 @@ test("éléments à synchroniser : un, plusieurs ou les quatre, jamais aucun", (
   throws(() => checkMailbox(mailbox({ sync: { mail: true } })), StoreError, "choix incomplet");
   throws(() => checkMailbox(mailbox({ sync: "tout" })), StoreError, "pas un objet");
   eq(Object.keys(checkMailbox(mailbox({ sync: { mail: true, calendar: false, contacts: false, tasks: false, notes: true } })).sync), SYNC_KINDS.slice(), "clés inconnues écartées");
+});
+
+// ── Stage 4: calendar period and task filter ──────────────────────────────
+
+test("mailboxes: a mailbox stored before stage 4 gets the default calendar period and task filter", async () => {
+  const area = memoryArea();
+  const old = mailbox();
+  eq(["calendarPeriod" in old, "taskFilter" in old], [false, false], "the fixture is a mailbox of version 0.2");
+  await area.set({ mailboxes: [old] });
+  const [read] = await new Store(area).listMailboxes();
+  eq([read.calendarPeriod, read.taskFilter], ["7", "0"]);
+  eq([DEFAULT_CALENDAR_PERIOD, DEFAULT_TASK_FILTER], ["7", "0"]);
+  // Written back, the defaults are stored like any other field.
+  const store = new Store(area);
+  await store.putMailbox(read);
+  eq(JSON.parse(area.data.get("mailboxes"))[0].calendarPeriod, "7");
+});
+
+test("mailboxes: calendar period 0, 4, 5, 6 or 7 and task filter 0 or 8, as strings; anything else is refused", () => {
+  for (const period of ["0", "4", "5", "6", "7"]) eq(checkMailbox(mailbox({ calendarPeriod: period })).calendarPeriod, period);
+  for (const filter of ["0", "8"]) eq(checkMailbox(mailbox({ taskFilter: filter })).taskFilter, filter);
+  eq(checkMailbox(mailbox({ calendarPeriod: 5, taskFilter: 8 })), { ...checkMailbox(mailbox()), calendarPeriod: "5", taskFilter: "8" }, "numbers are stored as strings");
+  for (const bad of ["1", "2", "3", "8", "9", "", "07", " 7", "7 ", "sept", null, true, ["7"], { toString: () => "7" }, 4.5, -4]) {
+    throws(() => checkMailbox(mailbox({ calendarPeriod: bad })), StoreError, `calendar period ${JSON.stringify(bad)}`);
+  }
+  for (const bad of ["1", "4", "7", "9", "", "08", null, false, ["8"], { toString: () => "8" }, 0.5]) {
+    throws(() => checkMailbox(mailbox({ taskFilter: bad })), StoreError, `task filter ${JSON.stringify(bad)}`);
+  }
+  // The mail period keeps its own values: a calendar period is not one of them.
+  throws(() => checkMailbox(mailbox({ filterType: "7" })), StoreError);
+});
+
+test("mailboxes: the periods the store accepts are those the conversion modules can ask the server for", () => {
+  eq([...CALENDAR_PERIODS], [...CALENDAR_FILTER_TYPES]);
+  eq([...TASK_FILTERS], [...TASK_FILTER_TYPES]);
+});
+
+test("mailboxes: a stored mailbox with an invalid calendar period is skipped, never repaired", async () => {
+  const area = memoryArea();
+  await area.set({ mailboxes: [mailbox({ calendarPeriod: "99" }), mailbox({ id: "0000000000aa", taskFilter: "8" })] });
+  const list = await new Store(area).listMailboxes();
+  eq(list.map((m) => [m.id, m.calendarPeriod, m.taskFilter]), [["0000000000aa", "7", "8"]]);
 });
