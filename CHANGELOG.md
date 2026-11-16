@@ -1,104 +1,113 @@
 <!-- SPDX-License-Identifier: MIT -->
 <!-- Copyright (c) 2026 alfinium -->
 
-# Journal des modifications
+# Changelog
 
-Une section par version publiée, la plus récente en tête. La section d'une version sert de notes
-de publication à son fichier `.xpi` dans les
-[Releases](https://github.com/alfinium/sync443/releases).
+One section per published version, most recent first. The section of a version serves as the
+release notes of its `.xpi` file on the [Releases](https://github.com/alfinium/sync443/releases)
+page.
 
-## Non publié
+## Unreleased
 
-### Nouveautés
+### New
 
-- **Interface en dix langues,** selon la langue de Thunderbird : anglais, russe, allemand,
-  espagnol, japonais, polonais, français, italien, portugais du Brésil et tchèque. Ce sont les
-  dix langues les plus employées dans Thunderbird (stats.thunderbird.net, 52 semaines jusqu'au
-  15 novembre 2026). Toute autre langue affiche l'anglais ; l'espagnol d'Amérique latine
-  affiche l'espagnol, le portugais du Portugal le portugais du Brésil.
-- Sont traduits : la page de réglages, les notifications d'envoi, le bouton « Synchroniser »,
-  les menus, ainsi que le nom et la description de l'extension. Les textes français sont
-  inchangés.
-- Les erreurs du moteur sont affichées selon leur code. En français, la raison détaillée reste
-  affichée telle quelle ; dans une autre langue, elle figure en info-bulle.
+- **Interface in ten languages,** following Thunderbird's language: English, Russian, German,
+  Spanish, Japanese, Polish, French, Italian, Brazilian Portuguese and Czech. These are the ten
+  languages most used in Thunderbird (stats.thunderbird.net, 52 weeks to 15 November 2026). Any
+  other language shows English; Latin American Spanish shows Spanish, and European Portuguese
+  shows Brazilian Portuguese.
+- Translated: the settings page, sending notifications, the **Synchronize** button, the menus, and
+  the extension's name and description. The French texts are unchanged.
+- Engine errors are shown according to their code. In French, the detailed reason is still shown
+  as is; in other languages, it appears as a tooltip.
 
-### Inchangé
+### Fixed
 
-- Le journal de diagnostic reste en français.
+- **Thunderbird 140:** closing the settings page no longer logs an internal Thunderbird error in
+  the console.
 
-### Développement
+### Changed
 
-- `tools/build_xpi.py` vérifie les traductions (`src/_locales`) : catalogue de la langue par
-  défaut présent, messages non vides, clés `__MSG_…__` du manifeste existantes, mêmes messages
-  et mêmes paramètres dans chaque langue.
-- Nouveau test unitaire `tests/unit/i18n.test.mjs`, pour les dix langues : mêmes clés et mêmes
-  paramètres, toute clé employée existe, tout message est employé, textes composés sans
-  paramètre oublié.
-- `tests/e2e/mail/run_mail_test.py --locale=en-US` : le scénario vérifie la langue de la page de
-  réglages, du bouton et du manifeste.
+- The extension's description no longer names specific server products.
+
+### Unchanged
+
+- The diagnostic log is still written in French.
+
+### Development
+
+- `tools/build_xpi.py` checks the translations (`src/_locales`): the default language's catalogue
+  is present, no message is empty, the manifest's `__MSG_…__` keys exist, and every language has
+  the same messages with the same parameters.
+- New unit test `tests/unit/i18n.test.mjs`, for all ten languages: same keys and parameters, every
+  key used exists, every message is used, composed texts leave no parameter unfilled.
+- `tests/e2e/mail/run_mail_test.py --locale=en-US`: the scenario checks the language of the
+  settings page, the button and the manifest.
+- End-to-end test of a change of the mail period (1 month, all, 1 month, then all on a server that
+  starts over), on Thunderbird 140 and 160.
 
 ## 0.1.0
 
-Première version utilisable : le **courrier** d'une boîte Exchange ActiveSync, dans les deux sens.
-Vérifiée sur Thunderbird 140.17 ESR et Thunderbird 160.
+First usable version: **mail** for an Exchange ActiveSync mailbox, in both directions. Verified
+on Thunderbird 140.17 ESR and Thunderbird 160. The interface of this version is in French only.
 
-### Nouveautés
+### New
 
-- **Boîtes Exchange ActiveSync :** autant de boîtes que nécessaire, chacune dans son propre compte
-  Thunderbird. Les mots de passe sont rangés dans le gestionnaire de mots de passe de Thunderbird.
-- **Dossiers :** création, renommage, déplacement et suppression, dans les deux sens. Les noms
-  sont rendus valables sur Windows, macOS et Linux.
-- **Messages :** réception, lu, drapeau, déplacement et suppression, dans les deux sens.
-- **Archiver** (touche A) range le message dans le dossier « Archives » du serveur, créé au besoin.
-- **Arrivée immédiate** des messages (« dès réception »), ou actualisation toutes les 1, 5, 15, 30
-  ou 60 minutes. Période de courrier au choix, d'un jour à tout.
-- **Envoi par ActiveSync,** sans SMTP, avec copie dans les Envoyés du serveur.
-- **Envoi « fermé » :** un message d'un compte Sync443 part par ActiveSync ou pas du tout. En cas
-  d'échec, la fenêtre de rédaction reste ouverte, le message est gardé en brouillon et une
-  notification explique pourquoi.
-- **Bouton « Synchroniser »** dans la barre d'outils.
-- **Page de réglages :** état de chaque boîte, synchronisation à la demande, modification,
-  suppression avec confirmation ; choix des éléments à synchroniser (courrier, agenda, contacts,
-  tâches) ; journal de diagnostic.
-- **Filet contre les suppressions en masse :** si le serveur supprime beaucoup de messages d'un
-  dossier (d'un coup ou peu à peu sur 24 heures), ou fait disparaître plusieurs dossiers à la fois,
-  ces suppressions sont retenues. Dans les réglages, vous les confirmez, ou vous gardez les copies
-  locales. Une liste de dossiers sans boîte de réception est refusée.
+- **Exchange ActiveSync mailboxes:** as many as needed, each in its own Thunderbird account.
+  Passwords are stored in Thunderbird's password manager.
+- **Folders:** creation, renaming, moving and deletion, in both directions. Names are made valid
+  on Windows, macOS and Linux.
+- **Messages:** delivery, read status, flag, moves and deletions, in both directions.
+- **Archive** (A key) files the message in the server's "Archives" folder, created if needed.
+- **Immediate delivery** of messages (push), or refresh every 1, 5, 15, 30 or 60 minutes. Mail
+  period of your choice, from one day to everything.
+- **Sending through ActiveSync,** without SMTP, with a copy in the server's Sent Items.
+- **"Closed" sending:** a message from a Sync443 account is sent through ActiveSync or not at
+  all. If sending fails, the compose window stays open, the message is kept as a draft and a
+  notification explains why.
+- **Synchronize button** in the toolbar.
+- **Settings page:** status of each mailbox, synchronization on demand, editing, removal with
+  confirmation; choice of the items to synchronize (mail, calendar, contacts, tasks); diagnostic
+  log.
+- **Safety net against mass deletions:** if the server deletes many messages from a folder (at
+  once, or little by little over 24 hours), or removes several folders at once, these deletions
+  are held back. In the settings, you either confirm them or keep the local copies. A folder list
+  without an inbox is refused.
 
-### Sécurité et vie privée
+### Security and privacy
 
-- Le certificat du serveur est contrôlé **avant l'envoi du moindre octet**, sur la connexion même
-  qui porte le mot de passe ; une interception est refusée avant que rien ne parte.
-- Le mot de passe ne part que vers le serveur pour lequel il a été saisi. Changer de serveur
-  oblige à le retaper.
-- L'accès réseau est demandé pour le seul serveur de chaque boîte, et retiré quand plus aucune
-  boîte ne l'utilise.
-- Un effacement à distance demandé par le serveur est toujours refusé.
-- Le journal ne contient ni contenu de message, ni objet, ni adresse. Le débogage s'arrête seul au
-  bout d'une heure.
-- **Copie cachée (Cci) :** ActiveSync n'a pas d'enveloppe. L'en-tête `Bcc` part donc avec le
-  message jusqu'au serveur, qui en tire les destinataires et le retire avant la remise, comme le
-  fait Exchange. Sync443 ne peut pas le retirer lui-même sans perdre ces destinataires.
-- Aucune télémétrie.
+- The server certificate is checked **before a single byte is sent**, on the very connection that
+  carries the password; an interception is refused before anything leaves.
+- The password is sent only to the server it was entered for. Changing the server requires typing
+  it again.
+- Network access is requested only for each mailbox's own server, and withdrawn when no mailbox
+  uses it any more.
+- A remote wipe requested by the server is always refused.
+- The log contains no message content, subject or address. Debug logging stops on its own after
+  one hour.
+- **Blind copy (Bcc):** ActiveSync has no envelope. The `Bcc` header therefore travels with the
+  message to the server, which takes the recipients from it and removes it before delivery, as
+  Exchange does. Sync443 cannot remove it itself without losing those recipients.
+- No telemetry.
 
-### Limites connues
+### Known limitations
 
-- **Agenda, contacts et tâches :** le choix est enregistré mais pas encore synchronisé
-  (« bientôt »).
-- **Certificat d'une autorité privée :** pas encore pris en charge ; le certificat du serveur doit
-  être émis par une autorité publique reconnue par Thunderbird (comme Let's Encrypt).
-- **Microsoft 365 / Exchange Online** (OAuth2) : pas encore pris en charge.
-- **Proxy exigeant sa propre authentification :** pas encore pris en charge ; l'extension le
-  signale et n'envoie rien.
-- **Décocher le courrier** arrête sa synchronisation, mais le compte local et ses messages restent
-  en place ; leur suppression après confirmation viendra plus tard.
-- **Un message déplacé vers un dossier du compte qui n'existe que dans Thunderbird** (les modèles,
-  par exemple) est détaché du serveur : la copie du serveur reste où elle était, rien n'y est
-  supprimé. Déplacé vers un autre compte (« Dossiers locaux », par exemple), il quitte la boîte :
-  sur le serveur, il va dans les Éléments supprimés, comme avec IMAP.
-- **Cas rares côté serveur** (dossiers renumérotés et renommés en même temps, serveur non conforme) :
-  un dossier peut être téléchargé une seconde fois, sans que rien ne soit supprimé. Le détail est
-  dans [docs/audits/etape-2-3.md](https://github.com/alfinium/sync443/blob/main/docs/audits/etape-2-3.md).
-- **Signature et chiffrement** (OpenPGP, S/MIME) : pas encore pris en charge. Un message pour
-  lequel la signature ou le chiffrement est demandé n'est pas envoyé : la fenêtre de rédaction
-  reste ouverte et une notification l'explique.
+- **Calendar, contacts and tasks:** the choice is saved but not synchronized yet ("coming soon").
+- **Certificates from a private authority:** not supported yet; the server certificate must be
+  issued by a public authority trusted by Thunderbird (such as Let's Encrypt).
+- **Microsoft 365 / Exchange Online** (OAuth2): not supported yet.
+- **Proxies that require their own authentication:** not supported yet; the extension reports it
+  and sends nothing.
+- **Unchecking mail** stops its synchronization, but the local account and its messages stay in
+  place; removing them after confirmation will come later.
+- **A message moved to a folder of the account that exists only in Thunderbird** (Templates, for
+  example) is detached from the server: the server copy stays where it was, and nothing is
+  deleted there. Moved to another account ("Local Folders", for example), it leaves the mailbox:
+  on the server, it goes to Deleted Items, as with IMAP.
+- **Rare server-side cases** (folders renumbered and renamed at the same time, non-compliant
+  servers): a folder may be downloaded a second time, without anything being deleted. Details are
+  in [docs/audits/etape-2-3.md](https://github.com/alfinium/sync443/blob/main/docs/audits/etape-2-3.md)
+  (in French).
+- **Signing and encryption** (OpenPGP, S/MIME): not supported yet. A message for which signing or
+  encryption is requested is not sent: the compose window stays open and a notification explains
+  why.
