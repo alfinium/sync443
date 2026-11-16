@@ -1,12 +1,13 @@
 <!-- SPDX-License-Identifier: MIT -->
 <!-- Copyright (c) 2026 alfinium -->
+<!-- Texts: data-i18n="key" (text) and data-i18n-aria-label="key", from _locales/<language>/messages.json (i18n.mjs). -->
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <title>Sync443 – Réglages</title>
+  <title data-i18n="optionsTitle"></title>
   <link rel="stylesheet" href="options.css">
   <script type="module" src="options.mjs"></script>
 </head>
@@ -15,101 +16,103 @@
     <img src="../icons/sync443.svg" alt="" width="40" height="40">
     <div>
       <h1>Sync443</h1>
-      <p class="subtitle">Exchange ActiveSync, uniquement par HTTPS</p>
+      <p class="subtitle" data-i18n="optionsSubtitle"></p>
     </div>
   </header>
 
   <main>
     <p id="notice" class="notice" role="status" aria-live="polite" hidden></p>
+    <!-- Shown when the page is opened outside Thunderbird, where there is no i18n: English, the default language. -->
+    <p id="outside" class="notice error" role="alert" data-i18n="pageOutsideThunderbird" hidden>This page only works when opened from Thunderbird, in the extension's settings.</p>
 
     <section class="card" aria-labelledby="mailboxes-title">
       <div class="section-head">
-        <h2 id="mailboxes-title">Boîtes</h2>
-        <button type="button" id="add" class="primary">Ajouter une boîte</button>
+        <h2 id="mailboxes-title" data-i18n="mailboxesTitle"></h2>
+        <button type="button" id="add" class="primary" data-i18n="addMailbox"></button>
       </div>
-      <p id="mailboxes-empty" class="empty" hidden>Aucune boîte pour l'instant. Cliquez sur « Ajouter une boîte ».</p>
+      <p id="mailboxes-empty" class="empty" data-i18n="mailboxesEmpty" hidden></p>
       <ul id="mailboxes" class="mailboxes" aria-labelledby="mailboxes-title"></ul>
     </section>
 
     <section id="editor" class="card" aria-labelledby="editor-title" hidden>
-      <h2 id="editor-title">Nouvelle boîte</h2>
+      <h2 id="editor-title" data-i18n="newMailbox"></h2>
       <form id="form" novalidate>
         <p id="form-error" class="form-error" role="alert" hidden></p>
 
         <div class="field">
-          <label for="email">Adresse e-mail</label>
+          <label for="email" data-i18n="fieldEmail"></label>
           <input id="email" name="email" type="email" autocomplete="off" spellcheck="false" maxlength="254" required aria-describedby="email-error">
           <p id="email-error" class="field-error" hidden></p>
         </div>
 
         <div class="field">
-          <label for="password">Mot de passe</label>
+          <label for="password" data-i18n="fieldPassword"></label>
           <input id="password" name="password" type="password" autocomplete="off" spellcheck="false" maxlength="1024" aria-describedby="password-hint password-error">
-          <p id="password-hint" class="hint">Si le serveur le permet, préférez un mot de passe d'application réservé à ActiveSync.</p>
+          <p id="password-hint" class="hint" data-i18n="passwordHintNew"></p>
           <p id="password-error" class="field-error" hidden></p>
         </div>
 
         <div class="field">
-          <label for="name">Nom de la boîte</label>
+          <label for="name" data-i18n="fieldName"></label>
           <input id="name" name="name" type="text" autocomplete="off" maxlength="256" aria-describedby="name-hint name-error">
-          <p id="name-hint" class="hint">Affiché dans la liste des comptes de Thunderbird. Vide : l'adresse e-mail.</p>
+          <p id="name-hint" class="hint" data-i18n="nameHint"></p>
           <p id="name-error" class="field-error" hidden></p>
         </div>
 
         <div class="field">
-          <label for="server">Serveur</label>
+          <label for="server" data-i18n="fieldServer"></label>
           <input id="server" name="server" type="text" inputmode="url" autocomplete="off" spellcheck="false" maxlength="300" required aria-describedby="server-hint server-error">
-          <p id="server-hint" class="hint">Par exemple mail.exemple.com, sans /Microsoft-Server-ActiveSync. Toujours en HTTPS.</p>
+          <p id="server-hint" class="hint" data-i18n="serverHint"></p>
           <p id="server-error" class="field-error" hidden></p>
         </div>
 
         <div class="field">
-          <label for="username">Identifiant de connexion (facultatif)</label>
+          <label for="username" data-i18n="fieldUsername"></label>
           <input id="username" name="username" type="text" autocomplete="off" spellcheck="false" maxlength="256" aria-describedby="username-hint username-error">
-          <p id="username-hint" class="hint">À remplir seulement s'il diffère de l'adresse e-mail, par exemple DOMAINE\nom.</p>
+          <p id="username-hint" class="hint" data-i18n="usernameHint"></p>
           <p id="username-error" class="field-error" hidden></p>
         </div>
 
         <div class="row">
           <div class="field">
-            <label for="syncMinutes">Fréquence</label>
+            <label for="syncMinutes" data-i18n="fieldFrequency"></label>
             <select id="syncMinutes" name="syncMinutes" aria-describedby="syncMinutes-error"></select>
             <p id="syncMinutes-error" class="field-error" hidden></p>
           </div>
           <div class="field">
-            <label for="filterType">Période de courrier</label>
+            <label for="filterType" data-i18n="fieldPeriod"></label>
             <select id="filterType" name="filterType" aria-describedby="filterType-error"></select>
             <p id="filterType-error" class="field-error" hidden></p>
           </div>
         </div>
 
         <fieldset id="sync" class="field" aria-describedby="sync-hint sync-error">
-          <legend>Éléments à synchroniser</legend>
+          <legend data-i18n="fieldKinds"></legend>
           <div id="kinds" class="kinds"></div>
-          <p id="sync-hint" class="hint">Dans cette version, seul le courrier est synchronisé. Les autres choix sont enregistrés pour plus tard.</p>
+          <p id="sync-hint" class="hint" data-i18n="kindsHint"></p>
           <p id="sync-error" class="field-error" hidden></p>
         </fieldset>
 
         <div class="actions">
-          <button type="submit" id="save" class="primary">Enregistrer</button>
-          <button type="button" id="cancel">Annuler</button>
+          <button type="submit" id="save" class="primary" data-i18n="save"></button>
+          <button type="button" id="cancel" data-i18n="cancel"></button>
         </div>
       </form>
     </section>
 
     <section class="card" aria-labelledby="diag-title">
-      <h2 id="diag-title">Diagnostic</h2>
-      <p class="hint">Le journal ne contient ni contenu de message, ni objet, ni adresse. Le débogage y ajoute des valeurs techniques (statuts, clés) et s'arrête seul au bout d'une heure.</p>
+      <h2 id="diag-title" data-i18n="diagnosticTitle"></h2>
+      <p class="hint" data-i18n="diagnosticHint"></p>
       <div class="debug-row">
         <input type="checkbox" id="debug" aria-describedby="debug-status">
-        <label for="debug">Débogage pendant 1 heure</label>
+        <label for="debug" data-i18n="debugLabel"></label>
         <span id="debug-status" class="hint"></span>
       </div>
       <div class="actions">
-        <button type="button" id="log-refresh">Actualiser</button>
-        <button type="button" id="log-clear">Effacer le journal</button>
+        <button type="button" id="log-refresh" data-i18n="logRefresh"></button>
+        <button type="button" id="log-clear" data-i18n="logClear"></button>
       </div>
-      <pre id="log" class="log" tabindex="0" aria-label="Journal de l'extension"></pre>
+      <pre id="log" class="log" tabindex="0" data-i18n-aria-label="logLabel"></pre>
     </section>
   </main>
 </body>

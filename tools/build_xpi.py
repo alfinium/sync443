@@ -23,6 +23,12 @@ Checks: the manifest is valid JSON without duplicate keys, with the fields a
 release needs; every file it names exists in src/; every experiment schema
 is valid JSON; every local file an HTML page names (src, href) exists; every
 relative module import of a .mjs or .js file resolves to a file in src/.
+Translations: src/_locales/<language>/messages.json, nothing else in
+_locales; each catalogue valid JSON without duplicate keys, every message a
+non-empty text; the manifest's default_locale has its catalogue, every
+__MSG_key__ of the manifest is in it, and every other catalogue has the same
+messages with the same placeholders (tests/unit/i18n.test.mjs checks the
+rest: every key used exists, the texts of each language compose correctly).
 """
 import argparse
 import hashlib
@@ -61,6 +67,11 @@ BARE_IMPORT = re.compile(r"""^[ \t]*import[ \t]*["'](\.{1,2}/[^"'\n]+)["']""", r
 DYNAMIC_IMPORT = re.compile(r"""\bimport\(\s*["'](\.{1,2}/[^"'\n]+)["']\s*\)""")
 HTML_REF = re.compile(r"""\b(?:src|href)\s*=\s*["']([^"']*)["']""", re.I)
 EXTERNAL = re.compile(r"^(?:[a-z][a-z0-9+.-]*:|//|#)", re.I)
+# Translations: _locales/<language>/messages.json ("en", "fr", "pt_BR"…).
+LOCALES = "_locales"
+LOCALE_FILE = re.compile(r"^_locales/([a-z]{2,3}(?:_[A-Z]{2})?)/messages\.json$")
+MESSAGE_NAME = re.compile(r"^[A-Za-z0-9_@]+$")
+MANIFEST_MESSAGE = re.compile(r"__MSG_([A-Za-z0-9_@]+)__")
 
 
 class BuildError(Exception):
@@ -194,6 +205,92 @@ def resolve(base_dir, ref):
     return path if inside else None
 
 
+def manifest_strings(value):
+    """Every string of the manifest, however deep."""
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for v in value.values():
+            yield from manifest_strings(v)
+    elif isinstance(value, list):
+        for v in value:
+            yield from manifest_strings(v)
+
+
+def check_locales(files, manifest):
+    """→ ({language: {key: message}}, [problem]) for src/_locales and the manifest's default_locale."""
+    problems = []
+    catalogues = {}
+    shapes = {}  # language → {key: {placeholder: content}}
+    for arc, path in files:
+        if not (arc == LOCALES or arc.startswith(LOCALES + "/")):
+            continue
+        m = LOCALE_FILE.match(arc)
+        if not m:
+            problems.append(f"src/{arc} : fichier inattendu dans {LOCALES} (seulement <langue>/messages.json)")
+            continue
+        try:
+            data = load_json(path)
+        except BuildError as e:
+            problems.append(str(e))
+            continue
+        if not isinstance(data, dict) or not data:
+            problems.append(f"src/{arc} : objet JSON de messages attendu")
+            continue
+        messages = {}
+        placeholders = {}
+        for key, entry in data.items():
+            text = entry.get("message") if isinstance(entry, dict) else None
+            if not MESSAGE_NAME.match(key):
+                problems.append(f"src/{arc} : nom de message invalide : {key!r}")
+            elif not isinstance(text, str) or not text.strip():
+                problems.append(f"src/{arc} : message vide ou absent : {key}")
+            else:
+                messages[key.lower()] = text
+                found = entry.get("placeholders") or {}
+                placeholders[key.lower()] = {
+                    str(name).lower(): (p.get("content") if isinstance(p, dict) else None) for name, p in found.items()
+                } if isinstance(found, dict) else None
+        catalogues[m.group(1)] = messages
+        shapes[m.group(1)] = placeholders
+
+    default = manifest.get("default_locale")
+    used = sorted({k for s in manifest_strings(manifest) for k in MANIFEST_MESSAGE.findall(s)})
+    if default is None:
+        if catalogues:
+            problems.append(f"default_locale absent du manifeste, alors que src/{LOCALES} existe")
+        if used:
+            problems.append(f"__MSG_…__ dans le manifeste sans default_locale : {', '.join(used)}")
+        return catalogues, problems
+    if not isinstance(default, str) or default not in catalogues:
+        problems.append(f"default_locale {default!r} : src/{LOCALES}/{default}/messages.json absent")
+        return catalogues, problems
+    for key in used:
+        if key.lower() not in catalogues[default]:
+            problems.append(f"manifeste : __MSG_{key}__ absent de src/{LOCALES}/{default}/messages.json")
+    # Every translation has every message of the default language, with the same placeholders.
+    reference = shapes[default]
+    for lang, shape in sorted(shapes.items()):
+        if lang == default:
+            continue
+        where = f"src/{LOCALES}/{lang}/messages.json"
+        missing = sorted(set(reference) - set(shape))
+        extra = sorted(set(shape) - set(reference))
+        if missing:
+            problems.append(f"{where} : messages absents : {', '.join(missing)}")
+        if extra:
+            problems.append(f"{where} : messages inconnus de la langue par défaut : {', '.join(extra)}")
+        for key in sorted(set(reference) & set(shape)):
+            if shape[key] != reference[key]:
+                problems.append(f"{where} : {key} : paramètres différents de la langue par défaut")
+    return catalogues, problems
+
+
+def localized(text, catalogue):
+    """`text` of the manifest with its __MSG_key__ replaced from `catalogue` (unknown keys left as they are)."""
+    return MANIFEST_MESSAGE.sub(lambda m: catalogue.get(m.group(1).lower(), m.group(0)), text)
+
+
 def check(files, expect_version=None):
     """→ (manifest, [problem])."""
     problems = []
@@ -201,10 +298,15 @@ def check(files, expect_version=None):
     if not isinstance(manifest, dict):
         raise BuildError("src/manifest.json : objet JSON attendu")
 
+    catalogues, locale_problems = check_locales(files, manifest)
+    problems.extend(locale_problems)
+    default_catalogue = catalogues.get(manifest.get("default_locale"), {})
+
     if manifest.get("manifest_version") != 2:
         problems.append("manifest_version doit valoir 2")
     for key in ("name", "description"):
-        if not isinstance(manifest.get(key), str) or not manifest[key].strip():
+        value = manifest.get(key)
+        if not isinstance(value, str) or not localized(value, default_catalogue).strip():
             problems.append(f"champ « {key} » absent du manifeste")
     version = manifest.get("version")
     if not isinstance(version, str) or not VERSION.match(version):

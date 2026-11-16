@@ -19,8 +19,9 @@
  *  3. it is sent with SendMail, the server keeping a copy in its Sent Items;
  *  4. the local draft is deleted for good, the compose window closed, and
  *     the background told (afterSend) so that it can synchronise.
- * On any failure the window and the draft stay, a notification says why,
- * and no other route is ever tried. When the account of the identity, its
+ * On any failure the window and the draft stay, a notification says why
+ * (in the language of Thunderbird, i18n.mjs), and no other route is ever
+ * tried. When the account of the identity, its
  * route or the signing and encryption state cannot be determined, sending
  * is cancelled too: in doubt, nothing leaves.
  *
@@ -48,16 +49,13 @@
 
 import { sendMailRequest, parseSendMail } from "./core/protocol.mjs";
 import { cleanDraft } from "./core/mime.mjs";
-import { cleanText } from "./core/sanitize.mjs";
 import { ERR } from "./transport/client.mjs";
 import { MAILBOX_ID, ACCOUNT_KEY } from "./core/ids.mjs";
 import { toHex } from "./core/sha256.mjs";
+import { t, errorText, sentence } from "./i18n.mjs";
 
 export const MAX_MESSAGE_BYTES = 50 * 1024 * 1024;
 const MAX_HEADER_BYTES = 1024 * 1024;
-const BUSY = "Ce message est déjà en cours d'envoi.";
-const PROTECTED =
-  "Message non envoyé : la signature et le chiffrement (OpenPGP, S/MIME) ne sont pas encore pris en charge par Sync443, ou leur état n'a pas pu être vérifié. Désactivez-les pour ce message. Il reste dans la fenêtre de rédaction.";
 // compose.saveMessage can be refused while Thunderbird is still finishing the
 // cancelled send: tried again after these delays (ms).
 const SAVE_RETRIES = [250, 500, 1000, 2000];
@@ -65,20 +63,35 @@ const SAVE_RETRIES = [250, 500, 1000, 2000];
 /** Errors after which the request may have reached the server: the message may have left. */
 const UNCERTAIN = new Set([ERR.NETWORK, ERR.TIMEOUT, ERR.CANCELLED, ERR.BAD_RESPONSE, ERR.TOO_LARGE]);
 
-/** SendMail status codes ([MS-ASCMD] 2.2.2, common status codes). */
-const STATUS_REASONS = new Map([
-  ["107", "le serveur refuse le format du message"],
-  ["110", "erreur du serveur"],
-  ["111", "erreur temporaire du serveur, réessayez plus tard"],
-  ["113", "la boîte est pleine sur le serveur"],
-  ["114", "la boîte est momentanément indisponible sur le serveur"],
-  ["115", "quota d'envoi du serveur dépassé"],
-  ["116", "un destinataire n'a pas été reconnu par le serveur"],
-  ["118", "le serveur indique que ce message a déjà été envoyé"],
-  ["119", "le message n'a aucun destinataire"],
-  ["120", "le serveur n'a pas pu remettre le message"],
-  ["122", "pièce jointe trop volumineuse pour le serveur"],
-]);
+/** Why the server refused: SendMail status codes ([MS-ASCMD] 2.2.2, common status codes). */
+function statusReason(status) {
+  switch (status) {
+    case "107":
+      return t("sendStatus107");
+    case "110":
+      return t("sendStatus110");
+    case "111":
+      return t("sendStatus111");
+    case "113":
+      return t("sendStatus113");
+    case "114":
+      return t("sendStatus114");
+    case "115":
+      return t("sendStatus115");
+    case "116":
+      return t("sendStatus116");
+    case "118":
+      return t("sendStatus118");
+    case "119":
+      return t("sendStatus119");
+    case "120":
+      return t("sendStatus120");
+    case "122":
+      return t("sendStatus122");
+    default:
+      return t("sendStatusOther");
+  }
+}
 
 /** Top-level types of a message Thunderbird has encrypted (PGP/MIME, S/MIME). */
 const ENCRYPTED_TYPES = new Set(["multipart/encrypted", "application/pkcs7-mime", "application/x-pkcs7-mime"]);
@@ -102,7 +115,7 @@ class SendFailure extends Error {
  *        to, even false, counts as checked.
  * @param {(mailboxId: string) => any} [deps.afterSend]  after a message has left
  * @param {{info: Function, warn: Function, error: Function}} deps.log
- * @param {(message: string) => any} deps.notify  shows a French sentence to the user
+ * @param {(message: string) => any} deps.notify  shows a sentence to the user (in the interface's language)
  * @param {object} [deps.browser]  messenger / browser, or a test double
  * @param {(n: number) => Uint8Array} [deps.random]  CSPRNG
  * @param {(ms: number) => Promise<void>} [deps.delay]
@@ -128,7 +141,7 @@ export function installSendHandler(deps) {
     const tabId = Number.isInteger(tab?.id) ? tab.id : null;
     // Held from the first click, whatever identity the next one uses.
     if (tabId !== null && sending.has(tabId)) {
-      notify(BUSY);
+      notify(t("sendBusy"));
       return { cancel: true };
     }
     if (tabId !== null) sending.add(tabId);
@@ -147,19 +160,19 @@ export function installSendHandler(deps) {
         owner = { mailboxId: found.mailboxId, accountKey: found.accountKey };
       } catch {
         log.error("Envoi annulé : compte d'envoi impossible à vérifier.");
-        notify("Message non envoyé : Sync443 n'a pas pu vérifier le compte d'envoi, donc rien n'est parti. Le message reste dans la fenêtre de rédaction.");
+        notify(t("sendAccountUnchecked"));
         return { cancel: true };
       }
       try {
         if (deps.checkSendRoute !== undefined) await deps.checkSendRoute(identityId);
       } catch {
         log.error("Envoi annulé : serveur d'envoi neutre impossible à vérifier.");
-        notify("Message non envoyé : Sync443 n'a pas pu vérifier le serveur d'envoi de ce compte, donc rien n'est parti. Le message reste dans la fenêtre de rédaction.");
+        notify(t("sendRouteUnchecked"));
         return { cancel: true };
       }
       if (protectionAsked(details)) {
         log.warn("Envoi refusé : signature ou chiffrement demandé, ou état inconnu.");
-        notify(PROTECTED);
+        notify(t("sendProtected"));
         return { cancel: true };
       }
       started = true;
@@ -168,7 +181,7 @@ export function installSendHandler(deps) {
         .then(() => sendOne(tabId, identityId, owner))
         .catch(() => {
           log.error("Envoi interrompu par une erreur inattendue.");
-          notify("Message non envoyé : erreur inattendue. Il reste dans la fenêtre de rédaction.");
+          notify(t("sendUnexpected"));
         })
         .finally(() => {
           sending.delete(tabId);
@@ -183,13 +196,11 @@ export function installSendHandler(deps) {
 
   async function sendOne(tabId, identityId, { mailboxId, accountKey }) {
     let draftSaved = false;
+    // `reason`: a sentence that ends with a full stop; it follows "Message not sent:" (lower case where the language wants it).
     const fail = (code, reason, { uncertain = false } = {}) => {
       log.warn(uncertain ? `Envoi incertain (${code}).` : `Envoi échoué (${code}).`);
-      notify(
-        uncertain
-          ? `Envoi incertain : ${reason} Vérifiez le dossier Envoyés avant de renvoyer le message, resté dans la fenêtre de rédaction.`
-          : `Message non envoyé : ${reason} Il reste dans la fenêtre de rédaction${draftSaved ? " et dans les brouillons" : ""}.`,
-      );
+      if (uncertain) notify(t("sendUncertain", reason));
+      else notify(draftSaved ? t("sendFailedDraft", reason) : t("sendFailed", reason));
     };
 
     // 1. The draft.
@@ -197,7 +208,7 @@ export function installSendHandler(deps) {
     try {
       draftId = await saveDraft(tabId);
     } catch {
-      return fail("DRAFT", "le brouillon n'a pas pu être enregistré.");
+      return fail("DRAFT", t("sendReasonDraft"));
     }
     draftSaved = true;
 
@@ -207,13 +218,13 @@ export function installSendHandler(deps) {
     try {
       current = await b.compose.getComposeDetails(tabId);
     } catch {
-      return fail("DETAILS", "la fenêtre de rédaction n'a pas pu être relue.");
+      return fail("DETAILS", t("sendReasonDetails"));
     }
     if (current?.identityId !== identityId) {
-      return fail("IDENTITY", "l'expéditeur a changé pendant l'envoi. Cliquez de nouveau sur Envoyer.");
+      return fail("IDENTITY", t("sendReasonIdentity"));
     }
     if (protectionAsked(current)) {
-      return fail("PROTECTION", "la signature ou le chiffrement (OpenPGP, S/MIME) a été demandé, ce que Sync443 ne prend pas encore en charge.");
+      return fail("PROTECTION", t("sendReasonProtection"));
     }
     let header;
     try {
@@ -222,7 +233,7 @@ export function installSendHandler(deps) {
       header = null;
     }
     if (!header || header.folder?.accountId !== accountKey) {
-      return fail("FOLDER", "le brouillon n'a pas été enregistré dans le compte Sync443 de cet expéditeur. Vérifiez le dossier des brouillons de l'identité.");
+      return fail("FOLDER", t("sendReasonFolder"));
     }
 
     // 2. Its bytes, without Thunderbird's internal headers.
@@ -230,13 +241,13 @@ export function installSendHandler(deps) {
     try {
       const bytes = await readRaw(b, draftId);
       if (ENCRYPTED_TYPES.has(topContentType(bytes))) {
-        throw new SendFailure("ENCRYPTED", "les messages chiffrés (OpenPGP, S/MIME) ne peuvent pas être envoyés par Sync443.");
+        throw new SendFailure("ENCRYPTED", t("sendReasonEncrypted"));
       }
       mime = cleanDraft(bytes);
-      if (!(mime instanceof Uint8Array) || mime.length === 0) throw new SendFailure("MIME", "le message n'a pas pu être préparé.");
+      if (!(mime instanceof Uint8Array) || mime.length === 0) throw new SendFailure("MIME", t("sendReasonMime"));
     } catch (e) {
       if (e instanceof SendFailure) return fail(e.code, e.message);
-      return fail("MIME", "le message n'a pas pu être préparé.");
+      return fail("MIME", t("sendReasonMime"));
     }
 
     // 3. SendMail.
@@ -251,7 +262,7 @@ export function installSendHandler(deps) {
     try {
       request = sendMailRequest(newClientId(random), mime, { saveInSentItems: true });
     } catch {
-      return fail("MIME", "le message n'a pas pu être préparé.");
+      return fail("MIME", t("sendReasonMime"));
     }
     let doc;
     try {
@@ -268,29 +279,30 @@ export function installSendHandler(deps) {
     }
     if (status !== "1") {
       if (status === null) {
-        return fail("STATUS", "réponse inattendue du serveur, le message est peut-être parti.", { uncertain: true });
+        return fail("STATUS", t("sendReasonStatus"), { uncertain: true });
       }
-      return fail(`Status ${status}`, `${STATUS_REASONS.get(status) ?? "refus du serveur"} (Status ${status}).`);
+      return fail(`Status ${status}`, t("sendReasonRefused", statusReason(status), status));
     }
 
     // 4. Sent: the draft goes, the window closes.
     log.info("Message envoyé.");
-    const leftovers = [];
+    let draftLeft = false;
+    let windowLeft = false;
     try {
       await deletePermanently(b, draftId);
     } catch {
       log.warn("Brouillon d'un message envoyé non supprimé.");
-      leftovers.push("son brouillon n'a pas pu être supprimé");
+      draftLeft = true;
     }
     try {
       await b.tabs.remove(tabId);
     } catch {
       log.warn("Fenêtre de rédaction non fermée après l'envoi.");
-      leftovers.push("la fenêtre de rédaction n'a pas pu être fermée");
+      windowLeft = true;
     }
-    if (leftovers.length) {
-      notify(`Message envoyé, mais ${leftovers.join(" et ")} : ne le renvoyez pas.`);
-    }
+    if (draftLeft && windowLeft) notify(t("sentLeftoverBoth"));
+    else if (draftLeft) notify(t("sentLeftoverDraft"));
+    else if (windowLeft) notify(t("sentLeftoverWindow"));
     try {
       await deps.afterSend?.(mailboxId);
     } catch {
@@ -329,17 +341,17 @@ export function installSendHandler(deps) {
 
 /** The draft's bytes (a File since data_format "File"), at most MAX_MESSAGE_BYTES. */
 async function readRaw(b, id) {
-  const tooLarge = () => new SendFailure("TOO_LARGE", `message trop volumineux (plus de ${MAX_MESSAGE_BYTES / 1048576} Mo).`);
+  const tooLarge = () => new SendFailure("TOO_LARGE", t("sendReasonTooLarge", MAX_MESSAGE_BYTES / 1048576));
   let raw;
   try {
     raw = await b.messages.getRaw(id, { data_format: "File" });
   } catch {
-    throw new SendFailure("READ", "le brouillon n'a pas pu être lu.");
+    throw new SendFailure("READ", t("sendReasonRead"));
   }
-  if (!raw || typeof raw.arrayBuffer !== "function") throw new SendFailure("READ", "le brouillon n'a pas pu être lu.");
+  if (!raw || typeof raw.arrayBuffer !== "function") throw new SendFailure("READ", t("sendReasonRead"));
   if (Number(raw.size) > MAX_MESSAGE_BYTES) throw tooLarge();
   const bytes = new Uint8Array(await raw.arrayBuffer());
-  if (bytes.length === 0) throw new SendFailure("READ", "le brouillon est vide.");
+  if (bytes.length === 0) throw new SendFailure("READ", t("sendReasonEmpty"));
   return bytes;
 }
 
@@ -391,16 +403,21 @@ export function topContentType(bytes) {
   return type || "text/plain";
 }
 
-/** French reason for a failure of the client, never free text from an unknown error. */
+/**
+ * Reason for a failure of the client, chosen by its code (i18n.mjs); never
+ * free text from an unknown error.
+ */
 function explain(e) {
   const code = typeof e?.code === "string" && /^[A-Z_]{2,20}$/.test(e.code) ? e.code : "UNKNOWN";
   if (e?.sent === true && UNCERTAIN.has(code)) {
-    return { code, uncertain: true, reason: "la connexion s'est interrompue après l'envoi de la requête, le message est peut-être parti." };
+    return { code, uncertain: true, reason: t("sendReasonInterrupted") };
   }
-  const text = code === "UNKNOWN" ? "" : cleanText(typeof e?.message === "string" ? e.message : "", { max: 300, singleLine: true, stripBidi: true }).trim();
-  const reason = text ? (/[.!?]$/.test(text) ? text : `${text}.`) : "erreur inattendue.";
+  const text = code === "UNKNOWN" ? "" : errorText({ code, message: e?.message, key: e?.key }, "sendReasonUnexpected");
+  const reason = text ? sentence(text) : t("sendReasonUnexpected");
   // "Identifiant refusé…" reads "Message non envoyé : identifiant refusé…"; "SendMail : …" stays as it is.
-  return { code, uncertain: false, reason: /^\p{Lu}\p{Ll}*(?![\p{L}\d])/u.test(reason) ? reason.charAt(0).toLowerCase() + reason.slice(1) : reason };
+  // Only in languages whose catalogue says so: a German noun, for one, keeps its capital.
+  const lower = t("sendReasonLowercase") === "yes" && /^\p{Lu}\p{Ll}*(?![\p{L}\d])/u.test(reason);
+  return { code, uncertain: false, reason: lower ? reason.charAt(0).toLowerCase() + reason.slice(1) : reason };
 }
 
 /** 32 hexadecimal digits from the CSPRNG: a fresh ClientId for every attempt. */

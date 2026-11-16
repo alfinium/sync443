@@ -1,0 +1,852 @@
+{
+  "extensionName": {
+    "message": "Sync443 – EAS Client for Thunderbird"
+  },
+  "extensionDescription": {
+    "message": "Nativní Exchange ActiveSync v Thunderbirdu: pošta, složky a odesílání, s jakýmkoli kompatibilním serverem."
+  },
+  "languageTag": {
+    "message": "cs"
+  },
+  "actionSync": {
+    "message": "Synchronizovat"
+  },
+  "actionSyncLast": {
+    "message": "Synchronizovat (naposledy synchronizováno: $TIME$)",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "actionCheckSettings": {
+    "message": "Sync443: zkontrolujte $NAMES$ v nastavení",
+    "placeholders": {
+      "names": {
+        "content": "$1"
+      }
+    }
+  },
+  "syncRunning": {
+    "message": "Probíhá synchronizace…"
+  },
+  "menuSyncAll": {
+    "message": "Synchronizovat Sync443 nyní"
+  },
+  "menuSettings": {
+    "message": "Nastavení Sync443…"
+  },
+  "menuSyncOne": {
+    "message": "Synchronizovat nyní (Sync443)"
+  },
+  "optionsTitle": {
+    "message": "Sync443 – Nastavení"
+  },
+  "optionsSubtitle": {
+    "message": "Exchange ActiveSync, pouze přes HTTPS"
+  },
+  "pageOutsideThunderbird": {
+    "message": "Tato stránka funguje pouze tehdy, když ji otevřete z Thunderbirdu v nastavení rozšíření."
+  },
+  "mailboxesTitle": {
+    "message": "Schránky"
+  },
+  "addMailbox": {
+    "message": "Přidat schránku"
+  },
+  "mailboxesEmpty": {
+    "message": "Zatím zde není žádná schránka. Klikněte na „Přidat schránku“."
+  },
+  "unnamed": {
+    "message": "bez názvu"
+  },
+  "metaMailPeriod": {
+    "message": "pošta: $PERIOD$",
+    "placeholders": {
+      "period": {
+        "content": "$1"
+      }
+    }
+  },
+  "confirmDeletes": {
+    "message": "Potvrdit smazání"
+  },
+  "keepLocalCopies": {
+    "message": "Ponechat místní kopie"
+  },
+  "syncButton": {
+    "message": "Synchronizovat"
+  },
+  "editButton": {
+    "message": "Upravit"
+  },
+  "removeButton": {
+    "message": "Odebrat"
+  },
+  "removeConfirmButton": {
+    "message": "Odebrat schránku"
+  },
+  "cancel": {
+    "message": "Zrušit"
+  },
+  "removeQuestion": {
+    "message": "Odebrat schránku „$NAME$“? Její účet, místní složky a heslo budou z Thunderbirdu odebrány. Na serveru se nic nesmaže.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "discardConfirm": {
+    "message": "Smazání provedená na serveru nebudou uplatněna: zprávy zůstanou v Thunderbirdu a dotčené složky se znovu synchronizují se serverem. Složka smazaná na serveru zde zůstane, ale nebude se synchronizovat."
+  },
+  "noAnswer": {
+    "message": "Rozšíření neodpovídá. Načtěte tuto stránku znovu."
+  },
+  "badAnswer": {
+    "message": "Neočekávaná odpověď rozšíření."
+  },
+  "listFailed": {
+    "message": "Seznam schránek se nepodařilo načíst."
+  },
+  "editedRemoved": {
+    "message": "Upravovaná schránka byla odebrána."
+  },
+  "deletesConfirmed": {
+    "message": "Smazání byla potvrzena; synchronizace byla spuštěna."
+  },
+  "syncStarted": {
+    "message": "Synchronizace byla spuštěna."
+  },
+  "syncNotStarted": {
+    "message": "Synchronizaci se nepodařilo spustit."
+  },
+  "localCopiesKept": {
+    "message": "Místní kopie ponechány; synchronizace byla spuštěna."
+  },
+  "deletesNotDiscarded": {
+    "message": "Zadržená smazání se nepodařilo zrušit."
+  },
+  "mailboxRemoved": {
+    "message": "Schránka „$NAME$“ byla odebrána.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "mailboxNotRemoved": {
+    "message": "Schránku se nepodařilo odebrat."
+  },
+  "mailboxSaved": {
+    "message": "Schránka „$NAME$“ byla uložena.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "mailboxAdded": {
+    "message": "Schránka „$NAME$“ byla přidána. Probíhá první synchronizace.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "mailboxNotSaved": {
+    "message": "Schránku se nepodařilo uložit."
+  },
+  "logUnavailable": {
+    "message": "Protokol není dostupný."
+  },
+  "debugNotChanged": {
+    "message": "Ladění se nepodařilo změnit."
+  },
+  "logNotCleared": {
+    "message": "Protokol se nepodařilo vymazat."
+  },
+  "newMailbox": {
+    "message": "Nová schránka"
+  },
+  "editMailbox": {
+    "message": "Upravit „$NAME$“",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "fieldEmail": {
+    "message": "E-mailová adresa"
+  },
+  "fieldPassword": {
+    "message": "Heslo"
+  },
+  "passwordHintNew": {
+    "message": "Pokud to server umožňuje, použijte raději heslo aplikace vyhrazené pro ActiveSync."
+  },
+  "passwordHintEdit": {
+    "message": "Ponechte prázdné, chcete-li zachovat uložené heslo. Pokud se změní server nebo přihlašovací jméno, je nutné heslo zadat znovu."
+  },
+  "fieldName": {
+    "message": "Název schránky"
+  },
+  "nameHint": {
+    "message": "Zobrazuje se v seznamu účtů Thunderbirdu. Pokud zůstane prázdný, použije se e-mailová adresa."
+  },
+  "fieldServer": {
+    "message": "Server"
+  },
+  "serverHint": {
+    "message": "Například mail.example.com, bez /Microsoft-Server-ActiveSync. Vždy přes HTTPS."
+  },
+  "fieldUsername": {
+    "message": "Přihlašovací jméno (nepovinné)"
+  },
+  "usernameHint": {
+    "message": "Vyplňte pouze tehdy, pokud se liší od e-mailové adresy, například DOMÉNA\\jméno."
+  },
+  "fieldFrequency": {
+    "message": "Frekvence"
+  },
+  "fieldPeriod": {
+    "message": "Období pošty"
+  },
+  "fieldKinds": {
+    "message": "Položky k synchronizaci"
+  },
+  "kindsHint": {
+    "message": "V této verzi se synchronizuje pouze pošta. Ostatní volby se uloží pro pozdější použití."
+  },
+  "soon": {
+    "message": "již brzy"
+  },
+  "save": {
+    "message": "Uložit"
+  },
+  "saving": {
+    "message": "Ukládání…"
+  },
+  "permissionMissing": {
+    "message": "Bez oprávnění pro přístup k $SERVER$ nelze schránku synchronizovat. Uložte ji znovu a přijměte žádost Thunderbirdu.",
+    "placeholders": {
+      "server": {
+        "content": "$1"
+      }
+    }
+  },
+  "freqPush": {
+    "message": "Jakmile dorazí pošta"
+  },
+  "freqEveryMinute": {
+    "message": "Každou minutu"
+  },
+  "freqEveryMinutes": {
+    "message": "Jednou za $COUNT$ min",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "freqEveryHour": {
+    "message": "Každou hodinu"
+  },
+  "period1Day": {
+    "message": "1 den"
+  },
+  "period3Days": {
+    "message": "3 dny"
+  },
+  "period1Week": {
+    "message": "1 týden"
+  },
+  "period2Weeks": {
+    "message": "2 týdny"
+  },
+  "period1Month": {
+    "message": "1 měsíc"
+  },
+  "periodAll": {
+    "message": "Vše"
+  },
+  "periodUnknown": {
+    "message": "Neznámé"
+  },
+  "kindMail": {
+    "message": "Pošta"
+  },
+  "kindCalendar": {
+    "message": "Kalendář"
+  },
+  "kindContacts": {
+    "message": "Kontakty"
+  },
+  "kindTasks": {
+    "message": "Úkoly"
+  },
+  "kindSoon": {
+    "message": "$KIND$ (již brzy)",
+    "placeholders": {
+      "kind": {
+        "content": "$1"
+      }
+    }
+  },
+  "kindsNone": {
+    "message": "Nic"
+  },
+  "emailMissing": {
+    "message": "Zadejte e-mailovou adresu."
+  },
+  "emailTooLong": {
+    "message": "E-mailová adresa je příliš dlouhá."
+  },
+  "emailInvalid": {
+    "message": "Neplatná e-mailová adresa (například: jmeno.prijmeni@example.com)."
+  },
+  "usernameTooLong": {
+    "message": "Přihlašovací jméno je příliš dlouhé (nejvýše 256 znaků)."
+  },
+  "usernameColon": {
+    "message": "Přihlašovací jméno nesmí obsahovat dvojtečku ( : )."
+  },
+  "usernameBadChar": {
+    "message": "Přihlašovací jméno obsahuje nepovolený znak."
+  },
+  "passwordMissing": {
+    "message": "Zadejte heslo."
+  },
+  "passwordRetype": {
+    "message": "Server nebo přihlašovací jméno se změnilo: zadejte heslo znovu."
+  },
+  "passwordTooLong": {
+    "message": "Heslo je příliš dlouhé."
+  },
+  "passwordBadChar": {
+    "message": "Heslo obsahuje nepovolený znak."
+  },
+  "nameTooLong": {
+    "message": "Název je příliš dlouhý (nejvýše 256 znaků)."
+  },
+  "chooseFrequency": {
+    "message": "Zvolte frekvenci synchronizace."
+  },
+  "choosePeriod": {
+    "message": "Zvolte období pošty k synchronizaci."
+  },
+  "chooseKind": {
+    "message": "Zvolte alespoň jednu položku k synchronizaci."
+  },
+  "serverInvalid": {
+    "message": "Neplatný server."
+  },
+  "serverEmpty": {
+    "message": "Zadejte server, například mail.example.com."
+  },
+  "serverSpace": {
+    "message": "Adresa serveru nesmí obsahovat mezery."
+  },
+  "serverNotHttps": {
+    "message": "Server musí být dostupný přes HTTPS."
+  },
+  "serverCredentials": {
+    "message": "Adresa serveru nesmí obsahovat přihlašovací jméno ani heslo."
+  },
+  "serverInvalidValue": {
+    "message": "Neplatný server: $VALUE$",
+    "placeholders": {
+      "value": {
+        "content": "$1"
+      }
+    }
+  },
+  "serverPortInvalid": {
+    "message": "Neplatný port: $VALUE$",
+    "placeholders": {
+      "value": {
+        "content": "$1"
+      }
+    }
+  },
+  "dateAtTime": {
+    "message": "$DAY$ $TIME$",
+    "placeholders": {
+      "day": {
+        "content": "$1"
+      },
+      "time": {
+        "content": "$2"
+      }
+    }
+  },
+  "statusMassDelete": {
+    "message": "Synchronizace pozastavena: server najednou smazal více zpráv (počet: $COUNT$). Tato smazání budou provedena až po vašem potvrzení; můžete si také ponechat místní kopie.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusMassDeleteMany": {
+    "message": "Synchronizace pozastavena: server najednou smazal mnoho zpráv. Tato smazání budou provedena až po vašem potvrzení; můžete si také ponechat místní kopie."
+  },
+  "statusBlocked": {
+    "message": "Zastaveno: $REASON$ Automaticky se nebude nic zkoušet: chcete-li pokračovat, klikněte na „Synchronizovat“.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusSeriousError": {
+    "message": "závažná chyba."
+  },
+  "statusError": {
+    "message": "Chyba: $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusErrorUnknown": {
+    "message": "neznámá chyba"
+  },
+  "statusRetryAt": {
+    "message": "Další pokus: $TIME$.",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusSyncedAt": {
+    "message": "Synchronizováno: $TIME$.",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusSyncedOn": {
+    "message": "Synchronizováno: $DATE$.",
+    "placeholders": {
+      "date": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusNever": {
+    "message": "Dosud nesynchronizováno."
+  },
+  "failedOne": {
+    "message": "1 zprávu se nepodařilo importovat: pokus se automaticky zopakuje."
+  },
+  "failedMany": {
+    "message": "Počet zpráv, které se nepodařilo importovat: $COUNT$. Pokus se automaticky zopakuje.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorDetail": {
+    "message": "Podrobnosti (francouzsky): $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "diagnosticTitle": {
+    "message": "Diagnostika"
+  },
+  "diagnosticHint": {
+    "message": "Protokol neobsahuje žádný obsah zpráv, předměty ani adresy. Ladění do něj přidává technické hodnoty (stavy, klíče) a po jedné hodině se samo vypne. Záznamy protokolu jsou psány francouzsky."
+  },
+  "debugLabel": {
+    "message": "Ladění po dobu 1 hodiny"
+  },
+  "debugActiveUntil": {
+    "message": "Aktivní do $TIME$.",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "logRefresh": {
+    "message": "Obnovit"
+  },
+  "logClear": {
+    "message": "Vymazat protokol"
+  },
+  "logLabel": {
+    "message": "Protokol rozšíření"
+  },
+  "logEmpty": {
+    "message": "Protokol je prázdný."
+  },
+  "levelError": {
+    "message": "chyba"
+  },
+  "levelWarn": {
+    "message": "varování"
+  },
+  "levelInfo": {
+    "message": "info"
+  },
+  "levelDebug": {
+    "message": "ladění"
+  },
+  "unexpectedError": {
+    "message": "Neočekávaná chyba."
+  },
+  "invalidRequest": {
+    "message": "Neplatný požadavek."
+  },
+  "invalidEmail": {
+    "message": "Neplatná e-mailová adresa."
+  },
+  "invalidUsername": {
+    "message": "Neplatné přihlašovací jméno."
+  },
+  "invalidFrequency": {
+    "message": "Neplatná frekvence."
+  },
+  "invalidPeriod": {
+    "message": "Neplatné období."
+  },
+  "invalidPassword": {
+    "message": "Neplatné heslo."
+  },
+  "passwordType": {
+    "message": "Napište heslo."
+  },
+  "mailboxGone": {
+    "message": "Tato schránka již neexistuje."
+  },
+  "emailTaken": {
+    "message": "Tato adresa je již nastavena."
+  },
+  "emailFixed": {
+    "message": "Adresu schránky nelze změnit: schránku odeberte a přidejte novou."
+  },
+  "loginTaken": {
+    "message": "Tento server s tímto přihlašovacím jménem již používá jiná schránka."
+  },
+  "permissionRefused": {
+    "message": "Přístup k serveru není povolen: přijměte žádost Thunderbirdu."
+  },
+  "cannotConnect": {
+    "message": "Nelze se připojit k serveru."
+  },
+  "accountNotPrepared": {
+    "message": "Účet Thunderbirdu se nepodařilo připravit ($CODE$).",
+    "placeholders": {
+      "code": {
+        "content": "$1"
+      }
+    }
+  },
+  "passwordNotSaved": {
+    "message": "Heslo se nepodařilo uložit (není hlavní heslo zamčené?)."
+  },
+  "errorUnknownMailbox": {
+    "message": "Neznámá schránka."
+  },
+  "errorPasswordLocked": {
+    "message": "Heslo momentálně není přístupné."
+  },
+  "errorPasswordAbsent": {
+    "message": "Není uloženo žádné heslo: upravte schránku a zadejte ho."
+  },
+  "errorAuth": {
+    "message": "Server odmítl přihlašovací jméno nebo heslo.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorDenied": {
+    "message": "Server nepovoluje synchronizaci tohoto účtu nebo tohoto zařízení.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorWipe": {
+    "message": "Server požádal o vzdálené vymazání tohoto zařízení. Požadavek byl odmítnut: nic nebylo vymazáno a synchronizace je zastavena.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorConfig": {
+    "message": "Schránku nelze s jejím současným nastavením synchronizovat: zkontrolujte ho a poté schránku znovu uložte.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorTls": {
+    "message": "Spojení bylo odmítnuto ještě před odesláním hesla: certifikát serveru nebyl přijat.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorProxyAuth": {
+    "message": "Proxy server této sítě vyžaduje vlastní ověření, které zatím není podporováno.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorProvision": {
+    "message": "Výměna bezpečnostních zásad se serverem selhala.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorHttp": {
+    "message": "Server odpověděl chybou HTTP.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorBusy": {
+    "message": "Server je zaneprázdněn nebo je otevřeno příliš mnoho spojení. Později proběhne nový pokus.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorNetwork": {
+    "message": "Server není dostupný.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorTimeout": {
+    "message": "Server neodpověděl včas.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorTooLarge": {
+    "message": "Odpověď serveru je příliš velká.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorBadResponse": {
+    "message": "Server poslal neočekávanou nebo neplatnou odpověď.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorCancelled": {
+    "message": "Operace byla zrušena.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorServer": {
+    "message": "Server odmítl požadavek.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorLocal": {
+    "message": "Změny se nepodařilo zapsat do Thunderbirdu.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorClosed": {
+    "message": "Synchronizace této schránky byla ukončena.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorOther": {
+    "message": "Neočekávaná chyba.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendBusy": {
+    "message": "Tato zpráva se již odesílá."
+  },
+  "sendProtected": {
+    "message": "Zpráva nebyla odeslána: podepisování a šifrování (OpenPGP, S/MIME) Sync443 zatím nepodporuje, nebo se nepodařilo ověřit jejich stav. Pro tuto zprávu je vypněte. Zpráva zůstává v okně psaní zprávy."
+  },
+  "sendAccountUnchecked": {
+    "message": "Zpráva nebyla odeslána: Sync443 nemohl ověřit účet pro odeslání, proto nebylo nic odesláno. Zpráva zůstává v okně psaní zprávy."
+  },
+  "sendRouteUnchecked": {
+    "message": "Zpráva nebyla odeslána: Sync443 nemohl ověřit server odchozí pošty tohoto účtu, proto nebylo nic odesláno. Zpráva zůstává v okně psaní zprávy."
+  },
+  "sendUnexpected": {
+    "message": "Zpráva nebyla odeslána: neočekávaná chyba. Zůstává v okně psaní zprávy."
+  },
+  "sendFailed": {
+    "message": "Zpráva nebyla odeslána: $REASON$ Zůstává v okně psaní zprávy.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendFailedDraft": {
+    "message": "Zpráva nebyla odeslána: $REASON$ Zůstává v okně psaní zprávy a mezi koncepty.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendUncertain": {
+    "message": "Odeslání je nejisté: $REASON$ Než zprávu odešlete znovu, zkontrolujte složku Odeslaná pošta; zpráva zůstává v okně psaní zprávy.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendReasonDraft": {
+    "message": "koncept se nepodařilo uložit."
+  },
+  "sendReasonDetails": {
+    "message": "okno psaní zprávy se nepodařilo znovu načíst."
+  },
+  "sendReasonIdentity": {
+    "message": "během odesílání se změnil odesílatel. Klikněte znovu na Odeslat."
+  },
+  "sendReasonProtection": {
+    "message": "bylo požadováno podepsání nebo šifrování (OpenPGP, S/MIME), které Sync443 zatím nepodporuje."
+  },
+  "sendReasonFolder": {
+    "message": "koncept nebyl uložen do účtu Sync443 tohoto odesílatele. Zkontrolujte složku pro koncepty u této identity."
+  },
+  "sendReasonEncrypted": {
+    "message": "šifrované zprávy (OpenPGP, S/MIME) nemůže Sync443 odesílat."
+  },
+  "sendReasonMime": {
+    "message": "zprávu se nepodařilo připravit."
+  },
+  "sendReasonTooLarge": {
+    "message": "zpráva je příliš velká (více než $SIZE$ MB).",
+    "placeholders": {
+      "size": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendReasonRead": {
+    "message": "koncept se nepodařilo načíst."
+  },
+  "sendReasonEmpty": {
+    "message": "koncept je prázdný."
+  },
+  "sendReasonStatus": {
+    "message": "neočekávaná odpověď serveru; zpráva již možná odešla."
+  },
+  "sendReasonInterrupted": {
+    "message": "spojení bylo přerušeno po odeslání požadavku; zpráva již možná odešla."
+  },
+  "sendReasonUnexpected": {
+    "message": "neočekávaná chyba."
+  },
+  "sendReasonLowercase": {
+    "message": "yes"
+  },
+  "sendReasonRefused": {
+    "message": "$REASON$ (Status $STATUS$).",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      },
+      "status": {
+        "content": "$2"
+      }
+    }
+  },
+  "sendStatus107": {
+    "message": "server odmítá formát zprávy"
+  },
+  "sendStatus110": {
+    "message": "chyba serveru"
+  },
+  "sendStatus111": {
+    "message": "dočasná chyba serveru, zkuste to později"
+  },
+  "sendStatus113": {
+    "message": "schránka na serveru je plná"
+  },
+  "sendStatus114": {
+    "message": "schránka na serveru je dočasně nedostupná"
+  },
+  "sendStatus115": {
+    "message": "kvóta serveru pro odesílání byla překročena"
+  },
+  "sendStatus116": {
+    "message": "server nerozpoznal jednoho z příjemců"
+  },
+  "sendStatus118": {
+    "message": "server uvádí, že tato zpráva již byla odeslána"
+  },
+  "sendStatus119": {
+    "message": "zpráva nemá žádného příjemce"
+  },
+  "sendStatus120": {
+    "message": "server nemohl zprávu doručit"
+  },
+  "sendStatus122": {
+    "message": "příloha je pro server příliš velká"
+  },
+  "sendStatusOther": {
+    "message": "odmítnuto serverem"
+  },
+  "sentLeftoverDraft": {
+    "message": "Zpráva byla odeslána, ale její koncept se nepodařilo smazat: neodesílejte ji znovu."
+  },
+  "sentLeftoverWindow": {
+    "message": "Zpráva byla odeslána, ale okno psaní zprávy se nepodařilo zavřít: neodesílejte ji znovu."
+  },
+  "sentLeftoverBoth": {
+    "message": "Zpráva byla odeslána, ale její koncept se nepodařilo smazat a okno psaní zprávy se nepodařilo zavřít: neodesílejte ji znovu."
+  }
+}

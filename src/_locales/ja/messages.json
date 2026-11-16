@@ -1,0 +1,852 @@
+{
+  "extensionName": {
+    "message": "Sync443 – EAS Client for Thunderbird"
+  },
+  "extensionDescription": {
+    "message": "Thunderbird でネイティブに動作する Exchange ActiveSync。メール、フォルダー、送信に対応し、互換性のあるあらゆるサーバーで利用できます。"
+  },
+  "languageTag": {
+    "message": "ja"
+  },
+  "actionSync": {
+    "message": "同期"
+  },
+  "actionSyncLast": {
+    "message": "同期 (最終同期: $TIME$)",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "actionCheckSettings": {
+    "message": "Sync443: 設定で $NAMES$ を確認してください",
+    "placeholders": {
+      "names": {
+        "content": "$1"
+      }
+    }
+  },
+  "syncRunning": {
+    "message": "同期中…"
+  },
+  "menuSyncAll": {
+    "message": "Sync443 を今すぐ同期"
+  },
+  "menuSettings": {
+    "message": "Sync443 の設定…"
+  },
+  "menuSyncOne": {
+    "message": "今すぐ同期 (Sync443)"
+  },
+  "optionsTitle": {
+    "message": "Sync443 – 設定"
+  },
+  "optionsSubtitle": {
+    "message": "Exchange ActiveSync (HTTPS 接続のみ)"
+  },
+  "pageOutsideThunderbird": {
+    "message": "このページは Thunderbird の拡張機能の設定から開いた場合にのみ動作します。"
+  },
+  "mailboxesTitle": {
+    "message": "メールボックス"
+  },
+  "addMailbox": {
+    "message": "メールボックスを追加"
+  },
+  "mailboxesEmpty": {
+    "message": "メールボックスがまだありません。「メールボックスを追加」をクリックしてください。"
+  },
+  "unnamed": {
+    "message": "名前なし"
+  },
+  "metaMailPeriod": {
+    "message": "メール: $PERIOD$",
+    "placeholders": {
+      "period": {
+        "content": "$1"
+      }
+    }
+  },
+  "confirmDeletes": {
+    "message": "削除を確定"
+  },
+  "keepLocalCopies": {
+    "message": "ローカルのコピーを保持"
+  },
+  "syncButton": {
+    "message": "同期"
+  },
+  "editButton": {
+    "message": "編集"
+  },
+  "removeButton": {
+    "message": "削除"
+  },
+  "removeConfirmButton": {
+    "message": "メールボックスを削除"
+  },
+  "cancel": {
+    "message": "キャンセル"
+  },
+  "removeQuestion": {
+    "message": "メールボックス「$NAME$」を削除しますか？このメールボックスのアカウント、ローカルのフォルダー、パスワードが Thunderbird から削除されます。サーバー上では何も削除されません。",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "discardConfirm": {
+    "message": "サーバー上で行われた削除は適用されません。メッセージは Thunderbird に残り、該当するフォルダーはサーバーと再同期されます。サーバー上で削除されたフォルダーは、同期されないままここに残ります。"
+  },
+  "noAnswer": {
+    "message": "拡張機能が応答しません。このページを再読み込みしてください。"
+  },
+  "badAnswer": {
+    "message": "拡張機能から予期しない応答がありました。"
+  },
+  "listFailed": {
+    "message": "メールボックスの一覧を読み込めませんでした。"
+  },
+  "editedRemoved": {
+    "message": "編集中のメールボックスは削除されました。"
+  },
+  "deletesConfirmed": {
+    "message": "削除を確定し、同期を開始しました。"
+  },
+  "syncStarted": {
+    "message": "同期を開始しました。"
+  },
+  "syncNotStarted": {
+    "message": "同期を開始できませんでした。"
+  },
+  "localCopiesKept": {
+    "message": "ローカルのコピーを保持し、同期を開始しました。"
+  },
+  "deletesNotDiscarded": {
+    "message": "保留中の削除を破棄できませんでした。"
+  },
+  "mailboxRemoved": {
+    "message": "メールボックス「$NAME$」を削除しました。",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "mailboxNotRemoved": {
+    "message": "メールボックスを削除できませんでした。"
+  },
+  "mailboxSaved": {
+    "message": "メールボックス「$NAME$」を保存しました。",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "mailboxAdded": {
+    "message": "メールボックス「$NAME$」を追加しました。初回の同期を実行しています。",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "mailboxNotSaved": {
+    "message": "メールボックスを保存できませんでした。"
+  },
+  "logUnavailable": {
+    "message": "ログを利用できません。"
+  },
+  "debugNotChanged": {
+    "message": "デバッグの設定を変更できませんでした。"
+  },
+  "logNotCleared": {
+    "message": "ログを消去できませんでした。"
+  },
+  "newMailbox": {
+    "message": "新しいメールボックス"
+  },
+  "editMailbox": {
+    "message": "「$NAME$」を編集",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "fieldEmail": {
+    "message": "メールアドレス"
+  },
+  "fieldPassword": {
+    "message": "パスワード"
+  },
+  "passwordHintNew": {
+    "message": "サーバーが対応している場合は、ActiveSync 専用のアプリパスワードの使用をおすすめします。"
+  },
+  "passwordHintEdit": {
+    "message": "保存済みのパスワードをそのまま使用する場合は空欄にしてください。サーバーまたはユーザー名を変更した場合は、パスワードを再入力する必要があります。"
+  },
+  "fieldName": {
+    "message": "メールボックス名"
+  },
+  "nameHint": {
+    "message": "Thunderbird のアカウント一覧に表示されます。空欄の場合はメールアドレスが使用されます。"
+  },
+  "fieldServer": {
+    "message": "サーバー"
+  },
+  "serverHint": {
+    "message": "例: mail.example.com (/Microsoft-Server-ActiveSync は付けません)。常に HTTPS で接続します。"
+  },
+  "fieldUsername": {
+    "message": "ユーザー名 (省略可)"
+  },
+  "usernameHint": {
+    "message": "メールアドレスと異なる場合のみ入力してください (例: DOMAIN\\name)。"
+  },
+  "fieldFrequency": {
+    "message": "同期の頻度"
+  },
+  "fieldPeriod": {
+    "message": "メールの同期期間"
+  },
+  "fieldKinds": {
+    "message": "同期する項目"
+  },
+  "kindsHint": {
+    "message": "このバージョンで同期されるのはメールのみです。その他の選択は今後のために保存されます。"
+  },
+  "soon": {
+    "message": "近日対応"
+  },
+  "save": {
+    "message": "保存"
+  },
+  "saving": {
+    "message": "保存中…"
+  },
+  "permissionMissing": {
+    "message": "$SERVER$ へのアクセス許可がないと、メールボックスを同期できません。もう一度保存して、Thunderbird の要求を許可してください。",
+    "placeholders": {
+      "server": {
+        "content": "$1"
+      }
+    }
+  },
+  "freqPush": {
+    "message": "メールが届いたらすぐに"
+  },
+  "freqEveryMinute": {
+    "message": "1 分ごと"
+  },
+  "freqEveryMinutes": {
+    "message": "$COUNT$ 分ごと",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "freqEveryHour": {
+    "message": "1 時間ごと"
+  },
+  "period1Day": {
+    "message": "1 日"
+  },
+  "period3Days": {
+    "message": "3 日"
+  },
+  "period1Week": {
+    "message": "1 週間"
+  },
+  "period2Weeks": {
+    "message": "2 週間"
+  },
+  "period1Month": {
+    "message": "1 か月"
+  },
+  "periodAll": {
+    "message": "すべて"
+  },
+  "periodUnknown": {
+    "message": "不明"
+  },
+  "kindMail": {
+    "message": "メール"
+  },
+  "kindCalendar": {
+    "message": "カレンダー"
+  },
+  "kindContacts": {
+    "message": "連絡先"
+  },
+  "kindTasks": {
+    "message": "タスク"
+  },
+  "kindSoon": {
+    "message": "$KIND$ (近日対応)",
+    "placeholders": {
+      "kind": {
+        "content": "$1"
+      }
+    }
+  },
+  "kindsNone": {
+    "message": "なし"
+  },
+  "emailMissing": {
+    "message": "メールアドレスを入力してください。"
+  },
+  "emailTooLong": {
+    "message": "メールアドレスが長すぎます。"
+  },
+  "emailInvalid": {
+    "message": "メールアドレスの形式が正しくありません (例: taro.yamada@example.com)。"
+  },
+  "usernameTooLong": {
+    "message": "ユーザー名が長すぎます (最大 256 文字)。"
+  },
+  "usernameColon": {
+    "message": "ユーザー名にコロン ( : ) は使用できません。"
+  },
+  "usernameBadChar": {
+    "message": "ユーザー名に使用できない文字が含まれています。"
+  },
+  "passwordMissing": {
+    "message": "パスワードを入力してください。"
+  },
+  "passwordRetype": {
+    "message": "サーバーまたはユーザー名が変更されました。パスワードを再入力してください。"
+  },
+  "passwordTooLong": {
+    "message": "パスワードが長すぎます。"
+  },
+  "passwordBadChar": {
+    "message": "パスワードに使用できない文字が含まれています。"
+  },
+  "nameTooLong": {
+    "message": "名前が長すぎます (最大 256 文字)。"
+  },
+  "chooseFrequency": {
+    "message": "同期の頻度を選択してください。"
+  },
+  "choosePeriod": {
+    "message": "メールの同期期間を選択してください。"
+  },
+  "chooseKind": {
+    "message": "同期する項目を 1 つ以上選択してください。"
+  },
+  "serverInvalid": {
+    "message": "無効なサーバーです。"
+  },
+  "serverEmpty": {
+    "message": "サーバーを入力してください (例: mail.example.com)。"
+  },
+  "serverSpace": {
+    "message": "サーバーのアドレスにスペースは使用できません。"
+  },
+  "serverNotHttps": {
+    "message": "サーバーには HTTPS で接続できる必要があります。"
+  },
+  "serverCredentials": {
+    "message": "サーバーのアドレスにユーザー名やパスワードを含めることはできません。"
+  },
+  "serverInvalidValue": {
+    "message": "無効なサーバー: $VALUE$",
+    "placeholders": {
+      "value": {
+        "content": "$1"
+      }
+    }
+  },
+  "serverPortInvalid": {
+    "message": "無効なポート: $VALUE$",
+    "placeholders": {
+      "value": {
+        "content": "$1"
+      }
+    }
+  },
+  "dateAtTime": {
+    "message": "$DAY$ $TIME$",
+    "placeholders": {
+      "day": {
+        "content": "$1"
+      },
+      "time": {
+        "content": "$2"
+      }
+    }
+  },
+  "statusMassDelete": {
+    "message": "同期を一時停止しました: サーバー上で $COUNT$ 件のメッセージが一度に削除されました。これらの削除は確認後にのみ適用されます。ローカルのコピーを保持することもできます。",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusMassDeleteMany": {
+    "message": "同期を一時停止しました: サーバー上で多数のメッセージが一度に削除されました。これらの削除は確認後にのみ適用されます。ローカルのコピーを保持することもできます。"
+  },
+  "statusBlocked": {
+    "message": "停止しました: $REASON$自動的な再試行は行われません。再開するには「同期」をクリックしてください。",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusSeriousError": {
+    "message": "重大なエラーが発生しました。"
+  },
+  "statusError": {
+    "message": "エラー: $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusErrorUnknown": {
+    "message": "不明なエラーです。"
+  },
+  "statusRetryAt": {
+    "message": "$TIME$ に再試行します。",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusSyncedAt": {
+    "message": "$TIME$ に同期しました。",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusSyncedOn": {
+    "message": "$DATE$ に同期しました。",
+    "placeholders": {
+      "date": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusNever": {
+    "message": "まだ同期されていません。"
+  },
+  "failedOne": {
+    "message": "1 件のメッセージを取り込めませんでした。自動的に再試行されます。"
+  },
+  "failedMany": {
+    "message": "$COUNT$ 件のメッセージを取り込めませんでした。自動的に再試行されます。",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorDetail": {
+    "message": "詳細 (フランス語): $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "diagnosticTitle": {
+    "message": "診断"
+  },
+  "diagnosticHint": {
+    "message": "ログにはメッセージの内容、件名、アドレスは含まれません。デバッグを有効にすると技術的な値 (ステータス、キー) が追加され、1 時間後に自動的に停止します。ログはフランス語で記録されます。"
+  },
+  "debugLabel": {
+    "message": "デバッグを 1 時間有効にする"
+  },
+  "debugActiveUntil": {
+    "message": "$TIME$ まで有効です。",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "logRefresh": {
+    "message": "更新"
+  },
+  "logClear": {
+    "message": "ログを消去"
+  },
+  "logLabel": {
+    "message": "拡張機能のログ"
+  },
+  "logEmpty": {
+    "message": "ログは空です。"
+  },
+  "levelError": {
+    "message": "エラー"
+  },
+  "levelWarn": {
+    "message": "警告"
+  },
+  "levelInfo": {
+    "message": "情報"
+  },
+  "levelDebug": {
+    "message": "デバッグ"
+  },
+  "unexpectedError": {
+    "message": "予期しないエラーが発生しました。"
+  },
+  "invalidRequest": {
+    "message": "無効な要求です。"
+  },
+  "invalidEmail": {
+    "message": "無効なメールアドレスです。"
+  },
+  "invalidUsername": {
+    "message": "無効なユーザー名です。"
+  },
+  "invalidFrequency": {
+    "message": "無効な同期の頻度です。"
+  },
+  "invalidPeriod": {
+    "message": "無効な期間です。"
+  },
+  "invalidPassword": {
+    "message": "無効なパスワードです。"
+  },
+  "passwordType": {
+    "message": "パスワードを入力してください。"
+  },
+  "mailboxGone": {
+    "message": "このメールボックスは既に存在しません。"
+  },
+  "emailTaken": {
+    "message": "このアドレスは既に設定されています。"
+  },
+  "emailFixed": {
+    "message": "メールボックスのアドレスは変更できません。メールボックスを削除してから、新しく追加してください。"
+  },
+  "loginTaken": {
+    "message": "このサーバーとユーザー名の組み合わせは、既に別のメールボックスで使用されています。"
+  },
+  "permissionRefused": {
+    "message": "サーバーへのアクセスが許可されていません。Thunderbird の要求を許可してください。"
+  },
+  "cannotConnect": {
+    "message": "サーバーに接続できません。"
+  },
+  "accountNotPrepared": {
+    "message": "Thunderbird のアカウントを準備できませんでした ($CODE$)。",
+    "placeholders": {
+      "code": {
+        "content": "$1"
+      }
+    }
+  },
+  "passwordNotSaved": {
+    "message": "パスワードを保存できませんでした。プライマリーパスワードでロックされている可能性があります。"
+  },
+  "errorUnknownMailbox": {
+    "message": "不明なメールボックスです。"
+  },
+  "errorPasswordLocked": {
+    "message": "現在パスワードにアクセスできません。"
+  },
+  "errorPasswordAbsent": {
+    "message": "パスワードが保存されていません。メールボックスを編集してパスワードを入力してください。"
+  },
+  "errorAuth": {
+    "message": "サーバーがユーザー名またはパスワードを拒否しました。",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorDenied": {
+    "message": "サーバーはこのアカウントまたはこのデバイスの同期を許可していません。",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorWipe": {
+    "message": "サーバーからこのデバイスのリモートワイプ (遠隔消去) が要求されました。この要求は拒否されたため、何も消去されていません。同期は停止しています。",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorConfig": {
+    "message": "現在の設定ではメールボックスを同期できません。設定を確認してから、メールボックスをもう一度保存してください。",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorTls": {
+    "message": "サーバーの証明書が受け入れられなかったため、パスワードを送信する前に接続を拒否しました。",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorProxyAuth": {
+    "message": "このネットワークのプロキシは独自の認証を必要としますが、これにはまだ対応していません。",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorProvision": {
+    "message": "サーバーとのセキュリティポリシーの交換に失敗しました。",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorHttp": {
+    "message": "サーバーが HTTP エラーを返しました。",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorBusy": {
+    "message": "サーバーがビジー状態であるか、開いている接続が多すぎます。しばらくしてから再試行されます。",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorNetwork": {
+    "message": "サーバーに到達できません。",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorTimeout": {
+    "message": "サーバーが時間内に応答しませんでした。",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorTooLarge": {
+    "message": "サーバーからの応答が大きすぎます。",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorBadResponse": {
+    "message": "サーバーから予期しない応答または無効な応答が返されました。",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorCancelled": {
+    "message": "操作はキャンセルされました。",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorServer": {
+    "message": "サーバーが要求を拒否しました。",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorLocal": {
+    "message": "変更を Thunderbird に書き込めませんでした。",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorClosed": {
+    "message": "このメールボックスの同期は停止しました。",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorOther": {
+    "message": "予期しないエラーが発生しました。",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendBusy": {
+    "message": "このメッセージは既に送信中です。"
+  },
+  "sendProtected": {
+    "message": "メッセージは送信されませんでした: Sync443 は署名と暗号化 (OpenPGP、S/MIME) にまだ対応していないか、それらの状態を確認できませんでした。このメッセージの署名と暗号化を無効にしてください。メッセージは作成ウィンドウに残っています。"
+  },
+  "sendAccountUnchecked": {
+    "message": "メッセージは送信されませんでした: Sync443 が送信アカウントを確認できなかったため、何も送信されていません。メッセージは作成ウィンドウに残っています。"
+  },
+  "sendRouteUnchecked": {
+    "message": "メッセージは送信されませんでした: Sync443 がこのアカウントの送信サーバーを確認できなかったため、何も送信されていません。メッセージは作成ウィンドウに残っています。"
+  },
+  "sendUnexpected": {
+    "message": "メッセージは送信されませんでした: 予期しないエラーが発生しました。メッセージは作成ウィンドウに残っています。"
+  },
+  "sendFailed": {
+    "message": "メッセージは送信されませんでした: $REASON$メッセージは作成ウィンドウに残っています。",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendFailedDraft": {
+    "message": "メッセージは送信されませんでした: $REASON$メッセージは作成ウィンドウと下書きフォルダーに残っています。",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendUncertain": {
+    "message": "送信されたかどうか不明です: $REASON$メッセージを再送信する前に送信済みトレイを確認してください。メッセージは作成ウィンドウに残っています。",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendReasonDraft": {
+    "message": "下書きを保存できませんでした。"
+  },
+  "sendReasonDetails": {
+    "message": "作成ウィンドウの内容を再度読み取れませんでした。"
+  },
+  "sendReasonIdentity": {
+    "message": "送信中に差出人が変更されました。もう一度「送信」をクリックしてください。"
+  },
+  "sendReasonProtection": {
+    "message": "署名または暗号化 (OpenPGP、S/MIME) が要求されましたが、Sync443 はまだ対応していません。"
+  },
+  "sendReasonFolder": {
+    "message": "下書きがこの差出人の Sync443 アカウントに保存されませんでした。この差出人の下書きフォルダーを確認してください。"
+  },
+  "sendReasonEncrypted": {
+    "message": "暗号化されたメッセージ (OpenPGP、S/MIME) は Sync443 では送信できません。"
+  },
+  "sendReasonMime": {
+    "message": "メッセージを準備できませんでした。"
+  },
+  "sendReasonTooLarge": {
+    "message": "メッセージが大きすぎます ($SIZE$ MB を超えています)。",
+    "placeholders": {
+      "size": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendReasonRead": {
+    "message": "下書きを読み込めませんでした。"
+  },
+  "sendReasonEmpty": {
+    "message": "下書きが空です。"
+  },
+  "sendReasonStatus": {
+    "message": "サーバーから予期しない応答がありました。メッセージは既に送信されている可能性があります。"
+  },
+  "sendReasonInterrupted": {
+    "message": "要求の送信後に接続が中断されました。メッセージは既に送信されている可能性があります。"
+  },
+  "sendReasonUnexpected": {
+    "message": "予期しないエラーが発生しました。"
+  },
+  "sendReasonLowercase": {
+    "message": "no"
+  },
+  "sendReasonRefused": {
+    "message": "$REASON$ (Status $STATUS$)。",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      },
+      "status": {
+        "content": "$2"
+      }
+    }
+  },
+  "sendStatus107": {
+    "message": "サーバーがメッセージの形式を受け付けません"
+  },
+  "sendStatus110": {
+    "message": "サーバーエラー"
+  },
+  "sendStatus111": {
+    "message": "一時的なサーバーエラーです。しばらくしてから再試行してください"
+  },
+  "sendStatus113": {
+    "message": "サーバー上のメールボックスがいっぱいです"
+  },
+  "sendStatus114": {
+    "message": "サーバー上のメールボックスが一時的に利用できません"
+  },
+  "sendStatus115": {
+    "message": "サーバーの送信量の上限を超えています"
+  },
+  "sendStatus116": {
+    "message": "宛先の 1 つがサーバーで認識されませんでした"
+  },
+  "sendStatus118": {
+    "message": "このメッセージは既に送信済みであるとサーバーが示しています"
+  },
+  "sendStatus119": {
+    "message": "メッセージに宛先がありません"
+  },
+  "sendStatus120": {
+    "message": "サーバーがメッセージを配信できませんでした"
+  },
+  "sendStatus122": {
+    "message": "添付ファイルがサーバーの許容サイズを超えています"
+  },
+  "sendStatusOther": {
+    "message": "サーバーに拒否されました"
+  },
+  "sentLeftoverDraft": {
+    "message": "メッセージは送信されましたが、下書きを削除できませんでした。再送信しないでください。"
+  },
+  "sentLeftoverWindow": {
+    "message": "メッセージは送信されましたが、作成ウィンドウを閉じられませんでした。再送信しないでください。"
+  },
+  "sentLeftoverBoth": {
+    "message": "メッセージは送信されましたが、下書きを削除できず、作成ウィンドウも閉じられませんでした。再送信しないでください。"
+  }
+}

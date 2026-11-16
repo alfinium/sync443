@@ -27,12 +27,17 @@ export function recordSuccess(now, { failedItems = 0 } = {}) {
   return { ...initialHealth(), lastSuccessAt: now, failedItems: Number.isSafeInteger(failedItems) && failedItems > 0 ? failedItems : 0 };
 }
 
-/** `error`: { code, message, retryAfterMs? } (an EasError or alike). */
+/**
+ * `error`: { code, message, retryAfterMs?, key? } (an EasError or alike).
+ * `key`, kept when it looks like a message name: the message the interface
+ * shows instead of the one chosen by the code (i18n.mjs, KEYED_ERRORS).
+ */
 export function recordFailure(health, error, now, { random = Math.random } = {}) {
   const h = { ...initialHealth(), ...health };
   const lastError = { code: String(error?.code ?? "UNKNOWN"), message: String(error?.message ?? "").slice(0, 500), at: now };
+  if (typeof error?.key === "string" && /^[A-Za-z0-9_]{1,64}$/.test(error.key)) lastError.key = error.key;
   if (FATAL.has(lastError.code)) {
-    return { ...h, blocked: { code: lastError.code, message: lastError.message, at: now }, lastError };
+    return { ...h, blocked: { ...lastError }, lastError };
   }
   const failures = h.failures + 1;
   const delay = retryDelay(failures, { retryAfterMs: Number(error?.retryAfterMs) || 0, random });

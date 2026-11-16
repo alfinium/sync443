@@ -8,6 +8,11 @@
  */
 
 import { run } from "./harness.mjs";
+import { installI18n } from "./i18n-fake.mjs";
+
+// The interface's texts (src/i18n.mjs) come from browser.i18n: French by
+// default in the tests, as the expected texts are; English where a test says so.
+installI18n("fr");
 
 // ── Core ──────────────────────────────────────────────────────────────────
 import "./utf8.test.mjs";
@@ -34,6 +39,7 @@ import "./folder-tree.test.mjs";
 import "./log.test.mjs";
 import "./send.test.mjs";
 import "./options-form.test.mjs";
+import "./i18n.test.mjs";
 import "./echo.test.mjs";
 import "./journal.test.mjs";
 import "./mail-sync.test.mjs";

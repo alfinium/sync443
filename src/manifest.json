@@ -1,7 +1,8 @@
 {
   "manifest_version": 2,
-  "name": "Sync443 – EAS Client for Thunderbird",
-  "description": "Exchange ActiveSync natif dans Thunderbird : courrier, dossiers et envoi, avec tout serveur compatible.",
+  "name": "__MSG_extensionName__",
+  "description": "__MSG_extensionDescription__",
+  "default_locale": "en",
   "version": "0.1.0",
   "author": "alfinium",
   "homepage_url": "https://github.com/alfinium/sync443",
@@ -37,7 +38,7 @@
     "open_in_tab": true
   },
   "browser_action": {
-    "default_title": "Synchroniser",
+    "default_title": "__MSG_actionSync__",
     "default_icon": "icons/sync-dark.svg",
     "theme_icons": [
       { "light": "icons/sync-light.svg", "dark": "icons/sync-dark.svg", "size": 16 },

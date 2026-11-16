@@ -1,0 +1,852 @@
+{
+  "extensionName": {
+    "message": "Sync443 – EAS Client for Thunderbird"
+  },
+  "extensionDescription": {
+    "message": "Exchange ActiveSync nativo in Thunderbird: posta, cartelle e invio, con qualsiasi server compatibile."
+  },
+  "languageTag": {
+    "message": "it"
+  },
+  "actionSync": {
+    "message": "Sincronizza"
+  },
+  "actionSyncLast": {
+    "message": "Sincronizza (ultima sincronizzazione alle $TIME$)",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "actionCheckSettings": {
+    "message": "Sync443: verificare $NAMES$ nelle impostazioni",
+    "placeholders": {
+      "names": {
+        "content": "$1"
+      }
+    }
+  },
+  "syncRunning": {
+    "message": "Sincronizzazione in corso…"
+  },
+  "menuSyncAll": {
+    "message": "Sincronizza Sync443 ora"
+  },
+  "menuSettings": {
+    "message": "Impostazioni di Sync443…"
+  },
+  "menuSyncOne": {
+    "message": "Sincronizza ora (Sync443)"
+  },
+  "optionsTitle": {
+    "message": "Sync443 – Impostazioni"
+  },
+  "optionsSubtitle": {
+    "message": "Exchange ActiveSync, solo tramite HTTPS"
+  },
+  "pageOutsideThunderbird": {
+    "message": "Questa pagina funziona solo se aperta da Thunderbird, nelle impostazioni dell’estensione."
+  },
+  "mailboxesTitle": {
+    "message": "Caselle di posta"
+  },
+  "addMailbox": {
+    "message": "Aggiungi casella di posta"
+  },
+  "mailboxesEmpty": {
+    "message": "Ancora nessuna casella di posta. Fare clic su “Aggiungi casella di posta”."
+  },
+  "unnamed": {
+    "message": "senza nome"
+  },
+  "metaMailPeriod": {
+    "message": "posta: $PERIOD$",
+    "placeholders": {
+      "period": {
+        "content": "$1"
+      }
+    }
+  },
+  "confirmDeletes": {
+    "message": "Conferma le eliminazioni"
+  },
+  "keepLocalCopies": {
+    "message": "Mantieni le copie locali"
+  },
+  "syncButton": {
+    "message": "Sincronizza"
+  },
+  "editButton": {
+    "message": "Modifica"
+  },
+  "removeButton": {
+    "message": "Rimuovi"
+  },
+  "removeConfirmButton": {
+    "message": "Rimuovi la casella di posta"
+  },
+  "cancel": {
+    "message": "Annulla"
+  },
+  "removeQuestion": {
+    "message": "Rimuovere la casella di posta “$NAME$”? Il relativo account, le cartelle locali e la password verranno rimossi da Thunderbird. Nulla viene eliminato sul server.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "discardConfirm": {
+    "message": "Le eliminazioni effettuate sul server non verranno applicate: i messaggi restano in Thunderbird e le cartelle interessate vengono sincronizzate di nuovo con il server. Una cartella eliminata sul server resta qui, senza sincronizzazione."
+  },
+  "noAnswer": {
+    "message": "L’estensione non risponde. Ricaricare questa pagina."
+  },
+  "badAnswer": {
+    "message": "Risposta imprevista dall’estensione."
+  },
+  "listFailed": {
+    "message": "Impossibile leggere l’elenco delle caselle di posta."
+  },
+  "editedRemoved": {
+    "message": "La casella di posta in modifica è stata rimossa."
+  },
+  "deletesConfirmed": {
+    "message": "Eliminazioni confermate; sincronizzazione avviata."
+  },
+  "syncStarted": {
+    "message": "Sincronizzazione avviata."
+  },
+  "syncNotStarted": {
+    "message": "Impossibile avviare la sincronizzazione."
+  },
+  "localCopiesKept": {
+    "message": "Copie locali mantenute; sincronizzazione avviata."
+  },
+  "deletesNotDiscarded": {
+    "message": "Impossibile scartare le eliminazioni in sospeso."
+  },
+  "mailboxRemoved": {
+    "message": "Casella di posta “$NAME$” rimossa.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "mailboxNotRemoved": {
+    "message": "Impossibile rimuovere la casella di posta."
+  },
+  "mailboxSaved": {
+    "message": "Casella di posta “$NAME$” salvata.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "mailboxAdded": {
+    "message": "Casella di posta “$NAME$” aggiunta. Prima sincronizzazione in corso.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "mailboxNotSaved": {
+    "message": "Impossibile salvare la casella di posta."
+  },
+  "logUnavailable": {
+    "message": "Registro non disponibile."
+  },
+  "debugNotChanged": {
+    "message": "Impossibile modificare lo stato del debug."
+  },
+  "logNotCleared": {
+    "message": "Impossibile cancellare il registro."
+  },
+  "newMailbox": {
+    "message": "Nuova casella di posta"
+  },
+  "editMailbox": {
+    "message": "Modifica “$NAME$”",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "fieldEmail": {
+    "message": "Indirizzo email"
+  },
+  "fieldPassword": {
+    "message": "Password"
+  },
+  "passwordHintNew": {
+    "message": "Se il server lo consente, è preferibile usare una password per app riservata ad ActiveSync."
+  },
+  "passwordHintEdit": {
+    "message": "Lasciare vuoto per mantenere la password salvata. Va inserita di nuovo se cambiano il server o il nome utente."
+  },
+  "fieldName": {
+    "message": "Nome della casella di posta"
+  },
+  "nameHint": {
+    "message": "Mostrato nell’elenco degli account di Thunderbird. Se vuoto, viene usato l’indirizzo email."
+  },
+  "fieldServer": {
+    "message": "Server"
+  },
+  "serverHint": {
+    "message": "Ad esempio mail.example.com, senza /Microsoft-Server-ActiveSync. Sempre tramite HTTPS."
+  },
+  "fieldUsername": {
+    "message": "Nome utente (facoltativo)"
+  },
+  "usernameHint": {
+    "message": "Compilare solo se diverso dall’indirizzo email, ad esempio DOMINIO\\nome."
+  },
+  "fieldFrequency": {
+    "message": "Frequenza"
+  },
+  "fieldPeriod": {
+    "message": "Periodo della posta"
+  },
+  "fieldKinds": {
+    "message": "Elementi da sincronizzare"
+  },
+  "kindsHint": {
+    "message": "In questa versione viene sincronizzata solo la posta. Le altre scelte vengono salvate per il futuro."
+  },
+  "soon": {
+    "message": "prossimamente"
+  },
+  "save": {
+    "message": "Salva"
+  },
+  "saving": {
+    "message": "Salvataggio…"
+  },
+  "permissionMissing": {
+    "message": "Senza l’autorizzazione ad accedere a $SERVER$, la casella di posta non può essere sincronizzata. Salvare di nuovo e accettare la richiesta di Thunderbird.",
+    "placeholders": {
+      "server": {
+        "content": "$1"
+      }
+    }
+  },
+  "freqPush": {
+    "message": "All’arrivo della posta"
+  },
+  "freqEveryMinute": {
+    "message": "Ogni minuto"
+  },
+  "freqEveryMinutes": {
+    "message": "Ogni $COUNT$ minuti",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "freqEveryHour": {
+    "message": "Ogni ora"
+  },
+  "period1Day": {
+    "message": "1 giorno"
+  },
+  "period3Days": {
+    "message": "3 giorni"
+  },
+  "period1Week": {
+    "message": "1 settimana"
+  },
+  "period2Weeks": {
+    "message": "2 settimane"
+  },
+  "period1Month": {
+    "message": "1 mese"
+  },
+  "periodAll": {
+    "message": "Tutto"
+  },
+  "periodUnknown": {
+    "message": "Sconosciuto"
+  },
+  "kindMail": {
+    "message": "Posta"
+  },
+  "kindCalendar": {
+    "message": "Calendario"
+  },
+  "kindContacts": {
+    "message": "Contatti"
+  },
+  "kindTasks": {
+    "message": "Attività"
+  },
+  "kindSoon": {
+    "message": "$KIND$ (prossimamente)",
+    "placeholders": {
+      "kind": {
+        "content": "$1"
+      }
+    }
+  },
+  "kindsNone": {
+    "message": "Nulla"
+  },
+  "emailMissing": {
+    "message": "Inserire l’indirizzo email."
+  },
+  "emailTooLong": {
+    "message": "Indirizzo email troppo lungo."
+  },
+  "emailInvalid": {
+    "message": "Indirizzo email non valido (ad esempio: nome.cognome@example.com)."
+  },
+  "usernameTooLong": {
+    "message": "Nome utente troppo lungo (massimo 256 caratteri)."
+  },
+  "usernameColon": {
+    "message": "Il nome utente non deve contenere i due punti ( : )."
+  },
+  "usernameBadChar": {
+    "message": "Il nome utente contiene un carattere non consentito."
+  },
+  "passwordMissing": {
+    "message": "Inserire la password."
+  },
+  "passwordRetype": {
+    "message": "Il server o il nome utente è cambiato: inserire di nuovo la password."
+  },
+  "passwordTooLong": {
+    "message": "Password troppo lunga."
+  },
+  "passwordBadChar": {
+    "message": "La password contiene un carattere non consentito."
+  },
+  "nameTooLong": {
+    "message": "Nome troppo lungo (massimo 256 caratteri)."
+  },
+  "chooseFrequency": {
+    "message": "Scegliere una frequenza di sincronizzazione."
+  },
+  "choosePeriod": {
+    "message": "Scegliere il periodo di posta da sincronizzare."
+  },
+  "chooseKind": {
+    "message": "Scegliere almeno un elemento da sincronizzare."
+  },
+  "serverInvalid": {
+    "message": "Server non valido."
+  },
+  "serverEmpty": {
+    "message": "Inserire il server, ad esempio mail.example.com."
+  },
+  "serverSpace": {
+    "message": "L’indirizzo del server non deve contenere spazi."
+  },
+  "serverNotHttps": {
+    "message": "Il server deve essere raggiungibile tramite HTTPS."
+  },
+  "serverCredentials": {
+    "message": "L’indirizzo del server non deve contenere un nome utente né una password."
+  },
+  "serverInvalidValue": {
+    "message": "Server non valido: $VALUE$",
+    "placeholders": {
+      "value": {
+        "content": "$1"
+      }
+    }
+  },
+  "serverPortInvalid": {
+    "message": "Porta non valida: $VALUE$",
+    "placeholders": {
+      "value": {
+        "content": "$1"
+      }
+    }
+  },
+  "dateAtTime": {
+    "message": "$DAY$ alle $TIME$",
+    "placeholders": {
+      "day": {
+        "content": "$1"
+      },
+      "time": {
+        "content": "$2"
+      }
+    }
+  },
+  "statusMassDelete": {
+    "message": "Sincronizzazione sospesa: il server ha eliminato $COUNT$ messaggi in una sola volta. Queste eliminazioni verranno applicate solo dopo una conferma; è anche possibile mantenere le copie locali.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusMassDeleteMany": {
+    "message": "Sincronizzazione sospesa: il server ha eliminato molti messaggi in una sola volta. Queste eliminazioni verranno applicate solo dopo una conferma; è anche possibile mantenere le copie locali."
+  },
+  "statusBlocked": {
+    "message": "Interrotta: $REASON$ Non verrà effettuato alcun tentativo automatico: fare clic su “Sincronizza” per riprendere.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusSeriousError": {
+    "message": "errore grave."
+  },
+  "statusError": {
+    "message": "Errore: $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusErrorUnknown": {
+    "message": "errore sconosciuto"
+  },
+  "statusRetryAt": {
+    "message": "Prossimo tentativo: $TIME$.",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusSyncedAt": {
+    "message": "Sincronizzata alle $TIME$.",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusSyncedOn": {
+    "message": "Sincronizzata il $DATE$.",
+    "placeholders": {
+      "date": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusNever": {
+    "message": "Non ancora sincronizzata."
+  },
+  "failedOne": {
+    "message": "Impossibile importare 1 messaggio: verrà ritentato automaticamente."
+  },
+  "failedMany": {
+    "message": "Impossibile importare $COUNT$ messaggi: verranno ritentati automaticamente.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorDetail": {
+    "message": "Dettagli (in francese): $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "diagnosticTitle": {
+    "message": "Diagnostica"
+  },
+  "diagnosticHint": {
+    "message": "Il registro non contiene il contenuto, l’oggetto o gli indirizzi dei messaggi. Il debug vi aggiunge valori tecnici (stati, chiavi) e si disattiva da solo dopo un’ora. Le voci del registro sono scritte in francese."
+  },
+  "debugLabel": {
+    "message": "Debug per 1 ora"
+  },
+  "debugActiveUntil": {
+    "message": "Attivo fino a: $TIME$.",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "logRefresh": {
+    "message": "Aggiorna"
+  },
+  "logClear": {
+    "message": "Cancella il registro"
+  },
+  "logLabel": {
+    "message": "Registro dell’estensione"
+  },
+  "logEmpty": {
+    "message": "Il registro è vuoto."
+  },
+  "levelError": {
+    "message": "errore"
+  },
+  "levelWarn": {
+    "message": "avviso"
+  },
+  "levelInfo": {
+    "message": "info"
+  },
+  "levelDebug": {
+    "message": "debug"
+  },
+  "unexpectedError": {
+    "message": "Errore imprevisto."
+  },
+  "invalidRequest": {
+    "message": "Richiesta non valida."
+  },
+  "invalidEmail": {
+    "message": "Indirizzo email non valido."
+  },
+  "invalidUsername": {
+    "message": "Nome utente non valido."
+  },
+  "invalidFrequency": {
+    "message": "Frequenza non valida."
+  },
+  "invalidPeriod": {
+    "message": "Periodo non valido."
+  },
+  "invalidPassword": {
+    "message": "Password non valida."
+  },
+  "passwordType": {
+    "message": "Digitare la password."
+  },
+  "mailboxGone": {
+    "message": "Questa casella di posta non esiste più."
+  },
+  "emailTaken": {
+    "message": "Questo indirizzo è già configurato."
+  },
+  "emailFixed": {
+    "message": "L’indirizzo di una casella di posta non può essere modificato: rimuovere la casella e aggiungerne una nuova."
+  },
+  "loginTaken": {
+    "message": "Un’altra casella di posta utilizza già questo server con questo nome utente."
+  },
+  "permissionRefused": {
+    "message": "Accesso al server non consentito: accettare la richiesta di Thunderbird."
+  },
+  "cannotConnect": {
+    "message": "Impossibile connettersi al server."
+  },
+  "accountNotPrepared": {
+    "message": "Impossibile preparare l’account Thunderbird ($CODE$).",
+    "placeholders": {
+      "code": {
+        "content": "$1"
+      }
+    }
+  },
+  "passwordNotSaved": {
+    "message": "Impossibile salvare la password (la password principale è bloccata?)."
+  },
+  "errorUnknownMailbox": {
+    "message": "Casella di posta sconosciuta."
+  },
+  "errorPasswordLocked": {
+    "message": "Al momento non è possibile accedere alla password."
+  },
+  "errorPasswordAbsent": {
+    "message": "Nessuna password salvata: modificare la casella di posta per inserirla."
+  },
+  "errorAuth": {
+    "message": "Il server ha rifiutato il nome utente o la password.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorDenied": {
+    "message": "Il server non consente la sincronizzazione a questo account o a questo dispositivo.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorWipe": {
+    "message": "Il server ha richiesto la cancellazione remota di questo dispositivo. La richiesta è stata rifiutata: non è stato cancellato nulla e la sincronizzazione è interrotta.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorConfig": {
+    "message": "La casella di posta non può essere sincronizzata con le impostazioni attuali: verificarle, quindi salvare di nuovo la casella di posta.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorTls": {
+    "message": "Connessione rifiutata prima dell’invio della password: il certificato del server non è stato accettato.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorProxyAuth": {
+    "message": "Il proxy di questa rete richiede un’autenticazione propria, non ancora supportata.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorProvision": {
+    "message": "Lo scambio dei criteri di sicurezza con il server non è riuscito.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorHttp": {
+    "message": "Il server ha risposto con un errore HTTP.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorBusy": {
+    "message": "Il server è occupato o ci sono troppe connessioni aperte. Verrà effettuato un nuovo tentativo più tardi.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorNetwork": {
+    "message": "Il server non è raggiungibile.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorTimeout": {
+    "message": "Il server non ha risposto in tempo.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorTooLarge": {
+    "message": "La risposta del server è troppo grande.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorBadResponse": {
+    "message": "Il server ha inviato una risposta imprevista o non valida.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorCancelled": {
+    "message": "L’operazione è stata annullata.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorServer": {
+    "message": "Il server ha rifiutato la richiesta.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorLocal": {
+    "message": "Impossibile scrivere le modifiche in Thunderbird.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorClosed": {
+    "message": "La sincronizzazione di questa casella di posta si è interrotta.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorOther": {
+    "message": "Errore imprevisto.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendBusy": {
+    "message": "Questo messaggio è già in fase di invio."
+  },
+  "sendProtected": {
+    "message": "Messaggio non inviato: la firma e la crittografia (OpenPGP, S/MIME) non sono ancora supportate da Sync443, oppure non è stato possibile verificarne lo stato. Disattivarle per questo messaggio. Il messaggio resta nella finestra di composizione."
+  },
+  "sendAccountUnchecked": {
+    "message": "Messaggio non inviato: Sync443 non ha potuto verificare l’account di invio, quindi non è stato inviato nulla. Il messaggio resta nella finestra di composizione."
+  },
+  "sendRouteUnchecked": {
+    "message": "Messaggio non inviato: Sync443 non ha potuto verificare il server in uscita di questo account, quindi non è stato inviato nulla. Il messaggio resta nella finestra di composizione."
+  },
+  "sendUnexpected": {
+    "message": "Messaggio non inviato: errore imprevisto. Il messaggio resta nella finestra di composizione."
+  },
+  "sendFailed": {
+    "message": "Messaggio non inviato: $REASON$ Il messaggio resta nella finestra di composizione.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendFailedDraft": {
+    "message": "Messaggio non inviato: $REASON$ Il messaggio resta nella finestra di composizione e nelle bozze.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendUncertain": {
+    "message": "Invio incerto: $REASON$ Controllare la cartella “Posta inviata” prima di inviare di nuovo il messaggio, che resta nella finestra di composizione.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendReasonDraft": {
+    "message": "impossibile salvare la bozza."
+  },
+  "sendReasonDetails": {
+    "message": "impossibile rileggere la finestra di composizione."
+  },
+  "sendReasonIdentity": {
+    "message": "il mittente è cambiato durante l’invio del messaggio. Fare di nuovo clic su Invia."
+  },
+  "sendReasonProtection": {
+    "message": "è stata richiesta la firma o la crittografia (OpenPGP, S/MIME), che Sync443 non supporta ancora."
+  },
+  "sendReasonFolder": {
+    "message": "la bozza non è stata salvata nell’account Sync443 di questo mittente. Verificare la cartella delle bozze dell’identità."
+  },
+  "sendReasonEncrypted": {
+    "message": "i messaggi crittografati (OpenPGP, S/MIME) non possono essere inviati da Sync443."
+  },
+  "sendReasonMime": {
+    "message": "impossibile preparare il messaggio."
+  },
+  "sendReasonTooLarge": {
+    "message": "messaggio troppo grande (oltre $SIZE$ MB).",
+    "placeholders": {
+      "size": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendReasonRead": {
+    "message": "impossibile leggere la bozza."
+  },
+  "sendReasonEmpty": {
+    "message": "la bozza è vuota."
+  },
+  "sendReasonStatus": {
+    "message": "risposta imprevista dal server; il messaggio potrebbe essere già partito."
+  },
+  "sendReasonInterrupted": {
+    "message": "la connessione si è interrotta dopo l’invio della richiesta; il messaggio potrebbe essere già partito."
+  },
+  "sendReasonUnexpected": {
+    "message": "errore imprevisto."
+  },
+  "sendReasonLowercase": {
+    "message": "yes"
+  },
+  "sendReasonRefused": {
+    "message": "$REASON$ (Status $STATUS$).",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      },
+      "status": {
+        "content": "$2"
+      }
+    }
+  },
+  "sendStatus107": {
+    "message": "il server rifiuta il formato del messaggio"
+  },
+  "sendStatus110": {
+    "message": "errore del server"
+  },
+  "sendStatus111": {
+    "message": "errore temporaneo del server, riprovare più tardi"
+  },
+  "sendStatus113": {
+    "message": "la casella di posta sul server è piena"
+  },
+  "sendStatus114": {
+    "message": "la casella di posta sul server è temporaneamente non disponibile"
+  },
+  "sendStatus115": {
+    "message": "la quota di invio del server è stata superata"
+  },
+  "sendStatus116": {
+    "message": "un destinatario non è stato riconosciuto dal server"
+  },
+  "sendStatus118": {
+    "message": "il server indica che questo messaggio è già stato inviato"
+  },
+  "sendStatus119": {
+    "message": "il messaggio non ha destinatari"
+  },
+  "sendStatus120": {
+    "message": "il server non ha potuto recapitare il messaggio"
+  },
+  "sendStatus122": {
+    "message": "allegato troppo grande per il server"
+  },
+  "sendStatusOther": {
+    "message": "rifiutato dal server"
+  },
+  "sentLeftoverDraft": {
+    "message": "Messaggio inviato, ma non è stato possibile eliminare la bozza: non inviarlo di nuovo."
+  },
+  "sentLeftoverWindow": {
+    "message": "Messaggio inviato, ma non è stato possibile chiudere la finestra di composizione: non inviarlo di nuovo."
+  },
+  "sentLeftoverBoth": {
+    "message": "Messaggio inviato, ma non è stato possibile eliminare la bozza né chiudere la finestra di composizione: non inviarlo di nuovo."
+  }
+}

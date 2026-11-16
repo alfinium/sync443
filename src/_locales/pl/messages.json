@@ -1,0 +1,852 @@
+{
+  "extensionName": {
+    "message": "Sync443 – EAS Client for Thunderbird"
+  },
+  "extensionDescription": {
+    "message": "Natywna obsługa Exchange ActiveSync w Thunderbirdzie: poczta, foldery i wysyłanie, z każdym zgodnym serwerem."
+  },
+  "languageTag": {
+    "message": "pl"
+  },
+  "actionSync": {
+    "message": "Synchronizuj"
+  },
+  "actionSyncLast": {
+    "message": "Synchronizuj (ostatnia synchronizacja o $TIME$)",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "actionCheckSettings": {
+    "message": "Sync443: $NAMES$ – sprawdź w ustawieniach",
+    "placeholders": {
+      "names": {
+        "content": "$1"
+      }
+    }
+  },
+  "syncRunning": {
+    "message": "Synchronizowanie…"
+  },
+  "menuSyncAll": {
+    "message": "Synchronizuj Sync443 teraz"
+  },
+  "menuSettings": {
+    "message": "Ustawienia Sync443…"
+  },
+  "menuSyncOne": {
+    "message": "Synchronizuj teraz (Sync443)"
+  },
+  "optionsTitle": {
+    "message": "Sync443 – Ustawienia"
+  },
+  "optionsSubtitle": {
+    "message": "Exchange ActiveSync, wyłącznie przez HTTPS"
+  },
+  "pageOutsideThunderbird": {
+    "message": "Ta strona działa tylko po otwarciu z Thunderbirda, w ustawieniach rozszerzenia."
+  },
+  "mailboxesTitle": {
+    "message": "Skrzynki pocztowe"
+  },
+  "addMailbox": {
+    "message": "Dodaj skrzynkę pocztową"
+  },
+  "mailboxesEmpty": {
+    "message": "Nie dodano jeszcze żadnej skrzynki pocztowej. Kliknij „Dodaj skrzynkę pocztową”."
+  },
+  "unnamed": {
+    "message": "bez nazwy"
+  },
+  "metaMailPeriod": {
+    "message": "poczta: $PERIOD$",
+    "placeholders": {
+      "period": {
+        "content": "$1"
+      }
+    }
+  },
+  "confirmDeletes": {
+    "message": "Potwierdź usunięcia"
+  },
+  "keepLocalCopies": {
+    "message": "Zachowaj kopie lokalne"
+  },
+  "syncButton": {
+    "message": "Synchronizuj"
+  },
+  "editButton": {
+    "message": "Edytuj"
+  },
+  "removeButton": {
+    "message": "Usuń"
+  },
+  "removeConfirmButton": {
+    "message": "Usuń skrzynkę pocztową"
+  },
+  "cancel": {
+    "message": "Anuluj"
+  },
+  "removeQuestion": {
+    "message": "Usunąć skrzynkę pocztową „$NAME$”? Jej konto, foldery lokalne i hasło zostaną usunięte z Thunderbirda. Na serwerze nic nie zostanie usunięte.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "discardConfirm": {
+    "message": "Usunięcia wykonane na serwerze nie zostaną zastosowane: wiadomości pozostaną w Thunderbirdzie, a foldery, których to dotyczy, zostaną ponownie zsynchronizowane z serwerem. Folder usunięty na serwerze pozostanie tutaj, bez synchronizacji."
+  },
+  "noAnswer": {
+    "message": "Rozszerzenie nie odpowiada. Odśwież tę stronę."
+  },
+  "badAnswer": {
+    "message": "Nieoczekiwana odpowiedź rozszerzenia."
+  },
+  "listFailed": {
+    "message": "Nie udało się odczytać listy skrzynek pocztowych."
+  },
+  "editedRemoved": {
+    "message": "Edytowana skrzynka pocztowa została usunięta."
+  },
+  "deletesConfirmed": {
+    "message": "Usunięcia potwierdzone; rozpoczęto synchronizację."
+  },
+  "syncStarted": {
+    "message": "Rozpoczęto synchronizację."
+  },
+  "syncNotStarted": {
+    "message": "Nie udało się rozpocząć synchronizacji."
+  },
+  "localCopiesKept": {
+    "message": "Kopie lokalne zachowane; rozpoczęto synchronizację."
+  },
+  "deletesNotDiscarded": {
+    "message": "Nie udało się odrzucić usunięć."
+  },
+  "mailboxRemoved": {
+    "message": "Usunięto skrzynkę pocztową „$NAME$”.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "mailboxNotRemoved": {
+    "message": "Nie udało się usunąć skrzynki pocztowej."
+  },
+  "mailboxSaved": {
+    "message": "Zapisano skrzynkę pocztową „$NAME$”.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "mailboxAdded": {
+    "message": "Dodano skrzynkę pocztową „$NAME$”. Trwa pierwsza synchronizacja.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "mailboxNotSaved": {
+    "message": "Nie udało się zapisać skrzynki pocztowej."
+  },
+  "logUnavailable": {
+    "message": "Dziennik jest niedostępny."
+  },
+  "debugNotChanged": {
+    "message": "Nie udało się zmienić ustawienia debugowania."
+  },
+  "logNotCleared": {
+    "message": "Nie udało się wyczyścić dziennika."
+  },
+  "newMailbox": {
+    "message": "Nowa skrzynka pocztowa"
+  },
+  "editMailbox": {
+    "message": "Edycja skrzynki pocztowej „$NAME$”",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "fieldEmail": {
+    "message": "Adres e-mail"
+  },
+  "fieldPassword": {
+    "message": "Hasło"
+  },
+  "passwordHintNew": {
+    "message": "Jeśli serwer na to pozwala, zalecane jest hasło aplikacji przeznaczone wyłącznie dla ActiveSync."
+  },
+  "passwordHintEdit": {
+    "message": "Pozostaw puste, aby zachować zapisane hasło. Należy je wpisać ponownie, jeśli zmieni się serwer lub nazwa użytkownika."
+  },
+  "fieldName": {
+    "message": "Nazwa skrzynki pocztowej"
+  },
+  "nameHint": {
+    "message": "Wyświetlana na liście kont Thunderbirda. Jeśli pozostanie pusta, zostanie użyty adres e-mail."
+  },
+  "fieldServer": {
+    "message": "Serwer"
+  },
+  "serverHint": {
+    "message": "Na przykład mail.example.com, bez /Microsoft-Server-ActiveSync. Zawsze przez HTTPS."
+  },
+  "fieldUsername": {
+    "message": "Nazwa użytkownika (opcjonalnie)"
+  },
+  "usernameHint": {
+    "message": "Wypełnij tylko wtedy, gdy różni się od adresu e-mail, na przykład DOMENA\\nazwa."
+  },
+  "fieldFrequency": {
+    "message": "Częstotliwość"
+  },
+  "fieldPeriod": {
+    "message": "Okres synchronizacji poczty"
+  },
+  "fieldKinds": {
+    "message": "Elementy do synchronizacji"
+  },
+  "kindsHint": {
+    "message": "W tej wersji synchronizowana jest tylko poczta. Pozostałe opcje są zapisywane na przyszłość."
+  },
+  "soon": {
+    "message": "wkrótce"
+  },
+  "save": {
+    "message": "Zapisz"
+  },
+  "saving": {
+    "message": "Zapisywanie…"
+  },
+  "permissionMissing": {
+    "message": "Bez uprawnienia dostępu do $SERVER$ nie można synchronizować skrzynki pocztowej. Zapisz ponownie i zaakceptuj prośbę Thunderbirda.",
+    "placeholders": {
+      "server": {
+        "content": "$1"
+      }
+    }
+  },
+  "freqPush": {
+    "message": "Natychmiast po nadejściu poczty"
+  },
+  "freqEveryMinute": {
+    "message": "Co minutę"
+  },
+  "freqEveryMinutes": {
+    "message": "Co $COUNT$ min",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "freqEveryHour": {
+    "message": "Co godzinę"
+  },
+  "period1Day": {
+    "message": "1 dzień"
+  },
+  "period3Days": {
+    "message": "3 dni"
+  },
+  "period1Week": {
+    "message": "1 tydzień"
+  },
+  "period2Weeks": {
+    "message": "2 tygodnie"
+  },
+  "period1Month": {
+    "message": "1 miesiąc"
+  },
+  "periodAll": {
+    "message": "Wszystko"
+  },
+  "periodUnknown": {
+    "message": "Nieznany"
+  },
+  "kindMail": {
+    "message": "Poczta"
+  },
+  "kindCalendar": {
+    "message": "Kalendarz"
+  },
+  "kindContacts": {
+    "message": "Kontakty"
+  },
+  "kindTasks": {
+    "message": "Zadania"
+  },
+  "kindSoon": {
+    "message": "$KIND$ (wkrótce)",
+    "placeholders": {
+      "kind": {
+        "content": "$1"
+      }
+    }
+  },
+  "kindsNone": {
+    "message": "Nic"
+  },
+  "emailMissing": {
+    "message": "Wpisz adres e-mail."
+  },
+  "emailTooLong": {
+    "message": "Adres e-mail jest za długi."
+  },
+  "emailInvalid": {
+    "message": "Nieprawidłowy adres e-mail (na przykład: imie.nazwisko@example.com)."
+  },
+  "usernameTooLong": {
+    "message": "Nazwa użytkownika jest za długa (maksymalnie 256 znaków)."
+  },
+  "usernameColon": {
+    "message": "Nazwa użytkownika nie może zawierać dwukropka ( : )."
+  },
+  "usernameBadChar": {
+    "message": "Nazwa użytkownika zawiera niedozwolony znak."
+  },
+  "passwordMissing": {
+    "message": "Wpisz hasło."
+  },
+  "passwordRetype": {
+    "message": "Serwer lub nazwa użytkownika uległy zmianie: wpisz hasło ponownie."
+  },
+  "passwordTooLong": {
+    "message": "Hasło jest za długie."
+  },
+  "passwordBadChar": {
+    "message": "Hasło zawiera niedozwolony znak."
+  },
+  "nameTooLong": {
+    "message": "Nazwa jest za długa (maksymalnie 256 znaków)."
+  },
+  "chooseFrequency": {
+    "message": "Wybierz częstotliwość synchronizacji."
+  },
+  "choosePeriod": {
+    "message": "Wybierz okres synchronizacji poczty."
+  },
+  "chooseKind": {
+    "message": "Wybierz co najmniej jeden element do synchronizacji."
+  },
+  "serverInvalid": {
+    "message": "Nieprawidłowy serwer."
+  },
+  "serverEmpty": {
+    "message": "Wpisz adres serwera, na przykład mail.example.com."
+  },
+  "serverSpace": {
+    "message": "Adres serwera nie może zawierać spacji."
+  },
+  "serverNotHttps": {
+    "message": "Serwer musi być dostępny przez HTTPS."
+  },
+  "serverCredentials": {
+    "message": "Adres serwera nie może zawierać nazwy użytkownika ani hasła."
+  },
+  "serverInvalidValue": {
+    "message": "Nieprawidłowy serwer: $VALUE$",
+    "placeholders": {
+      "value": {
+        "content": "$1"
+      }
+    }
+  },
+  "serverPortInvalid": {
+    "message": "Nieprawidłowy port: $VALUE$",
+    "placeholders": {
+      "value": {
+        "content": "$1"
+      }
+    }
+  },
+  "dateAtTime": {
+    "message": "$DAY$ o $TIME$",
+    "placeholders": {
+      "day": {
+        "content": "$1"
+      },
+      "time": {
+        "content": "$2"
+      }
+    }
+  },
+  "statusMassDelete": {
+    "message": "Synchronizacja wstrzymana: serwer usunął naraz wiele wiadomości (liczba: $COUNT$). Te usunięcia zostaną zastosowane dopiero po potwierdzeniu; możesz też zachować kopie lokalne.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusMassDeleteMany": {
+    "message": "Synchronizacja wstrzymana: serwer usunął naraz wiele wiadomości. Te usunięcia zostaną zastosowane dopiero po potwierdzeniu; możesz też zachować kopie lokalne."
+  },
+  "statusBlocked": {
+    "message": "Zatrzymano: $REASON$ Żadne próby nie będą podejmowane automatycznie: kliknij „Synchronizuj”, aby wznowić.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusSeriousError": {
+    "message": "poważny błąd."
+  },
+  "statusError": {
+    "message": "Błąd: $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusErrorUnknown": {
+    "message": "nieznany błąd"
+  },
+  "statusRetryAt": {
+    "message": "Następna próba: $TIME$.",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusSyncedAt": {
+    "message": "Zsynchronizowano o $TIME$.",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusSyncedOn": {
+    "message": "Zsynchronizowano $DATE$.",
+    "placeholders": {
+      "date": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusNever": {
+    "message": "Jeszcze nie zsynchronizowano."
+  },
+  "failedOne": {
+    "message": "Nie udało się zaimportować 1 wiadomości: kolejna próba nastąpi automatycznie."
+  },
+  "failedMany": {
+    "message": "Nie udało się zaimportować wiadomości (liczba: $COUNT$): kolejna próba nastąpi automatycznie.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorDetail": {
+    "message": "Szczegóły (w języku francuskim): $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "diagnosticTitle": {
+    "message": "Diagnostyka"
+  },
+  "diagnosticHint": {
+    "message": "Dziennik nie zawiera treści wiadomości, tematów ani adresów. Debugowanie dodaje do niego wartości techniczne (statusy, klucze) i wyłącza się samoczynnie po godzinie. Wpisy dziennika są w języku francuskim."
+  },
+  "debugLabel": {
+    "message": "Debugowanie przez 1 godzinę"
+  },
+  "debugActiveUntil": {
+    "message": "Aktywne do $TIME$.",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "logRefresh": {
+    "message": "Odśwież"
+  },
+  "logClear": {
+    "message": "Wyczyść dziennik"
+  },
+  "logLabel": {
+    "message": "Dziennik rozszerzenia"
+  },
+  "logEmpty": {
+    "message": "Dziennik jest pusty."
+  },
+  "levelError": {
+    "message": "błąd"
+  },
+  "levelWarn": {
+    "message": "uwaga"
+  },
+  "levelInfo": {
+    "message": "info"
+  },
+  "levelDebug": {
+    "message": "debug"
+  },
+  "unexpectedError": {
+    "message": "Nieoczekiwany błąd."
+  },
+  "invalidRequest": {
+    "message": "Nieprawidłowe żądanie."
+  },
+  "invalidEmail": {
+    "message": "Nieprawidłowy adres e-mail."
+  },
+  "invalidUsername": {
+    "message": "Nieprawidłowa nazwa użytkownika."
+  },
+  "invalidFrequency": {
+    "message": "Nieprawidłowa częstotliwość."
+  },
+  "invalidPeriod": {
+    "message": "Nieprawidłowy okres."
+  },
+  "invalidPassword": {
+    "message": "Nieprawidłowe hasło."
+  },
+  "passwordType": {
+    "message": "Wpisz hasło."
+  },
+  "mailboxGone": {
+    "message": "Ta skrzynka pocztowa już nie istnieje."
+  },
+  "emailTaken": {
+    "message": "Ten adres jest już skonfigurowany."
+  },
+  "emailFixed": {
+    "message": "Nie można zmienić adresu skrzynki pocztowej: usuń skrzynkę i dodaj nową."
+  },
+  "loginTaken": {
+    "message": "Inna skrzynka pocztowa używa już tego serwera z tą nazwą użytkownika."
+  },
+  "permissionRefused": {
+    "message": "Brak zgody na dostęp do serwera: zaakceptuj prośbę Thunderbirda."
+  },
+  "cannotConnect": {
+    "message": "Nie można połączyć się z serwerem."
+  },
+  "accountNotPrepared": {
+    "message": "Nie udało się przygotować konta w Thunderbirdzie ($CODE$).",
+    "placeholders": {
+      "code": {
+        "content": "$1"
+      }
+    }
+  },
+  "passwordNotSaved": {
+    "message": "Nie udało się zapisać hasła (czy hasło główne jest zablokowane?)."
+  },
+  "errorUnknownMailbox": {
+    "message": "Nieznana skrzynka pocztowa."
+  },
+  "errorPasswordLocked": {
+    "message": "Hasło jest w tej chwili niedostępne."
+  },
+  "errorPasswordAbsent": {
+    "message": "Nie zapisano hasła: edytuj skrzynkę pocztową, aby je wpisać."
+  },
+  "errorAuth": {
+    "message": "Serwer odrzucił nazwę użytkownika lub hasło.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorDenied": {
+    "message": "Serwer nie zezwala na synchronizację tego konta lub tego urządzenia.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorWipe": {
+    "message": "Serwer zażądał zdalnego wyczyszczenia tego urządzenia. Żądanie zostało odrzucone: nic nie zostało wymazane, a synchronizacja jest zatrzymana.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorConfig": {
+    "message": "Nie można synchronizować skrzynki pocztowej z obecnymi ustawieniami: sprawdź je, a następnie ponownie zapisz skrzynkę pocztową.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorTls": {
+    "message": "Połączenie zostało odrzucone przed wysłaniem hasła: certyfikat serwera nie został zaakceptowany.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorProxyAuth": {
+    "message": "Serwer proxy tej sieci wymaga własnego uwierzytelniania, które nie jest jeszcze obsługiwane.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorProvision": {
+    "message": "Wymiana zasad bezpieczeństwa z serwerem nie powiodła się.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorHttp": {
+    "message": "Serwer odpowiedział błędem HTTP.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorBusy": {
+    "message": "Serwer jest zajęty lub otwartych jest zbyt wiele połączeń. Kolejna próba zostanie podjęta później.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorNetwork": {
+    "message": "Serwer jest nieosiągalny.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorTimeout": {
+    "message": "Serwer nie odpowiedział w wyznaczonym czasie.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorTooLarge": {
+    "message": "Odpowiedź serwera jest za duża.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorBadResponse": {
+    "message": "Serwer wysłał nieoczekiwaną lub nieprawidłową odpowiedź.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorCancelled": {
+    "message": "Operacja została anulowana.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorServer": {
+    "message": "Serwer odrzucił żądanie.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorLocal": {
+    "message": "Nie udało się zapisać zmian w Thunderbirdzie.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorClosed": {
+    "message": "Synchronizacja tej skrzynki pocztowej została zatrzymana.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorOther": {
+    "message": "Nieoczekiwany błąd.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendBusy": {
+    "message": "Ta wiadomość jest już wysyłana."
+  },
+  "sendProtected": {
+    "message": "Nie wysłano wiadomości: podpisywanie i szyfrowanie (OpenPGP, S/MIME) nie są jeszcze obsługiwane przez Sync443 lub nie udało się sprawdzić ich stanu. Wyłącz je dla tej wiadomości. Pozostaje ona w oknie tworzenia wiadomości."
+  },
+  "sendAccountUnchecked": {
+    "message": "Nie wysłano wiadomości: Sync443 nie mógł sprawdzić konta, z którego jest wysyłana, więc nic nie zostało wysłane. Wiadomość pozostaje w oknie tworzenia wiadomości."
+  },
+  "sendRouteUnchecked": {
+    "message": "Nie wysłano wiadomości: Sync443 nie mógł sprawdzić serwera poczty wychodzącej tego konta, więc nic nie zostało wysłane. Wiadomość pozostaje w oknie tworzenia wiadomości."
+  },
+  "sendUnexpected": {
+    "message": "Nie wysłano wiadomości: nieoczekiwany błąd. Pozostaje ona w oknie tworzenia wiadomości."
+  },
+  "sendFailed": {
+    "message": "Nie wysłano wiadomości: $REASON$ Pozostaje ona w oknie tworzenia wiadomości.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendFailedDraft": {
+    "message": "Nie wysłano wiadomości: $REASON$ Pozostaje ona w oknie tworzenia wiadomości i w szkicach.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendUncertain": {
+    "message": "Niepewny wynik wysyłania: $REASON$ Przed ponownym wysłaniem wiadomości sprawdź folder Wysłane; wiadomość pozostaje w oknie tworzenia wiadomości.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendReasonDraft": {
+    "message": "nie udało się zapisać szkicu."
+  },
+  "sendReasonDetails": {
+    "message": "nie udało się ponownie odczytać okna tworzenia wiadomości."
+  },
+  "sendReasonIdentity": {
+    "message": "nadawca zmienił się podczas wysyłania wiadomości. Kliknij ponownie „Wyślij”."
+  },
+  "sendReasonProtection": {
+    "message": "zażądano podpisywania lub szyfrowania (OpenPGP, S/MIME), których Sync443 jeszcze nie obsługuje."
+  },
+  "sendReasonFolder": {
+    "message": "szkic nie został zapisany na koncie Sync443 tego nadawcy. Sprawdź folder szkiców tej tożsamości."
+  },
+  "sendReasonEncrypted": {
+    "message": "zaszyfrowane wiadomości (OpenPGP, S/MIME) nie mogą być wysyłane przez Sync443."
+  },
+  "sendReasonMime": {
+    "message": "nie udało się przygotować wiadomości."
+  },
+  "sendReasonTooLarge": {
+    "message": "wiadomość jest za duża (ponad $SIZE$ MB).",
+    "placeholders": {
+      "size": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendReasonRead": {
+    "message": "nie udało się odczytać szkicu."
+  },
+  "sendReasonEmpty": {
+    "message": "szkic jest pusty."
+  },
+  "sendReasonStatus": {
+    "message": "nieoczekiwana odpowiedź serwera; wiadomość mogła już zostać wysłana."
+  },
+  "sendReasonInterrupted": {
+    "message": "połączenie zostało przerwane po wysłaniu żądania; wiadomość mogła już zostać wysłana."
+  },
+  "sendReasonUnexpected": {
+    "message": "nieoczekiwany błąd."
+  },
+  "sendReasonLowercase": {
+    "message": "yes"
+  },
+  "sendReasonRefused": {
+    "message": "$REASON$ (Status $STATUS$).",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      },
+      "status": {
+        "content": "$2"
+      }
+    }
+  },
+  "sendStatus107": {
+    "message": "serwer odrzuca format wiadomości"
+  },
+  "sendStatus110": {
+    "message": "błąd serwera"
+  },
+  "sendStatus111": {
+    "message": "tymczasowy błąd serwera, spróbuj ponownie później"
+  },
+  "sendStatus113": {
+    "message": "skrzynka pocztowa na serwerze jest pełna"
+  },
+  "sendStatus114": {
+    "message": "skrzynka pocztowa na serwerze jest chwilowo niedostępna"
+  },
+  "sendStatus115": {
+    "message": "przekroczono limit wysyłania na serwerze"
+  },
+  "sendStatus116": {
+    "message": "serwer nie rozpoznał jednego z odbiorców"
+  },
+  "sendStatus118": {
+    "message": "serwer informuje, że ta wiadomość została już wysłana"
+  },
+  "sendStatus119": {
+    "message": "wiadomość nie ma żadnego odbiorcy"
+  },
+  "sendStatus120": {
+    "message": "serwer nie mógł dostarczyć wiadomości"
+  },
+  "sendStatus122": {
+    "message": "załącznik jest za duży dla serwera"
+  },
+  "sendStatusOther": {
+    "message": "serwer odrzucił wiadomość"
+  },
+  "sentLeftoverDraft": {
+    "message": "Wysłano wiadomość, ale nie udało się usunąć jej szkicu: nie wysyłaj jej ponownie."
+  },
+  "sentLeftoverWindow": {
+    "message": "Wysłano wiadomość, ale nie udało się zamknąć okna tworzenia wiadomości: nie wysyłaj jej ponownie."
+  },
+  "sentLeftoverBoth": {
+    "message": "Wysłano wiadomość, ale nie udało się usunąć jej szkicu ani zamknąć okna tworzenia wiadomości: nie wysyłaj jej ponownie."
+  }
+}

@@ -278,6 +278,83 @@ async function finish(phase) {
   await T.quit();
 }
 
+// ── Language of the interface ─────────────────────────────────────────────
+
+/**
+ * The extension's texts are in Thunderbird's language (--locale of the
+ * runner, or the language of the build): the catalogue Thunderbird chose,
+ * the manifest, the toolbar button, and the settings page as it really
+ * shows, opened in a tab and read through extension.getViews().
+ * E.catalogues: { language: { key: message } }, from src/_locales.
+ */
+async function checkLanguage(boxes) {
+  await step("2b. Langue de l'interface");
+  const ui = browser.i18n.getUILanguage();
+  // The catalogue Thunderbird picks: the same tag, else the same language (es-AR → es_ES), else English.
+  const wanted = String(E.uiLocale ?? ui).toLowerCase();
+  const folders = Object.keys(E.catalogues ?? {});
+  const tag = (folder) => folder.replace("_", "-").toLowerCase();
+  const lang =
+    folders.find((f) => tag(f) === wanted) ?? folders.find((f) => tag(f).split("-")[0] === wanted.split("-")[0]) ?? "en";
+  const texts = E.catalogues?.[lang];
+  await info("uiLanguage", { ui, requested: E.uiLocale ?? null, catalogue: lang });
+  if (!(await check(`catalogue « ${lang} » transmis par le lanceur`, texts, Object.keys(E.catalogues ?? {})))) return;
+  if (E.uiLocale) await check(`Thunderbird en ${E.uiLocale} (intl.locale.requested)`, ui.toLowerCase().startsWith(E.uiLocale.slice(0, 2).toLowerCase()), ui);
+  const picked = { addMailbox: browser.i18n.getMessage("addMailbox"), languageTag: browser.i18n.getMessage("languageTag") };
+  await check(`textes de l'extension pris dans le catalogue « ${lang} »`, picked.addMailbox === texts.addMailbox && picked.languageTag === texts.languageTag, picked);
+  const manifest = browser.runtime.getManifest();
+  await check("manifeste : nom et description traduits", manifest.name === texts.extensionName && manifest.description === texts.extensionDescription, {
+    name: manifest.name,
+    description: manifest.description,
+  });
+  const prefix = (key) => texts[key].split("$")[0];
+  const title = await browser.browserAction.getTitle({});
+  await check(
+    "bouton de la barre d'outils : titre dans cette langue",
+    [texts.actionSync, texts.syncRunning].includes(title) || title.startsWith(prefix("actionSyncLast")) || title.startsWith(prefix("actionCheckSettings")),
+    title,
+  );
+
+  // The settings page, as it shows.
+  const pageUrl = browser.runtime.getURL("options/options.html");
+  await browser.runtime.openOptionsPage();
+  const view = await waitFor(
+    () => {
+      const v = browser.extension.getViews({ type: "tab" }).find((w) => w.location.href.startsWith(pageUrl));
+      return v && v.document.querySelectorAll("#mailboxes li .mb-status").length >= boxes && v.document.querySelector("#mailboxes li .mb-status").textContent ? v : null;
+    },
+    { timeout: 30_000 },
+  );
+  if (!(await check("page de réglages ouverte, boîtes listées", view, browser.extension.getViews().map((w) => w.location.href)))) return;
+  const doc = view.document;
+  const shown = {
+    lang: doc.documentElement.lang,
+    title: doc.title,
+    add: doc.getElementById("add")?.textContent,
+    heading: doc.getElementById("mailboxes-title")?.textContent,
+    buttons: [...doc.querySelectorAll("#mailboxes li:first-child .mb-actions button")].map((b) => b.textContent),
+    status: doc.querySelector("#mailboxes li .mb-status")?.textContent ?? "",
+    frequency: doc.querySelector("#syncMinutes option")?.textContent,
+    empty: [...doc.querySelectorAll("[data-i18n]")].filter((n) => !n.textContent.trim()).map((n) => n.dataset.i18n),
+  };
+  await info("optionsPage", shown);
+  await check(
+    `page de réglages en « ${lang} » : langue, titre, boutons, choix`,
+    shown.lang === texts.languageTag &&
+      shown.title === texts.optionsTitle &&
+      shown.add === texts.addMailbox &&
+      shown.heading === texts.mailboxesTitle &&
+      shown.frequency === texts.freqPush &&
+      JSON.stringify(shown.buttons) === JSON.stringify([texts.syncButton, texts.editButton, texts.removeButton]),
+    shown,
+  );
+  await check("page de réglages : aucun texte resté vide", !shown.empty.length, shown.empty);
+  const statuses = ["statusSyncedAt", "statusSyncedOn", "syncRunning", "statusError", "statusNever"].map(prefix);
+  await check("page de réglages : état de la boîte dans cette langue", statuses.some((p) => shown.status.startsWith(p)), shown.status);
+  const tab = await view.browser.tabs.getCurrent();
+  if (tab) await browser.tabs.remove(tab.id);
+}
+
 // ── Phase 1 ───────────────────────────────────────────────────────────────
 
 async function phase1() {
@@ -461,6 +538,9 @@ async function phase1() {
   await check("B : boîte de réception importée", withSubject(bobInbox, S.bob1).length === 1 && withSubject(bobInbox, S.bob2).length === 1, bobInbox?.map((m) => m.subject));
   const askedB = await rpc("collections_requested", { login: E.bob.login, device_id: B.deviceId });
   await check("B (courrier seulement) ne demande aucun dossier d'agenda, de contacts ou de tâches", !askedB.some((id) => E.pimFolders.bob.includes(id)), askedB);
+
+  // ── 2b. Language of the interface (run_mail_test.py --locale)
+  await guard("étape 2b", () => checkLanguage(2));
 
   const login = E.alice.login;
 

@@ -3,41 +3,43 @@
 
 /**
  * Pure helpers of the settings page: choices, validation of the mailbox
- * form, and the French texts shown for a mailbox and the log. No DOM here,
- * so that everything is unit-tested. The background checks everything
- * again: these checks only give friendly errors early.
+ * form, and the texts shown for a mailbox and the log (i18n.mjs, in the
+ * language of Thunderbird). No DOM here, so that everything is unit-tested.
+ * The background checks everything again: these checks only give friendly
+ * errors early.
  */
 
-import { parseServer, ServerAddressError } from "../core/server.mjs";
+import { parseServer } from "../core/server.mjs";
 import { cleanText } from "../core/sanitize.mjs";
 import { SYNC_KINDS } from "../sync/store.mjs";
+import { t, uiLanguage, errorText, errorDetail, serverErrorText, sentence } from "../i18n.mjs";
 
-/** Sync frequency, in minutes; 0 = as soon as a message arrives (Ping). */
+/** Sync frequency, in minutes (0 = as soon as a message arrives: Ping), and its label. */
 export const FREQUENCIES = Object.freeze([
-  [0, "Dès réception"],
-  [1, "Toutes les minutes"],
-  [5, "Toutes les 5 minutes"],
-  [15, "Toutes les 15 minutes"],
-  [30, "Toutes les 30 minutes"],
-  [60, "Toutes les heures"],
+  [0, () => t("freqPush")],
+  [1, () => t("freqEveryMinute")],
+  [5, () => t("freqEveryMinutes", 5)],
+  [15, () => t("freqEveryMinutes", 15)],
+  [30, () => t("freqEveryMinutes", 30)],
+  [60, () => t("freqEveryHour")],
 ]);
 
-/** Period of mail kept in sync: ActiveSync FilterType ([MS-ASCMD] 2.2.3.68). */
+/** Period of mail kept in sync: ActiveSync FilterType ([MS-ASCMD] 2.2.3.68), and its label. */
 export const PERIODS = Object.freeze([
-  ["1", "1 jour"],
-  ["2", "3 jours"],
-  ["3", "1 semaine"],
-  ["4", "2 semaines"],
-  ["5", "1 mois"],
-  ["0", "Tout"],
+  ["1", () => t("period1Day")],
+  ["2", () => t("period3Days")],
+  ["3", () => t("period1Week")],
+  ["4", () => t("period2Weeks")],
+  ["5", () => t("period1Month")],
+  ["0", () => t("periodAll")],
 ]);
 
 /** What a mailbox synchronises; `soon`: saved, not synchronised yet in this version. */
 export const KINDS = Object.freeze([
-  { key: "mail", label: "Courrier", soon: false },
-  { key: "calendar", label: "Agenda", soon: true },
-  { key: "contacts", label: "Contacts", soon: true },
-  { key: "tasks", label: "Tâches", soon: true },
+  Object.freeze({ key: "mail", get label() { return t("kindMail"); }, soon: false }),
+  Object.freeze({ key: "calendar", get label() { return t("kindCalendar"); }, soon: true }),
+  Object.freeze({ key: "contacts", get label() { return t("kindContacts"); }, soon: true }),
+  Object.freeze({ key: "tasks", get label() { return t("kindTasks"); }, soon: true }),
 ]);
 
 export const DEFAULTS = Object.freeze({
@@ -58,10 +60,10 @@ export const permissionPattern = (host) => `https://${host}/*`;
 
 /** Error message for an e-mail address, or null when it can be used. */
 export function emailError(email) {
-  if (!email) return "Indiquez l'adresse e-mail.";
-  if (email.length > 254) return "Adresse e-mail trop longue.";
+  if (!email) return t("emailMissing");
+  if (email.length > 254) return t("emailTooLong");
   if (CONTROL.test(email) || HIDDEN.test(email) || !email.isWellFormed() || !/^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/.test(email)) {
-    return "Adresse e-mail invalide, par exemple : prenom.nom@exemple.com.";
+    return t("emailInvalid");
   }
   return null;
 }
@@ -87,10 +89,10 @@ export function validateForm(values, existing = null) {
 
   // The sign-in name, when it is not the address (DOMAINE\nom, for one). Empty: the address.
   const username = str(values.username).trim();
-  if (username.length > 256) error("username", "Identifiant trop long (256 caractères au plus).");
-  else if (username.includes(":")) error("username", "L'identifiant ne doit pas contenir de deux-points ( : ).");
+  if (username.length > 256) error("username", t("usernameTooLong"));
+  else if (username.includes(":")) error("username", t("usernameColon"));
   else if (CONTROL.test(username) || HIDDEN.test(username) || !username.isWellFormed()) {
-    error("username", "L'identifiant contient un caractère non autorisé.");
+    error("username", t("usernameBadChar"));
   }
 
   let server = null;
@@ -98,7 +100,7 @@ export function validateForm(values, existing = null) {
   try {
     server = parseServer(serverText);
   } catch (e) {
-    error("server", e instanceof ServerAddressError ? e.message : "Serveur invalide.");
+    error("server", serverErrorText(e));
   }
 
   // The password goes with the origin and the sign-in name it was typed for.
@@ -108,31 +110,28 @@ export function validateForm(values, existing = null) {
   const password = str(values.password);
   if (!password) {
     if (passwordRequired) {
-      error(
-        "password",
-        existing ? "Le serveur ou l'identifiant a changé : retapez le mot de passe." : "Indiquez le mot de passe.",
-      );
+      error("password", existing ? t("passwordRetype") : t("passwordMissing"));
     }
   } else if (password.length > 1024) {
-    error("password", "Mot de passe trop long.");
+    error("password", t("passwordTooLong"));
   } else if (/[\u0000-\u001f\u007f]/.test(password) || !password.isWellFormed()) {
-    error("password", "Le mot de passe contient un caractère non autorisé.");
+    error("password", t("passwordBadChar"));
   }
 
   const rawName = str(values.name);
-  if (rawName.length > 256) error("name", "Nom trop long (256 caractères au plus).");
+  if (rawName.length > 256) error("name", t("nameTooLong"));
   const name = cleanText(rawName, { max: 256, singleLine: true, stripBidi: true }).trim() || email;
 
   const minutesText = String(values.syncMinutes ?? "").trim();
   const syncMinutes = minutesText === "" ? NaN : Number(minutesText);
   if (!FREQUENCIES.some(([m]) => m === syncMinutes)) {
-    error("syncMinutes", "Choisissez une fréquence de synchronisation.");
+    error("syncMinutes", t("chooseFrequency"));
   }
   const filterType = str(values.filterType);
-  if (!PERIODS.some(([f]) => f === filterType)) error("filterType", "Choisissez la période de courrier à synchroniser.");
+  if (!PERIODS.some(([f]) => f === filterType)) error("filterType", t("choosePeriod"));
 
   const sync = Object.fromEntries(SYNC_KINDS.map((k) => [k, values.sync?.[k] === true]));
-  if (!SYNC_KINDS.some((k) => sync[k])) error("sync", "Choisissez au moins un élément à synchroniser.");
+  if (!SYNC_KINDS.some((k) => sync[k])) error("sync", t("chooseKind"));
 
   if (errors.length) {
     errors.sort((a, b) => FIELD_ORDER.indexOf(a.field) - FIELD_ORDER.indexOf(b.field));
@@ -181,47 +180,63 @@ const str2 = (v) => (typeof v === "string" ? v : "");
 
 // ── Texts shown for a mailbox ─────────────────────────────────────────────
 
-export const frequencyLabel = (minutes) => FREQUENCIES.find(([m]) => m === minutes)?.[1] ?? `Toutes les ${minutes} minutes`;
-export const periodLabel = (filterType) => PERIODS.find(([f]) => f === filterType)?.[1] ?? "Inconnue";
+export const frequencyLabel = (minutes) => FREQUENCIES.find(([m]) => m === minutes)?.[1]() ?? t("freqEveryMinutes", minutes);
+export const periodLabel = (filterType) => PERIODS.find(([f]) => f === filterType)?.[1]() ?? t("periodUnknown");
 
 export function kindsLabel(sync) {
-  const chosen = KINDS.filter((k) => sync?.[k.key] === true).map((k) => (k.soon ? `${k.label} (bientôt)` : k.label));
-  return chosen.length ? chosen.join(", ") : "Rien";
+  const chosen = KINDS.filter((k) => sync?.[k.key] === true).map((k) => (k.soon ? t("kindSoon", k.label) : k.label));
+  return chosen.length ? chosen.join(", ") : t("kindsNone");
 }
 
 const pad = (n) => String(n).padStart(2, "0");
 
-/** "14:05" today, "12/11 à 14:05" this year, "12/11/2025 à 14:05" otherwise (local time). */
+const sameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+
+/** Intl formatting in the interface's language; `fallback` where Intl is missing. */
+function intl(d, options, fallback) {
+  try {
+    return new Intl.DateTimeFormat(uiLanguage(), options).format(d);
+  } catch {
+    return fallback;
+  }
+}
+
+/**
+ * Local time, as the interface's language writes it: today, the time
+ * ("14:05" in French); this year, the day and the time ("12/11 à 14:05");
+ * otherwise, with the year ("12/11/2025 à 14:05").
+ */
 export function formatTime(ms, now = Date.now()) {
   const d = new Date(ms);
   if (!Number.isFinite(d.getTime())) return "";
   const n = new Date(now);
-  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  if (d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate()) return time;
-  const day = `${pad(d.getDate())}/${pad(d.getMonth() + 1)}`;
-  return d.getFullYear() === n.getFullYear() ? `${day} à ${time}` : `${day}/${d.getFullYear()} à ${time}`;
+  const time = intl(d, { hour: "2-digit", minute: "2-digit" }, `${pad(d.getHours())}:${pad(d.getMinutes())}`);
+  if (sameDay(d, n)) return time;
+  const day =
+    d.getFullYear() === n.getFullYear()
+      ? intl(d, { day: "2-digit", month: "2-digit" }, `${pad(d.getDate())}/${pad(d.getMonth() + 1)}`)
+      : intl(d, { day: "2-digit", month: "2-digit", year: "numeric" }, `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`);
+  return t("dateAtTime", day, time);
 }
 
 /** Text shown, cut to one line of reasonable length (it may come from the server, already cleaned). */
 export const shown = (s, max = 300) => cleanText(typeof s === "string" ? s : "", { max, singleLine: true, stripBidi: true }).trim();
 
-/** Asked before « Garder les copies locales » (discardDeletes). */
-export const DISCARD_CONFIRM =
-  "Les suppressions faites sur le serveur ne seront pas appliquées : les messages restent dans Thunderbird, et les dossiers concernés sont resynchronisés avec le serveur. Un dossier supprimé sur le serveur reste ici, sans synchronisation.";
+/** Asked before "Keep the local copies" (discardDeletes). */
+export const discardConfirm = () => t("discardConfirm");
 
-/** "3 messages n'ont pas pu être importés : nouvel essai automatique.", or "" for none. */
+/** "3 messages could not be imported…", or "" for none. */
 export function failedText(count) {
   if (!Number.isSafeInteger(count) || count <= 0) return "";
-  return count === 1
-    ? "1 message n'a pas pu être importé : nouvel essai automatique."
-    : `${count} messages n'ont pas pu être importés : nouvel essai automatique.`;
+  return count === 1 ? t("failedOne") : t("failedMany", count);
 }
 
 /**
  * Status of a mailbox, from the `status` the background lists, followed by
  * the number of messages whose import keeps failing (status.failedItems).
- * → { tone: "ok" | "running" | "error" | "blocked" | "idle", text, massDelete: number | null }
+ * → { tone: "ok" | "running" | "error" | "blocked" | "idle", text, massDelete: number | null, detail? }
  * massDelete: number of deletions held back by the mass-deletion threshold, waiting for the user.
+ * detail: after a failure, the engine's French reason when the text does not show it (a tooltip).
  */
 export function statusView(status, now = Date.now()) {
   const s = status && typeof status === "object" ? status : {};
@@ -230,45 +245,53 @@ export function statusView(status, now = Date.now()) {
   return failed ? { ...view, text: `${view.text} ${failed}` } : view;
 }
 
+/** `view` with the failure's French reason as `detail`, when its text does not show it already. */
+function withDetail(view, failure) {
+  const detail = errorDetail(failure, view.text);
+  return detail ? { ...view, detail } : view;
+}
+
 function baseView(s, now) {
   const count = Number.isSafeInteger(s.pendingDeletes) && s.pendingDeletes > 0 ? s.pendingDeletes : 0;
   if (s.blocked && typeof s.blocked === "object") {
     if (s.blocked.code === "MASS_DELETE") {
-      return {
-        tone: "blocked",
-        text: `Synchronisation suspendue : le serveur a supprimé ${count || "beaucoup de"} messages d'un coup. Ces suppressions ne seront appliquées qu'après votre confirmation ; vous pouvez aussi garder les copies locales.`,
-        massDelete: count,
-      };
+      return { tone: "blocked", text: count ? t("statusMassDelete", count) : t("statusMassDeleteMany"), massDelete: count };
     }
-    const why = shown(s.blocked.message) || "erreur grave.";
-    const end = /[.!?]$/.test(why) ? "" : ".";
-    return { tone: "blocked", text: `Arrêtée : ${why}${end} Rien ne sera tenté automatiquement : cliquez sur « Synchroniser » pour reprendre.`, massDelete: null };
+    const why = sentence(errorText(s.blocked, "statusSeriousError"));
+    return withDetail({ tone: "blocked", text: t("statusBlocked", why), massDelete: null }, s.blocked);
   }
-  if (s.running === true) return { tone: "running", text: "Synchronisation en cours…", massDelete: null };
+  if (s.running === true) return { tone: "running", text: t("syncRunning"), massDelete: null };
   if (s.lastError && typeof s.lastError === "object") {
-    const why = shown(s.lastError.message) || "erreur";
-    const retry = Number.isFinite(s.nextAttemptAt) && s.nextAttemptAt > now ? ` Nouvel essai à ${formatTime(s.nextAttemptAt, now)}.` : "";
-    return { tone: "error", text: `Erreur : ${why}${/[.!?]$/.test(why) ? "" : "."}${retry}`, massDelete: null };
+    const why = sentence(errorText(s.lastError, "statusErrorUnknown"));
+    const retry = Number.isFinite(s.nextAttemptAt) && s.nextAttemptAt > now ? ` ${t("statusRetryAt", formatTime(s.nextAttemptAt, now))}` : "";
+    return withDetail({ tone: "error", text: `${t("statusError", why)}${retry}`, massDelete: null }, s.lastError);
   }
   if (Number.isFinite(s.lastSuccessAt) && s.lastSuccessAt > 0) {
-    const t = formatTime(s.lastSuccessAt, now);
-    return { tone: "ok", text: /^\d\d:\d\d$/.test(t) ? `Synchronisée à ${t}.` : `Synchronisée le ${t}.`, massDelete: null };
+    const at = formatTime(s.lastSuccessAt, now);
+    return { tone: "ok", text: sameDay(new Date(s.lastSuccessAt), new Date(now)) ? t("statusSyncedAt", at) : t("statusSyncedOn", at), massDelete: null };
   }
-  return { tone: "idle", text: "Pas encore synchronisée.", massDelete: null };
+  return { tone: "idle", text: t("statusNever"), massDelete: null };
 }
 
 // ── Log ───────────────────────────────────────────────────────────────────
 
-const LEVEL_NAMES = new Map([
-  ["error", "erreur"],
-  ["warn", "alerte"],
-  ["info", "info"],
-  ["debug", "débogage"],
-]);
+/** Name of a log level, in the interface's language (the entries themselves are French). */
+function levelName(level) {
+  switch (level) {
+    case "error":
+      return t("levelError");
+    case "warn":
+      return t("levelWarn");
+    case "debug":
+      return t("levelDebug");
+    default:
+      return t("levelInfo");
+  }
+}
 
-/** The log as text, newest first: "2026-11-15 14:05:09  erreur  Mot de passe refusé." */
+/** The log as text, newest first: "2026-11-15 14:05:09  error     Mot de passe refusé." */
 export function logText(entries) {
-  if (!Array.isArray(entries) || !entries.length) return "Le journal est vide.";
+  if (!Array.isArray(entries) || !entries.length) return t("logEmpty");
   const lines = [];
   for (const e of [...entries].reverse()) {
     if (!e || typeof e !== "object" || !Number.isFinite(e.t)) continue;
@@ -276,7 +299,7 @@ export function logText(entries) {
     const day = [d.getFullYear(), d.getMonth() + 1, d.getDate()].map((n, k) => (k ? pad(n) : String(n))).join("-");
     const time = [d.getHours(), d.getMinutes(), d.getSeconds()].map(pad).join(":");
     const stamp = `${day} ${time}`;
-    lines.push(`${stamp}  ${(LEVEL_NAMES.get(e.level) ?? "info").padEnd(8)}  ${shown(e.msg)}`);
+    lines.push(`${stamp}  ${levelName(e.level).padEnd(8)}  ${shown(e.msg)}`);
     if (typeof e.details === "string" && e.details) {
       const details = cleanText(e.details, { max: 4000, stripBidi: true });
       for (const line of details.split("\n")) lines.push(`      ${line}`);
@@ -285,8 +308,8 @@ export function logText(entries) {
   return lines.join("\n");
 }
 
-/** "Actif jusqu'à 15:05." or "" when debugging is off. */
+/** "Active until 15:05." or "" when debugging is off. */
 export function debugText(debugUntil, now = Date.now()) {
   if (!Number.isFinite(debugUntil) || debugUntil <= now) return "";
-  return `Actif jusqu'à ${formatTime(debugUntil, now)}.`;
+  return t("debugActiveUntil", formatTime(debugUntil, now));
 }
