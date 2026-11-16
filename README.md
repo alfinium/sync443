@@ -6,8 +6,9 @@ Sync443 is a Thunderbird extension that provides native support for the **Exchan
 (EAS) protocol. Each ActiveSync mailbox becomes a regular Thunderbird account, with no gateway
 and no IMAP or SMTP configuration: all traffic goes over a single HTTPS connection to the server.
 
-**Current version: 0.1.0.** It supports mail: folders, messages and sending. Calendar, tasks and
-contacts are planned for later versions ([roadmap](docs/ARCHITECTURE.md)).
+**Current version: 0.2.0.** It supports mail: folders, messages and sending, with an interface in
+ten languages. Calendar, tasks and contacts are planned for later versions
+([roadmap](docs/ARCHITECTURE.md)).
 
 ## Features
 
@@ -18,6 +19,7 @@ contacts are planned for later versions ([roadmap](docs/ARCHITECTURE.md)).
 | Sending through ActiveSync, with a copy in the server's Sent Items | 0.1.0 |
 | Multiple mailboxes; per-mailbox choice of the items to synchronize | 0.1.0 (mail only) |
 | Settings page, manual synchronization, diagnostic log | 0.1.0 |
+| Interface in ten languages ([Languages](#languages)) | 0.2.0 |
 | Calendar, tasks and meeting invitations | planned |
 | Contacts | planned |
 
@@ -99,7 +101,7 @@ connection is refused before anything is sent.
 ActiveSync usually relies on "Basic" authentication, in which the password accompanies every
 request. This risk is reduced by the measures above and by the use of an application password.
 
-Security model: [docs/SECURITE.md](docs/SECURITE.md). Audits: [docs/audits/](docs/audits/).
+Security model: [docs/SECURITY-MODEL.md](docs/SECURITY-MODEL.md). Audits: [docs/audits/](docs/audits/).
 Reporting a vulnerability: [SECURITY.md](SECURITY.md). The design and security documents are
 written in French.
 

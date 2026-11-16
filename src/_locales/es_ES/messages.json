@@ -596,7 +596,7 @@
     }
   },
   "errorTls": {
-    "message": "Conexión rechazada antes de enviar la contraseña: no se ha aceptado el certificado del servidor.",
+    "message": "Conexión rechazada antes de enviar la contraseña: no se ha aceptado el certificado del servidor. Es posible que la red esté interceptando las conexiones HTTPS. Los certificados de una autoridad privada aún no se admiten.",
     "placeholders": {
       "reason": {
         "content": "$1"
@@ -628,7 +628,7 @@
     }
   },
   "errorBusy": {
-    "message": "El servidor está ocupado o hay demasiadas conexiones abiertas. Se volverá a intentar más tarde.",
+    "message": "El servidor está ocupado o hay demasiadas conexiones abiertas.",
     "placeholders": {
       "reason": {
         "content": "$1"

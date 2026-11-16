@@ -596,7 +596,7 @@
     }
   },
   "errorTls": {
-    "message": "Połączenie zostało odrzucone przed wysłaniem hasła: certyfikat serwera nie został zaakceptowany.",
+    "message": "Połączenie zostało odrzucone przed wysłaniem hasła: certyfikat serwera nie został zaakceptowany. Możliwe, że sieć przechwytuje połączenia HTTPS. Certyfikaty prywatnych urzędów certyfikacji nie są jeszcze obsługiwane.",
     "placeholders": {
       "reason": {
         "content": "$1"
@@ -628,7 +628,7 @@
     }
   },
   "errorBusy": {
-    "message": "Serwer jest zajęty lub otwartych jest zbyt wiele połączeń. Kolejna próba zostanie podjęta później.",
+    "message": "Serwer jest zajęty lub otwartych jest zbyt wiele połączeń.",
     "placeholders": {
       "reason": {
         "content": "$1"

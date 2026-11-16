@@ -21,7 +21,7 @@
  * returns.
  */
 
-import { cleanText } from "./sanitize.mjs";
+import { cleanText, cut } from "./sanitize.mjs";
 import { TLS_PIN } from "./ids.mjs";
 
 const normalise = (fp) => String(fp ?? "").replace(/:/g, "").toUpperCase();
@@ -50,17 +50,29 @@ export function evaluateTls(info, { pins = [] } = {}) {
   return result(false, "not-public-root");
 }
 
-/** Message for the user, in French. */
+/** Longest reason shown to the user (src/i18n.mjs cuts there): the whole message must fit. */
+export const TLS_MESSAGE_MAX = 300;
+
+/**
+ * Message for the user, in French. The issuer name, which whoever made the
+ * certificate chooses, comes last and is cut to fit: it can never push the
+ * warning out of the message, nor leave its closing quote off.
+ */
 export function tlsMessage(reason, issuer = "") {
-  const shown = cleanText(String(issuer ?? ""), { max: 200, singleLine: true, stripBidi: true });
+  const shown = cleanText(String(issuer ?? ""), { max: 200, singleLine: true, stripBidi: true }).trim();
   switch (reason) {
-    case "not-public-root":
-      return (
-        "Connexion refusée avant l'envoi du mot de passe : le certificat présenté n'est pas émis par une " +
-        `autorité que Thunderbird reconnaît${shown ? ` (émetteur annoncé : « ${shown} », un nom que n'importe qui peut choisir)` : ""}. ` +
-        "Le réseau intercepte peut-être les connexions HTTPS. Les autorités privées ne sont pas prises en charge " +
-        "dans cette version."
-      );
+    case "not-public-root": {
+      const warning =
+        "Connexion refusée avant l'envoi du mot de passe : autorité du certificat non reconnue par " +
+        "Thunderbird. Le réseau intercepte peut-être les connexions HTTPS ; les autorités privées ne " +
+        "sont pas prises en charge.";
+      if (!shown) return warning;
+      const before = " Émetteur, un nom que n'importe qui peut choisir : « ";
+      const after = " ».";
+      const room = TLS_MESSAGE_MAX - warning.length - before.length - after.length;
+      const name = shown.length > room ? `${cut(shown, room - 1).trimEnd()}…` : shown;
+      return warning + before + name + after;
+    }
     case "untrusted":
       return "Connexion refusée : certificat du serveur non reconnu.";
     case "domain-mismatch":

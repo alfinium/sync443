@@ -7,7 +7,10 @@ One section per published version, most recent first. The section of a version s
 release notes of its `.xpi` file on the [Releases](https://github.com/alfinium/sync443/releases)
 page.
 
-## Unreleased
+## 0.2.0
+
+The interface is now available in ten languages. Verified on Thunderbird 140.17 ESR and
+Thunderbird 160.
 
 ### New
 
@@ -23,6 +26,14 @@ page.
 
 ### Fixed
 
+- **Certificate refusal:** the warning that the network may be intercepting HTTPS connections now
+  comes first, and the issuer name announced by the certificate (which anyone can choose) comes
+  last, shortened if needed. A long or misleading issuer name can no longer push the warning out
+  of the message.
+- **Certificate refusal, in every language:** the message now also says that the network may be
+  intercepting HTTPS connections and that private authorities are not supported yet.
+- **Sending refused because the server is busy:** the message no longer promises a new attempt,
+  which sending does not make; the message stays in the compose window and in the drafts.
 - **Thunderbird 140:** closing the settings page no longer logs an internal Thunderbird error in
   the console.
 
@@ -36,13 +47,18 @@ page.
 
 ### Development
 
-- `tools/build_xpi.py` checks the translations (`src/_locales`): the default language's catalogue
+- `tools/build_xpi.py` checks the translations (`src/_locales`): the default language's catalog
   is present, no message is empty, the manifest's `__MSG_…__` keys exist, and every language has
   the same messages with the same parameters.
 - New unit test `tests/unit/i18n.test.mjs`, for all ten languages: same keys and parameters, every
   key used exists, every message is used, composed texts leave no parameter unfilled.
 - `tests/e2e/mail/run_mail_test.py --locale=en-US`: the scenario checks the language of the
   settings page, the button and the manifest.
+- `tools/build_xpi.py` also rejects, in a translated message, any invisible or control
+  character (even written as a JSON escape), markup or link, and two message names that differ
+  only by case. `tools/check_source_chars.py` recognizes more invisible characters.
+- Security review of the translations: [docs/audits/translations-0.2.0.md](docs/audits/translations-0.2.0.md)
+  (in French).
 - End-to-end test of a change of the mail period (1 month, all, 1 month, then all on a server that
   starts over), on Thunderbird 140 and 160.
 
@@ -106,7 +122,7 @@ on Thunderbird 140.17 ESR and Thunderbird 160. The interface of this version is 
   on the server, it goes to Deleted Items, as with IMAP.
 - **Rare server-side cases** (folders renumbered and renamed at the same time, non-compliant
   servers): a folder may be downloaded a second time, without anything being deleted. Details are
-  in [docs/audits/etape-2-3.md](https://github.com/alfinium/sync443/blob/main/docs/audits/etape-2-3.md)
+  in [docs/audits/stages-2-3.md](https://github.com/alfinium/sync443/blob/main/docs/audits/stages-2-3.md)
   (in French).
 - **Signing and encryption** (OpenPGP, S/MIME): not supported yet. A message for which signing or
   encryption is requested is not sent: the compose window stays open and a notification explains

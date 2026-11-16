@@ -19,14 +19,18 @@
  */
 
 import { cleanText } from "./core/sanitize.mjs";
+import { TLS_MESSAGE_MAX } from "./core/tls-policy.mjs";
 
 const api = () => globalThis.browser?.i18n ?? globalThis.messenger?.i18n ?? null;
 
 /** The text of message `key`, its placeholders filled with `subs` in order; "" when there is none. */
 export function t(key, ...subs) {
-  const i18n = api();
-  if (!i18n) return "";
-  return i18n.getMessage(key, subs.map((s) => String(s))) || "";
+  try {
+    const i18n = api();
+    return (i18n && i18n.getMessage(key, subs.map((s) => String(s)))) || "";
+  } catch {
+    return ""; // a text that cannot be built never changes what happens (sending, saving)
+  }
 }
 
 /** The language of Thunderbird's interface ("fr", "en-US"…), for dates and times. */
@@ -78,9 +82,9 @@ const OTHER_ERROR = "errorOther";
  */
 export const KEYED_ERRORS = new Set(["errorUnknownMailbox", "errorPasswordLocked", "errorPasswordAbsent"]);
 
-/** The engine's reason, cut to one clean line. */
+/** The engine's reason, cut to one clean line (a certificate refusal is written to fit: core/tls-policy.mjs). */
 const reasonOf = (error) =>
-  cleanText(typeof error?.message === "string" ? error.message : "", { max: 300, singleLine: true, stripBidi: true }).trim();
+  cleanText(typeof error?.message === "string" ? error.message : "", { max: TLS_MESSAGE_MAX, singleLine: true, stripBidi: true }).trim();
 
 /**
  * What to show for a failure: an EasError, or the { code, message, key? }

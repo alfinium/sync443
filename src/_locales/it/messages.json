@@ -596,7 +596,7 @@
     }
   },
   "errorTls": {
-    "message": "Connessione rifiutata prima dell’invio della password: il certificato del server non è stato accettato.",
+    "message": "Connessione rifiutata prima dell’invio della password: il certificato del server non è stato accettato. È possibile che la rete stia intercettando le connessioni HTTPS. I certificati di un’autorità privata non sono ancora supportati.",
     "placeholders": {
       "reason": {
         "content": "$1"
@@ -628,7 +628,7 @@
     }
   },
   "errorBusy": {
-    "message": "Il server è occupato o ci sono troppe connessioni aperte. Verrà effettuato un nuovo tentativo più tardi.",
+    "message": "Il server è occupato o ci sono troppe connessioni aperte.",
     "placeholders": {
       "reason": {
         "content": "$1"

@@ -237,12 +237,35 @@ test("traductions : échec du moteur choisi par son code ; en français, la rais
   await withLanguage("en", () => {
     eq(errorText(auth), "The server refused the sign-in name or the password.");
     eq(errorDetail(auth, errorText(auth)), "Details (in French): Identifiant ou mot de passe refusé par le serveur.");
-    eq(errorText({ code: "TLS", message: "Connexion refusée : certificat du serveur non reconnu." }), "Connection refused before the password was sent: the server's certificate was not accepted.");
+    eq(errorText({ code: "TLS", message: "Connexion refusée : certificat du serveur non reconnu." }), "Connection refused before the password was sent: the server's certificate was not accepted. The network may be intercepting HTTPS connections. Certificates from a private authority are not supported yet.");
     eq(errorText({ code: "NOT_A_CODE", message: "x" }), "Unexpected error.");
     eq(errorText({ code: "__proto__", message: "x" }), "Unexpected error.");
-    eq(errorText({ code: "TLS" }), "Connection refused before the password was sent: the server's certificate was not accepted.");
+    eq(errorText({ code: "TLS" }), "Connection refused before the password was sent: the server's certificate was not accepted. The network may be intercepting HTTPS connections. Certificates from a private authority are not supported yet.");
     for (const key of ERROR_KEYS.values()) assert(t(key, "raison") !== "raison" && !t(key, "raison").includes("raison"), key);
   });
+});
+
+test("traductions : un texte qui ne peut pas être construit donne \"\", sans exception (l'envoi n'en dépend pas)", () => {
+  const i18n = globalThis.browser.i18n;
+  try {
+    globalThis.browser.i18n = { ...i18n, getMessage: () => { throw new Error("catalogue indisponible"); } };
+    eq(t("sendBusy"), "");
+    globalThis.browser.i18n = i18n;
+    eq(t("sendBusy", { toString() { throw new Error("paramètre"); } }), "");
+  } finally {
+    globalThis.browser.i18n = i18n;
+  }
+});
+
+test("traductions : serveur occupé, sans promettre un nouvel essai (l'envoi n'en fait pas)", async () => {
+  for (const lang of LOCALES) {
+    if (lang === "fr") continue; // the engine's own reason, which promises nothing
+    await withLanguage(lang, () => {
+      const text = errorText({ code: "BUSY", message: "Connexion momentanément impossible (trop de connexions ouvertes)." });
+      assert(text && text === t("errorBusy", "x"), lang);
+    });
+  }
+  await withLanguage("en", () => eq(t("errorBusy", "x"), "The server is busy, or too many connections are open."));
 });
 
 test("traductions : échecs nommés par la page d'arrière-plan (key), gardés par la santé de la boîte", async () => {

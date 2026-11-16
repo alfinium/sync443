@@ -596,7 +596,7 @@
     }
   },
   "errorTls": {
-    "message": "Spojení bylo odmítnuto ještě před odesláním hesla: certifikát serveru nebyl přijat.",
+    "message": "Spojení bylo odmítnuto ještě před odesláním hesla: certifikát serveru nebyl přijat. Síť možná zachytává spojení HTTPS. Certifikáty soukromých certifikačních autorit zatím nejsou podporovány.",
     "placeholders": {
       "reason": {
         "content": "$1"
@@ -628,7 +628,7 @@
     }
   },
   "errorBusy": {
-    "message": "Server je zaneprázdněn nebo je otevřeno příliš mnoho spojení. Později proběhne nový pokus.",
+    "message": "Server je zaneprázdněn nebo je otevřeno příliš mnoho spojení.",
     "placeholders": {
       "reason": {
         "content": "$1"

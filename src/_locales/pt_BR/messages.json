@@ -596,7 +596,7 @@
     }
   },
   "errorTls": {
-    "message": "Conexão recusada antes do envio da senha: o certificado do servidor não foi aceito.",
+    "message": "Conexão recusada antes do envio da senha: o certificado do servidor não foi aceito. A rede pode estar interceptando as conexões HTTPS. Certificados de uma autoridade privada ainda não são aceitos.",
     "placeholders": {
       "reason": {
         "content": "$1"
@@ -628,7 +628,7 @@
     }
   },
   "errorBusy": {
-    "message": "O servidor está ocupado ou há conexões abertas demais. Uma nova tentativa será feita mais tarde.",
+    "message": "O servidor está ocupado ou há conexões abertas demais.",
     "placeholders": {
       "reason": {
         "content": "$1"

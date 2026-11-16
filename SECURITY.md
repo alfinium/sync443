@@ -1,16 +1,16 @@
-# Signaler une vulnérabilité
+# Reporting a vulnerability
 
-Merci de **ne pas** ouvrir de ticket public pour une faille de sécurité.
+Please **do not** open a public issue for a security vulnerability.
 
-Utilisez le signalement privé de GitHub : onglet **Security** du dépôt, puis
-**Report a vulnerability**. Indiquez :
+Use GitHub's private reporting: the repository's **Security** tab, then
+**Report a vulnerability**. Include:
 
-- la version concernée ;
-- ce qui se passe et ce qui devrait se passer ;
-- comment le reproduire. Un échange WBXML, une réponse de serveur ou une configuration réseau
-  suffisent ; jamais de mot de passe réel.
+- the affected version;
+- what happens and what should happen;
+- how to reproduce it. A WBXML exchange, a server response or a network configuration is
+  enough; never a real password.
 
-Vous recevrez un accusé de réception. La correction est publiée avec une note expliquant le
-problème une fois les utilisateurs protégés.
+You will receive an acknowledgment of receipt. The fix is published with a note explaining the
+problem once users are protected.
 
-Le modèle de sécurité de l'extension est décrit dans [docs/SECURITE.md](docs/SECURITE.md).
+The extension's security model is described in [docs/SECURITY-MODEL.md](docs/SECURITY-MODEL.md).

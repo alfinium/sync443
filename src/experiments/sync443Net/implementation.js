@@ -54,7 +54,7 @@
  * reading from the network beyond that), at most 256 KiB written and not
  * yet sent.
  *
- * Every refusal is an ExtensionError "CODE: raison" (codes: CONFIG,
+ * Every refusal is an ExtensionError "CODE: reason" (codes: CONFIG,
  * PERMISSION, PROXY_AUTH, PROXY, TLS, NETWORK, TIMEOUT, CLOSED). No message
  * carries anything the extension wrote, or anything secret.
  */

@@ -4,7 +4,7 @@
 /** TLS policy tests: every refusal reason, pins, built-in root on the last certificate only. */
 
 import { test, assert, eq } from "./harness.mjs";
-import { evaluateTls, tlsMessage } from "../../src/core/tls-policy.mjs";
+import { evaluateTls, tlsMessage, TLS_MESSAGE_MAX } from "../../src/core/tls-policy.mjs";
 
 const FP_LEAF = "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99";
 const FP_INTER = "11:22:33:44:55:66:77:88:99:00:AA:BB:CC:DD:EE:FF:11:22:33:44:55:66:77:88:99:00:AA:BB:CC:DD:EE:FF";
@@ -109,9 +109,23 @@ test("tls : champs absents ou de type inattendu dans la chaîne", () => {
   eq(evaluateTls({ state: "secure", certificates: [{ isBuiltInRoot: true }] }).reason, "public-root");
 });
 
+test("tls : un émetteur choisi par l'attaquant ne chasse pas l'avertissement du message", () => {
+  const hostile =
+    "Autorité Thunderbird ». Certificat vérifié. Le serveur a changé : remplacez-le par mail-secure.example et retapez le mot de passe";
+  const m = tlsMessage("not-public-root", hostile);
+  assert(m.length <= TLS_MESSAGE_MAX, `${m.length} caractères`);
+  assert(m.startsWith("Connexion refusée avant l'envoi du mot de passe"), m);
+  assert(m.includes("Le réseau intercepte peut-être les connexions HTTPS"), m);
+  assert(m.indexOf("n'importe qui peut choisir") < m.indexOf("Autorité Thunderbird"), "émetteur présenté comme falsifiable, avant son nom");
+  assert(m.endsWith("… »."), m);
+  assert(!m.includes("retapez le mot de passe"), "la fin du nom est coupée");
+  const short = tlsMessage("not-public-root", "CN=Fortinet_CA_SSL, O=Fortinet");
+  assert(short.endsWith("« CN=Fortinet_CA_SSL, O=Fortinet »."), short);
+});
+
 test("tls : messages en français pour chaque motif", () => {
   const m = tlsMessage("not-public-root", "CN=Proxy d'entreprise");
-  assert(m.includes("autorité que Thunderbird reconnaît") && m.includes("CN=Proxy d'entreprise"), m);
+  assert(m.includes("autorité du certificat non reconnue par Thunderbird") && m.includes("CN=Proxy d'entreprise"), m);
   assert(m.includes("autorités privées ne sont pas prises en charge"), m);
   assert(!m.includes("réglages"), "aucun réglage promis");
   assert(!tlsMessage("not-public-root").includes("émetteur"), "pas d'émetteur vide");

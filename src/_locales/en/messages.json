@@ -747,7 +747,7 @@
     }
   },
   "errorTls": {
-    "message": "Connection refused before the password was sent: the server's certificate was not accepted.",
+    "message": "Connection refused before the password was sent: the server's certificate was not accepted. The network may be intercepting HTTPS connections. Certificates from a private authority are not supported yet.",
     "description": "Engine error TLS. $REASON$: the engine's own reason, written in French (the French catalogue shows it as it is; other languages may leave it out).",
     "placeholders": {
       "reason": {
@@ -783,7 +783,7 @@
     }
   },
   "errorBusy": {
-    "message": "The server is busy, or too many connections are open. A new attempt will be made later.",
+    "message": "The server is busy, or too many connections are open.",
     "description": "Engine error BUSY. $REASON$: the engine's own reason, written in French (the French catalogue shows it as it is; other languages may leave it out).",
     "placeholders": {
       "reason": {

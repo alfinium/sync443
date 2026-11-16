@@ -35,7 +35,7 @@ import { t, uiLanguage, errorText, errorDetail, serverErrorText } from "./i18n.m
 
 const api = globalThis.browser;
 const ALARM = "sync443:";
-const PUSH_FALLBACK_MINUTES = 30; // safety net when "dès réception" is on
+const PUSH_FALLBACK_MINUTES = 30; // safety net when immediate delivery (push) is on
 const LOCAL_DELAY_MS = 3000; // local actions are sent shortly after the last one
 const STARTUP_DELAY_MS = 10_000;
 const MAX_ROUNDS = 10; // passes in a row while the server has more to send

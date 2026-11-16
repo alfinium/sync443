@@ -1,105 +1,105 @@
-# Architecture et avancement
+# Architecture and progress
 
-## Objectifs
+## Goals
 
-1. **Sécurité** : voir [SECURITE.md](SECURITE.md). Chaque règle de ce document est garantie par construction et couverte par des tests.
-2. **Intégrité** : ne jamais perdre ni détruire une donnée par erreur, ni sur le serveur ni dans Thunderbird.
-3. **Code propre à ce projet**, sous licence MIT, écrit à partir des spécifications publiques. Aucune ligne n'est reprise d'un autre projet.
-4. **Généricité** : tout serveur Exchange ActiveSync 14.x. L'authentification est conçue pour accueillir OAuth2 plus tard.
-5. **Sobriété** : des synchros proportionnelles aux changements, et aucun travail pour ce qui n'appartient pas à l'extension.
-6. **Cohabitation** : aucune interférence avec d'autres extensions, y compris d'autres clients ActiveSync.
-   - noms d'API privilégiées propres ;
-   - identifiant d'appareil propre à chaque boîte ;
-   - requêtes des autres extensions jamais interceptées.
+1. **Security:** see [SECURITY-MODEL.md](SECURITY-MODEL.md). Every rule in that document is guaranteed by construction and covered by tests.
+2. **Integrity:** never lose or destroy data by mistake, either on the server or in Thunderbird.
+3. **This project's own code**, under the MIT license, written from the public specifications. No line is taken from another project.
+4. **Genericity:** any Exchange ActiveSync 14.x server. Authentication is designed to accommodate OAuth2 later.
+5. **Efficiency:** synchronizations proportional to the changes, and no work for anything that does not belong to the extension.
+6. **Coexistence:** no interference with other extensions, including other ActiveSync clients.
+   - its own privileged API names;
+   - a device ID specific to each mailbox;
+   - other extensions' requests never intercepted.
 
-7. **Tous les systèmes** : Windows, macOS et Linux.
-   - Le code de l'extension n'utilise que des API de Thunderbird, identiques partout ; le proxy est détecté selon les réglages de chaque système.
-   - Ce qui dépend du système est traité explicitement : noms de dossiers (caractères et noms réservés de Windows, comme `CON` ou `NUL`, casse ignorée par macOS et Windows), fins de ligne (LF imposé dans le dépôt).
-   - L'outillage de développement (tests, contrôles) tourne sur les trois systèmes.
+7. **All operating systems:** Windows, macOS and Linux.
+   - The extension's code uses only Thunderbird APIs, which are the same everywhere; the proxy is detected according to each system's settings.
+   - What depends on the system is handled explicitly: folder names (Windows reserved characters and names, such as `CON` or `NUL`; case ignored by macOS and Windows), line endings (LF enforced in the repository).
+   - The development tooling (tests, checks) runs on all three systems.
 
-Thunderbird 140 ESR minimum.
+Thunderbird 140 ESR or later.
 
-## Organisation du code
+## Code layout
 
 ```
 src/
-  background.mjs          orchestration : boîtes, moteurs, minuteries, menus, bouton
-  send.mjs                envoi fermé : un message d'un compte Sync443 part par ActiveSync ou pas du tout
-  log.mjs                 journal de diagnostic (sans contenu personnel), débogage limité à une heure ; en français
-  i18n.mjs                textes de l'interface (browser.i18n) ; échecs du moteur affichés selon leur code
-  _locales/               traductions : les dix langues les plus employées dans Thunderbird, en par défaut
-  core/                   sans Thunderbird : testable seul
-    utf8.mjs, base64.mjs  encodages, sans dépendance
-    codepages.mjs         tables WBXML d'ActiveSync [MS-ASWBXML]
-    wbxml.mjs             codec WBXML plafonné, document complet obligatoire
-    sanitize.mjs          la porte unique des valeurs venues de l'extérieur
-    server.mjs            adresse du serveur, analyse stricte
-    protocol.mjs          requêtes construites à partir de valeurs vérifiées, réponses lues en objets validés
-    tls-policy.mjs        décision : ce certificat peut-il porter le mot de passe ?
-    http1.mjs             requête HTTP/1.1 formée et réponse lue par l'extension, limites strictes
-    backoff.mjs           espacement des essais
-    sha256.mjs            empreintes (Message-ID synthétiques, empreintes de messages)
-    mime.mjs              en-têtes : Message-ID strict, en-têtes internes retirés, brouillon nettoyé avant envoi
-    mail-codec.mjs        éléments de courrier ActiveSync lus en objets validés
-    folder-tree.mjs       arbre des dossiers du serveur → chemins locaux valables sur tous les systèmes
-    ical.mjs, vcard.mjs, recurrence.mjs, timezones.mjs   (étapes suivantes)
+  background.mjs          orchestration: mailboxes, engines, timers, menus, button
+  send.mjs                closed sending: a message from a Sync443 account goes through ActiveSync or not at all
+  log.mjs                 diagnostic log (no personal content), debugging limited to one hour; in French
+  i18n.mjs                interface texts (browser.i18n); engine failures shown according to their code
+  _locales/               translations: the ten languages most used in Thunderbird, en by default
+  core/                   no Thunderbird: testable on its own
+    utf8.mjs, base64.mjs  encodings, no dependencies
+    codepages.mjs         ActiveSync WBXML tables [MS-ASWBXML]
+    wbxml.mjs             bounded WBXML codec, complete document required
+    sanitize.mjs          the single gate for values coming from outside
+    server.mjs            server address, strict parsing
+    protocol.mjs          requests built from verified values, responses read into validated objects
+    tls-policy.mjs        decision: may this certificate carry the password?
+    http1.mjs             HTTP/1.1 request built and response read by the extension, strict limits
+    backoff.mjs           retry spacing
+    sha256.mjs            fingerprints (synthetic Message-IDs, message fingerprints)
+    mime.mjs              headers: strict Message-ID, internal headers removed, draft cleaned before sending
+    mail-codec.mjs        ActiveSync mail items read into validated objects
+    folder-tree.mjs       server folder tree → local paths valid on all systems
+    ical.mjs, vcard.mjs, recurrence.mjs, timezones.mjs   (later stages)
   transport/
-    client.mjs            ActiveSync sur connexion vérifiée : certificat jugé avant toute écriture, erreurs typées
+    client.mjs            ActiveSync over a verified connection: certificate assessed before any write, typed errors
   sync/
-    store.mjs             stockage versionné, enregistrements en Map
-    health.mjs            blocage après erreur grave, espacement des essais
-    mailbox.mjs           une boîte : dossiers, ordre des collections, seuils, arrêt propre
-    mail.mjs              une collection de courrier : réception, envoi des changements, reconstruction
-    journal.mjs           actions locales en attente, acquittées une à une, stockées par morceaux
-    echo.mjs              écritures de l'extension reconnues, pour ne pas les renvoyer au serveur
-    push.mjs              arrivée immédiate (Ping)
-    calendar.mjs, contacts.mjs   (étapes suivantes)
+    store.mjs             versioned storage, records in Maps
+    health.mjs            blocking after a serious error, retry spacing
+    mailbox.mjs           one mailbox: folders, collection order, thresholds, clean shutdown
+    mail.mjs              one mail collection: receiving, sending changes, rebuilding
+    journal.mjs           pending local actions, acknowledged one by one, stored in chunks
+    echo.mjs              the extension's own writes recognized, so as not to send them back to the server
+    push.mjs              immediate delivery (Ping)
+    calendar.mjs, contacts.mjs   (later stages)
   tb/
-    mail-store.mjs        écritures dans le compte Thunderbird de la boîte, et seulement lui
-    events.mjs            actions de l'utilisateur dans Thunderbird → intentions pour le journal
+    mail-store.mjs        writes to the mailbox's Thunderbird account, and to it only
+    events.mjs            user actions in Thunderbird → intents for the journal
   experiments/
-    sync443Net/           connexion vérifiée : TCP direct ou via le proxy, TLS, informations de certificat,
-                          puis seulement écriture et lecture d'octets
-    sync443Account/       comptes marqués, « Dossiers locaux » protégés, serveur d'envoi neutre,
-                          mots de passe (gestionnaire de Thunderbird)
-  options/                page de réglages
-tests/unit/               tests unitaires et aléatoires (JavaScriptCore ou Node)
-tests/e2e/                bout en bout dans un vrai Thunderbird : net (connexion), account (comptes), mail (courrier)
-tools/                    lanceur de tests (tout système), contrôles du code source et de provenance, construction du .xpi
+    sync443Net/           verified connection: direct TCP or through the proxy, TLS, certificate information,
+                          then only writing and reading bytes
+    sync443Account/       marked accounts, protected "Local Folders", neutral outgoing server,
+                          passwords (Thunderbird's password manager)
+  options/                settings page
+tests/unit/               unit and randomized tests (JavaScriptCore or Node)
+tests/e2e/                end to end in a real Thunderbird: net (connection), account (accounts), mail (mail)
+tools/                    test runner (any system), source code and provenance checks, .xpi build
 ```
 
-## Choix des éléments synchronisés
+## Choosing the items to synchronize
 
-Pour chaque boîte, l'utilisateur choisit ce qui est synchronisé : **courrier, agenda, contacts,
-tâches**. Un seul, plusieurs ou les quatre ; il en faut au moins un.
+For each mailbox, the user chooses what is synchronized: **mail, calendar, contacts,
+tasks**. One, several or all four; at least one is required.
 
-| Comportement | Détail |
+| Behavior | Detail |
 |---|---|
-| Par défaut | les quatre |
-| Ce qui n'est pas choisi | jamais demandé au serveur, ni stocké dans Thunderbird ; les dossiers correspondants sont ignorés à la liste des dossiers, et absents de la surveillance « dès réception » (Ping) |
-| Ajouter un élément | création de ce qu'il faut dans Thunderbird, puis première synchro de cet élément |
-| Retirer un élément | la synchro de cet élément s'arrête aussitôt, et les actions locales sur ses copies ne sont plus enregistrées. Prévu à l'étape 6 : après confirmation, les copies locales sont supprimées (agendas, carnets, ou compte de courrier). Rien n'est jamais touché sur le serveur. En 0.1.0, les copies locales du courrier restent en place |
-| Agenda sans courrier | à trancher à l'étape 4. Pour envoyer des invitations, Thunderbird a besoin d'une identité de messagerie, donc d'un compte : soit un compte minimal sans dossier synchronisé, soit agenda sans envoi d'invitations |
+| Default | all four |
+| What is not chosen | never requested from the server, nor stored in Thunderbird; the corresponding folders are ignored in the folder list, and left out of "As soon as mail arrives" monitoring (Ping) |
+| Adding an item | creation of what is needed in Thunderbird, then a first synchronization of that item |
+| Removing an item | the synchronization of that item stops at once, and local actions on its copies are no longer recorded. Planned for stage 6: after confirmation, the local copies are deleted (calendars, address books, or mail account). Nothing is ever touched on the server. In 0.1.0, the local mail copies stay in place |
+| Calendar without mail | to be decided in stage 4. To send invitations, Thunderbird needs a mail identity, and therefore an account: either a minimal account with no synchronized folder, or a calendar that sends no invitations |
 
-Le modèle est en place depuis l'étape 1 (`sync` dans `src/sync/store.mjs`, validé et testé pour
-les 15 combinaisons). La page de réglages le présente sous forme de cases à cocher depuis la
-0.1.0, et chaque étape de synchro le respecte : en 0.1.0, seul le courrier est synchronisé.
+The model has been in place since stage 1 (`sync` in `src/sync/store.mjs`, validated and tested for
+all 15 combinations). The settings page has presented it as check boxes since
+0.1.0, and every synchronization stage respects it: in 0.1.0, only mail is synchronized.
 
-## Étapes
+## Stages
 
-| Étape | Contenu | État |
+| Stage | Content | Status |
 |---|---|---|
-| **1. Fondations** | WBXML, validation, protocole, connexion vérifiée, HTTP/1.1, client ActiveSync, stockage, espacement des essais | **terminée** : 321 tests unitaires, 191 vérifications de bout en bout dans Thunderbird, [audit](audits/etape-1.md) fait et corrigé |
-| **2. Code privilégié** | comptes marqués, « Dossiers locaux » protégés, serveur d'envoi neutre, mots de passe, identité | **terminée** (API agenda reportée à l'étape 4) : 335 vérifications de bout en bout dans Thunderbird |
-| **3. Courrier** | identité des messages par Message-ID et empreinte, suppressions avec filet, seuil de suppression en masse, verrou par boîte, journal des modifications acquittées, envoi fermé, archives ; noms de dossiers valables sur Windows, macOS et Linux | **terminée** : 719 tests unitaires, 158 vérifications de bout en bout du courrier dans Thunderbird, [audit](audits/etape-2-3.md) fait et corrigé ; publiée en 0.1.0 |
-| **4. Agenda et tâches** | iCalendar écrit par l'extension, récurrence bornée, fuseaux, invitations confirmées | à faire |
-| **5. Contacts** | vCard écrit par l'extension, carnets marqués | à faire |
-| **6. Finition** | assistant, réglages avancés (dont l'épinglage d'une autorité privée), suppression des copies locales d'un élément décoché, validation sur serveurs réels | à faire (page de réglages, cases à cocher et journal livrés dès la 0.1.0) |
+| **1. Foundations** | WBXML, validation, protocol, verified connection, HTTP/1.1, ActiveSync client, storage, retry spacing | **done**: 321 unit tests, 191 end-to-end checks in Thunderbird, [audit](audits/stage-1.md) carried out and addressed |
+| **2. Privileged code** | marked accounts, protected "Local Folders", neutral outgoing server, passwords, identity | **done** (calendar API postponed to stage 4): 335 end-to-end checks in Thunderbird |
+| **3. Mail** | message identity by Message-ID and fingerprint, deletions with a safety net, mass-deletion threshold, per-mailbox lock, local change journal, closed sending, archives; folder names valid on Windows, macOS and Linux | **done**: 722 unit tests, 158 end-to-end mail checks in Thunderbird, [audit](audits/stages-2-3.md) carried out and addressed; published in 0.1.0 |
+| **4. Calendar and tasks** | iCalendar written by the extension, bounded recurrence, time zones, confirmed invitations | to do |
+| **5. Contacts** | vCard written by the extension, marked address books | to do |
+| **6. Finishing** | wizard, advanced settings (including pinning a private certificate authority), deletion of the local copies of an unchecked item, validation on real servers | to do (settings page, check boxes and log delivered as early as 0.1.0) |
 
-## Méthode, à chaque étape
+## Method, at each stage
 
-1. **Écriture en parallèle**, chaque fichier ayant un seul auteur à la fois.
-2. **Tests unitaires et aléatoires** ; tests de bout en bout dès qu'il y a une extension à charger.
-3. **Audit de sécurité indépendant** par des relecteurs qui n'ont pas écrit le code. Chaque constat est vérifié, corrigé, puis couvert par un test.
-4. **Contrôles automatiques** : caractères invisibles refusés, provenance du code vérifiée.
-5. **Avant chaque publication** : recherche de secrets, relecture des documents.
+1. **Parallel writing**, each file having a single author at a time.
+2. **Unit and randomized tests**; end-to-end tests as soon as there is an extension to load.
+3. **Independent security audit** by reviewers who did not write the code. Each finding is verified, fixed, then covered by a test.
+4. **Automated checks:** invisible characters rejected, code provenance verified.
+5. **Before each release:** search for secrets, review of the documents.

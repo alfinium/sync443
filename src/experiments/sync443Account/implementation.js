@@ -95,7 +95,7 @@
  * operations. Thunderbird may spin its event loop inside some calls; a
  * second call made meanwhile still waits for the first to finish.
  *
- * Every refusal is an ExtensionError "CODE: raison":
+ * Every refusal is an ExtensionError "CODE: reason":
  *   CONFIG       invalid argument
  *   PERMISSION   not the background page, or an account the extension did
  *                not mark, or "Local Folders"

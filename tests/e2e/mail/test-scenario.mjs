@@ -406,7 +406,7 @@ async function phase1() {
   await check("après ces refus : aucun compte Thunderbird créé", accountsAfter.length === accountsBefore.length, accountsAfter);
   await check("après ces refus : aucun mot de passe enregistré", !(await sync443Logins(origin)).length);
 
-  // A: "dès réception", the four kinds checked.
+  // A: immediate delivery (push), the four kinds checked.
   const t0 = Date.now();
   const resA = await ctx.saveMailbox(A_IN, E.alice.password);
   const A = await mailboxById(resA.id);
@@ -1041,7 +1041,7 @@ async function phase3() {
     const stillAccount = await T.inspect(A.accountKey);
     if (stillAccount) {
       await gap(
-        "courrier décoché : le compte de courrier local de A (et ses messages) reste en place ; ARCHITECTURE.md « Retirer un élément » prévoit sa suppression après confirmation, non faite dans cette version",
+        "courrier décoché : le compte de courrier local de A (et ses messages) reste en place ; ARCHITECTURE.md « Removing an item » prévoit sa suppression après confirmation, non faite dans cette version",
         { accountKey: A.accountKey, folders: stillAccount.folders.length },
       );
     }
@@ -1183,7 +1183,7 @@ async function periodChange(A) {
   const restarted = syncs.some((x) => (x.collections ?? []).some(([cid, key]) => cid && key === "0"));
   await check("serveur qui repart de zéro quand la période change (statut 3) : resynchronisation complète, sans erreur, journal vide", restarted && r.ok, { restarted, ...outcome(r) });
   // The message moved to a local-only folder (phase 1, step 7) kept its server copy: a full resync
-  // brings it back to the Inbox (accepted, docs/audits/etape-2-3.md). Nothing else may change.
+  // brings it back to the Inbox (accepted, docs/audits/stages-2-3.md). Nothing else may change.
   const keptOnServer = withSubject(await localMessages(A.accountKey, "/Templates"), S.toLocalOnly).length > 0;
   const withKept = local.map(([path, n, twice, list]) =>
     path === "/Inbox" && keptOnServer ? [path, n + 1, twice, [...list, S.toLocalOnly].sort()] : [path, n, twice, list]);
@@ -1201,7 +1201,7 @@ async function periodChange(A) {
   );
   if (back) {
     await gap(
-      "resynchronisation complète : le message déplacé vers un dossier purement local (/Templates) revient aussi dans la boîte de réception, sa copie étant restée sur le serveur (écart accepté, docs/audits/etape-2-3.md)",
+      "resynchronisation complète : le message déplacé vers un dossier purement local (/Templates) revient aussi dans la boîte de réception, sa copie étant restée sur le serveur (écart accepté, docs/audits/stages-2-3.md)",
       { subject: S.toLocalOnly },
     );
   }

@@ -2,8 +2,8 @@
 // Copyright (c) 2026 alfinium
 
 /**
- * Fail-closed sending (docs/CONCEPTION-COURRIER.md, "envoi fermé";
- * docs/SECURITE.md, rule 12).
+ * Fail-closed sending (docs/MAIL-DESIGN.md, "closed sending";
+ * docs/SECURITY-MODEL.md, rule 12).
  *
  * For an identity of an account this extension created (marked, see
  * experiments/sync443Account), Thunderbird's own sending is ALWAYS
@@ -415,7 +415,7 @@ function explain(e) {
   const text = code === "UNKNOWN" ? "" : errorText({ code, message: e?.message, key: e?.key }, "sendReasonUnexpected");
   const reason = text ? sentence(text) : t("sendReasonUnexpected");
   // "Identifiant refusé…" reads "Message non envoyé : identifiant refusé…"; "SendMail : …" stays as it is.
-  // Only in languages whose catalogue says so: a German noun, for one, keeps its capital.
+  // Only in languages whose catalog says so: a German noun, for one, keeps its capital.
   const lower = t("sendReasonLowercase") === "yes" && /^\p{Lu}\p{Ll}*(?![\p{L}\d])/u.test(reason);
   return { code, uncertain: false, reason: lower ? reason.charAt(0).toLowerCase() + reason.slice(1) : reason };
 }

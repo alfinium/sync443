@@ -596,7 +596,7 @@
     }
   },
   "errorTls": {
-    "message": "Verbindung vor dem Senden des Passworts abgelehnt: Das Zertifikat des Servers wurde nicht akzeptiert.",
+    "message": "Verbindung vor dem Senden des Passworts abgelehnt: Das Zertifikat des Servers wurde nicht akzeptiert. Möglicherweise werden HTTPS-Verbindungen im Netzwerk abgefangen. Zertifikate einer privaten Zertifizierungsstelle werden noch nicht unterstützt.",
     "placeholders": {
       "reason": {
         "content": "$1"
@@ -628,7 +628,7 @@
     }
   },
   "errorBusy": {
-    "message": "Der Server ist ausgelastet, oder es sind zu viele Verbindungen geöffnet. Später wird ein neuer Versuch unternommen.",
+    "message": "Der Server ist ausgelastet, oder es sind zu viele Verbindungen geöffnet.",
     "placeholders": {
       "reason": {
         "content": "$1"

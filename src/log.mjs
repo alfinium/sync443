@@ -4,7 +4,7 @@
 /**
  * The extension's own log, shown in the settings page ("Diagnostic").
  *
- * Privacy first (docs/SECURITE.md, rule 13):
+ * Privacy first (docs/SECURITY-MODEL.md, rule 13):
  *  - messages are short French sentences written by the extension. Callers
  *    never put message content, subjects, addresses or names in them; this
  *    module cannot tell, but it caps every entry and strips control,

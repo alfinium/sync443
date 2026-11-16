@@ -37,6 +37,7 @@ import json
 import os
 import re
 import sys
+import unicodedata
 import zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -71,6 +72,23 @@ EXTERNAL = re.compile(r"^(?:[a-z][a-z0-9+.-]*:|//|#)", re.I)
 LOCALES = "_locales"
 LOCALE_FILE = re.compile(r"^_locales/([a-z]{2,3}(?:_[A-Z]{2})?)/messages\.json$")
 MESSAGE_NAME = re.compile(r"^[A-Za-z0-9_@]+$")
+# Spaces a message may contain: the ordinary space, and the no-break spaces of French and Japanese typography.
+MESSAGE_SPACES = {chr(0x20), chr(0xA0), chr(0x202F), chr(0x3000)}
+MESSAGE_LINK = re.compile(r"://|\b(?:javascript|data|vbscript):", re.IGNORECASE)
+
+
+def unsafe_message(text):
+    """Why a translated message may not be shown as text, or None: a character that is not visible
+    text (controls, format and bidirectional marks, other spaces, private or unassigned), markup, a link."""
+    for ch in text:
+        category = unicodedata.category(ch)
+        if category[0] == "C" or category in ("Zl", "Zp") or (category == "Zs" and ch not in MESSAGE_SPACES):
+            return f"caractère non visible U+{ord(ch):04X}"
+    if "<" in text or ">" in text:
+        return "balise (< ou >)"
+    if MESSAGE_LINK.search(text):
+        return "lien"
+    return None
 MANIFEST_MESSAGE = re.compile(r"__MSG_([A-Za-z0-9_@]+)__")
 
 
@@ -239,18 +257,24 @@ def check_locales(files, manifest):
             continue
         messages = {}
         placeholders = {}
+        names = {}  # lower case → name as written: Thunderbird keeps only one of two names differing by case
         for key, entry in data.items():
             text = entry.get("message") if isinstance(entry, dict) else None
             if not MESSAGE_NAME.match(key):
                 problems.append(f"src/{arc} : nom de message invalide : {key!r}")
+            elif key.lower() in names:
+                problems.append(f"src/{arc} : noms de message identiques à la casse près : {names[key.lower()]}, {key}")
             elif not isinstance(text, str) or not text.strip():
                 problems.append(f"src/{arc} : message vide ou absent : {key}")
+            elif unsafe_message(text):
+                problems.append(f"src/{arc} : {key} : {unsafe_message(text)}")
             else:
                 messages[key.lower()] = text
                 found = entry.get("placeholders") or {}
                 placeholders[key.lower()] = {
                     str(name).lower(): (p.get("content") if isinstance(p, dict) else None) for name, p in found.items()
                 } if isinstance(found, dict) else None
+            names.setdefault(key.lower(), key)
         catalogues[m.group(1)] = messages
         shapes[m.group(1)] = placeholders
 

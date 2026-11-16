@@ -15,6 +15,8 @@ import sys
 BAD = set(range(0x00, 0x20)) - {0x09, 0x0A, 0x0D}
 BAD |= {0x7F, 0x00AD, 0x061C, 0x180E, 0x2028, 0x2029, 0x2060, 0xFEFF}
 BAD |= set(range(0x80, 0xA0)) | set(range(0x200B, 0x2010)) | set(range(0x202A, 0x202F)) | set(range(0x2066, 0x206A))
+# Invisible operators, the combining grapheme joiner, Hangul fillers, interlinear annotations, tags.
+BAD |= {0x034F, 0x115F, 0x1160, 0x3164, 0xFFA0} | set(range(0x2061, 0x2065)) | set(range(0xFFF9, 0xFFFC)) | set(range(0xE0000, 0xE0080))
 EXTENSIONS = (".mjs", ".js", ".json", ".py", ".sh", ".html", ".css", ".md")
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
