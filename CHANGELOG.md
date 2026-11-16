@@ -7,6 +7,59 @@ One section per published version, most recent first. The section of a version s
 release notes of its `.xpi` file on the [Releases](https://github.com/alfinium/sync443/releases)
 page.
 
+## 0.3.0
+
+Calendars, tasks and meeting invitations. Verified on Thunderbird 140.17 ESR and Thunderbird 160.
+
+### New
+
+- **Calendar and tasks,** synchronized in both directions and shown in Thunderbird's own Calendar
+  and Tasks tabs: recurring series and their exceptions, time zones, reminders, categories,
+  free/busy status and privacy; for tasks, dates, completion, priority and reminder.
+- **Invitations received:** accepting, accepting tentatively or declining in Thunderbird is
+  recorded on the server. A reply goes to the organizer only when you choose to send one.
+- **Meetings you organize:** invitations, updates and cancellations are sent to the attendees you
+  chose, each one after you confirm it in a Sync443 window that shows the sending address and
+  every recipient. A meeting has at most 100 attendees.
+- **Settings, for each mailbox:** the calendar period to keep (2 weeks, 1 month, 3 months,
+  6 months or all; future events are always kept) and the tasks to synchronize (all, or
+  incomplete only).
+- Immediate delivery (push) also covers calendar and task folders.
+- Unchecking calendar or tasks, or removing a mailbox, removes its calendars from Thunderbird
+  after confirmation. Nothing is deleted on the server.
+- Every new text is available in the ten interface languages.
+
+### Security
+
+- Every meeting message goes through ActiveSync. Thunderbird never sends one by SMTP for a Sync443
+  calendar, and no message is sent because of a change coming from the server.
+- A large number of deletions requested by the server at once is applied only after your
+  confirmation, for events and tasks as for messages.
+- A server failure never undoes your changes: they wait and are sent again. A new item the server
+  finally refuses stays in Thunderbird as a local copy, with a notification saying why.
+- Items that cannot be edited without loss are read-only in Thunderbird.
+- Six security rules added (20 to 25 of [docs/SECURITY-MODEL.md](docs/SECURITY-MODEL.md)).
+  Security audit of the stage: [docs/audits/stage-4.md](docs/audits/stage-4.md).
+
+### Known limits
+
+- Proposing a new time, forwarding an invitation, attachments of events and free/busy lookup are
+  not supported.
+- With ActiveSync 12.1 and 14.0, answering an invitation requires mail to be synchronized for
+  that mailbox.
+- A monthly repetition on day 29, 30 or 31 skips shorter months in Thunderbird, where the server
+  uses their last day.
+- Contacts are not synchronized yet.
+
+### Development
+
+- New unit tests for conversion, the engine, meeting messages and the confirmation window.
+- `tests/e2e/calendar/run_calendar_test.py`: the calendar module, in Thunderbird.
+- `tests/e2e/mail/run_calendar_sync_test.py`: calendar, tasks and meetings end to end, against the
+  simulated ActiveSync server.
+- The documents in `docs/` are now all in English; design:
+  [docs/CALENDAR-DESIGN.md](docs/CALENDAR-DESIGN.md).
+
 ## 0.2.0
 
 The interface is now available in ten languages. Verified on Thunderbird 140.17 ESR and

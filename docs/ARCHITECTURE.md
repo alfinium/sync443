@@ -108,7 +108,7 @@ all 15 combinations). The settings page has presented it as check boxes since
 | **1. Foundations** | WBXML, validation, protocol, verified connection, HTTP/1.1, ActiveSync client, storage, retry spacing | **done**: 321 unit tests, 191 end-to-end checks in Thunderbird, [audit](audits/stage-1.md) carried out and addressed |
 | **2. Privileged code** | marked accounts, protected "Local Folders", neutral outgoing server, passwords, identity | **done** (calendar API postponed to stage 4): 335 end-to-end checks in Thunderbird |
 | **3. Mail** | message identity by Message-ID and fingerprint, deletions with a safety net, mass-deletion threshold, per-mailbox lock, local change journal, closed sending, archives; folder names valid on Windows, macOS and Linux | **done**: 722 unit tests, 158 end-to-end mail checks in Thunderbird, [audit](audits/stages-2-3.md) carried out and addressed; published in 0.1.0 |
-| **4. Calendar and tasks** | iCalendar written by the extension, bounded recurrence, time zones, confirmed invitations | to do |
+| **4. Calendar, tasks and meetings** | Sync443's own calendar type, items built from validated descriptions, bounded recurrence, time zones, meeting messages through ActiveSync after confirmation | **done**: 1337 unit tests, 693 end-to-end checks of the calendar module and 303 of the calendar scenario in Thunderbird, [audit](audits/stage-4.md) carried out and addressed; version 0.3.0 |
 | **5. Contacts** | vCard written by the extension, marked address books | to do |
 | **6. Finishing** | wizard, advanced settings (including pinning a private certificate authority), deletion of the local copies of an unchecked item, validation on real servers | to do (settings page, check boxes and log delivered as early as 0.1.0) |
 
