@@ -30,8 +30,8 @@ manifeste (`src/manifest.json`) ; toute autorisation ajoutée doit y être justi
 Pour une identité d'un compte Sync443, le message enregistré en brouillon est envoyé tel quel au
 serveur ActiveSync (commande `SendMail`), sans les en-têtes internes de Thunderbird. ActiveSync n'a
 pas d'enveloppe : l'en-tête `Bcc` (copie cachée) voyage dans le message jusqu'au serveur, qui en
-tire les destinataires et le retire avant la remise, comme le font Exchange et SOGo. Sync443 ne
-peut pas le retirer lui-même sans perdre ces destinataires.
+tire les destinataires et le retire avant la remise, comme le fait Exchange. Sync443 ne peut pas
+le retirer lui-même sans perdre ces destinataires.
 
 Un message pour lequel la signature ou le chiffrement (OpenPGP, S/MIME) est demandé, ou dont l'état
 ne peut pas être vérifié, n'est pas envoyé : Thunderbird signe et chiffre au moment de son propre

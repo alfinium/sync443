@@ -47,9 +47,8 @@ Vérifiée sur Thunderbird 140.17 ESR et Thunderbird 160.
 - Le journal ne contient ni contenu de message, ni objet, ni adresse. Le débogage s'arrête seul au
   bout d'une heure.
 - **Copie cachée (Cci) :** ActiveSync n'a pas d'enveloppe. L'en-tête `Bcc` part donc avec le
-  message jusqu'au serveur, qui en tire les destinataires et le retire avant la remise (c'est le
-  comportement d'Exchange et de SOGo). Sync443 ne peut pas le retirer lui-même sans perdre ces
-  destinataires.
+  message jusqu'au serveur, qui en tire les destinataires et le retire avant la remise, comme le
+  fait Exchange. Sync443 ne peut pas le retirer lui-même sans perdre ces destinataires.
 - Aucune télémétrie.
 
 ### Limites connues

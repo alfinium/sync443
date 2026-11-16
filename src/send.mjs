@@ -42,7 +42,7 @@
  *
  * Bcc: ActiveSync has no envelope. The Bcc header travels inside the MIME
  * message to the server, which takes the recipients from To, Cc and Bcc and
- * removes Bcc before delivery (as Exchange and SOGo do). Sync443 cannot
+ * removes Bcc before delivery (as Exchange does). Sync443 cannot
  * remove it itself without losing those recipients.
  */
 

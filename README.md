@@ -2,199 +2,125 @@
 
 [![Tests](https://github.com/alfinium/sync443/actions/workflows/tests.yml/badge.svg)](https://github.com/alfinium/sync443/actions/workflows/tests.yml)
 
-Extension qui apporte à Thunderbird la prise en charge native d'**Exchange ActiveSync**. Un compte
-ActiveSync s'y utilise comme n'importe quel autre compte, sans passerelle intermédiaire, avec tout
-serveur ou produit qui propose ce protocole : SOGo (et donc mailcow), Exchange Server, grommunio,
-Z-Push, etc.
+Sync443 est une extension pour Thunderbird qui prend en charge nativement le protocole
+**Exchange ActiveSync** (EAS). Chaque boîte ActiveSync devient un compte Thunderbird à part
+entière, sans passerelle ni configuration IMAP ou SMTP : tous les échanges passent par une
+connexion HTTPS vers le serveur.
 
-Courrier, dossiers, envoi, agenda, contacts et tâches, dans les deux sens, pour autant de boîtes
-que nécessaire. Comme le prévoit ActiveSync, tout passe par une connexion HTTPS vers le serveur :
-ni IMAP ni SMTP à configurer. Windows, macOS et Linux.
-
-> **État : version 0.1.0, le courrier.** Boîtes, dossiers, messages et envoi sont pris en charge,
-> testés et audités. L'agenda, les contacts et les tâches suivront (étapes 4 et 5). Le fichier
-> `.xpi` se trouve dans les [Releases](https://github.com/alfinium/sync443/releases) ;
-> l'avancement est suivi dans [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-## Sommaire
-
-- [Fonctions](#fonctions)
-- [Compatibilité](#compatibilité)
-- [Installation](#installation)
-- [Configuration](#configuration)
-- [Réseau et proxy](#réseau-et-proxy)
-- [Sécurité](#sécurité)
-- [Vie privée](#vie-privée)
-- [Développement](#développement)
-- [Licence](#licence)
+**Version actuelle : 0.1.0.** Elle prend en charge le courrier : dossiers, messages et envoi.
+L'agenda, les tâches et les contacts sont prévus dans les versions suivantes
+([feuille de route](docs/ARCHITECTURE.md)).
 
 ## Fonctions
 
-| Fonction | État |
+| Fonction | Disponibilité |
 |---|---|
-| Connexion vérifiée (certificat contrôlé avant tout envoi), proxy détecté automatiquement | 0.1.0 |
-| Protocole ActiveSync 12.1 à 14.1, négociation des règles du serveur, effacement à distance toujours refusé | 0.1.0 |
-| Comptes Thunderbird dédiés, mots de passe dans le gestionnaire de Thunderbird | 0.1.0 |
-| Plusieurs boîtes, configuration en quelques champs | 0.1.0 |
-| Choix, pour chaque boîte, des éléments à synchroniser : courrier, agenda, contacts, tâches (un, plusieurs ou les quatre) | 0.1.0 (seul le courrier est synchronisé pour l'instant) |
-| Courrier : dossiers, messages, lu / drapeau / déplacement / suppression dans les deux sens | 0.1.0 |
-| Arrivée immédiate des messages (« push »), ou actualisation périodique | 0.1.0 |
-| Envoi par ActiveSync, copie dans les Envoyés du serveur | 0.1.0 |
-| Bouton « Synchroniser », page de réglages, journal de diagnostic | 0.1.0 |
-| Agenda et tâches, réunions et invitations | étape 4 |
-| Contacts | étape 5 |
-| Finitions (assistant, réglages avancés) | étape 6 |
+| Courrier : dossiers, messages, états lu et suivi, déplacements et suppressions, dans les deux sens | 0.1.0 |
+| Réception immédiate ou synchronisation périodique | 0.1.0 |
+| Envoi par ActiveSync, avec copie dans les éléments envoyés du serveur | 0.1.0 |
+| Plusieurs boîtes ; choix, pour chacune, des éléments synchronisés | 0.1.0 (courrier seulement) |
+| Page de réglages, synchronisation manuelle, journal de diagnostic | 0.1.0 |
+| Agenda, tâches et invitations | prévu |
+| Contacts | prévu |
 
 ## Compatibilité
 
-- **Thunderbird :** 140 ESR et versions suivantes. Vérifiée sur Thunderbird 140.17 ESR et 160.
-- **Systèmes :** Windows, macOS et Linux.
-- **Serveurs :** tout serveur Exchange ActiveSync 12.1 à 14.1 qui accepte l'authentification par
-  identifiant et mot de passe. Par exemple :
-  - SOGo (dont mailcow) ;
-  - Exchange Server installé sur site ;
-  - grommunio ;
-  - Z-Push.
-- **Non pris en charge :**
-  - **Microsoft 365 / Exchange Online :** ActiveSync y exige OAuth2, qui n'est pas encore géré.
-  - **Proxy d'entreprise exigeant sa propre authentification :** l'extension le signale et n'envoie rien.
+| | |
+|---|---|
+| Thunderbird | 140 ESR et versions ultérieures (vérifiée sur 140.17 ESR et 160) |
+| Systèmes | Windows, macOS, Linux |
+| Serveurs | Exchange Server sur site, et tout serveur Exchange ActiveSync 12.1 à 14.1 acceptant l'authentification par identifiant et mot de passe |
+| Non pris en charge | Microsoft 365 / Exchange Online (OAuth2) ; proxy exigeant sa propre authentification ; certificat émis par une autorité privée |
 
 ## Installation
 
-1. Télécharger le fichier `sync443-<version>.xpi` depuis les
+1. Télécharger `sync443-<version>.xpi` depuis les
    [Releases](https://github.com/alfinium/sync443/releases).
 2. Dans Thunderbird : **Outils → Modules complémentaires et thèmes**, roue dentée,
-   **Installer un module depuis un fichier…**, choisir le fichier.
-3. Accepter les autorisations demandées. Le détail de chacune est dans
-   [docs/PERMISSIONS.md](docs/PERMISSIONS.md). L'accès au réseau n'est demandé qu'au moment
-   d'ajouter une boîte, et pour son seul serveur.
+   **Installer un module depuis un fichier…**.
+3. Accepter les autorisations demandées ([détail](docs/PERMISSIONS.md)). L'accès au réseau n'est
+   demandé qu'à l'ajout d'une boîte, et pour son seul serveur.
 
-L'extension n'est pas encore signée par Mozilla : Thunderbird l'installe depuis un fichier, sans
-passer par addons.thunderbird.net.
+L'extension n'est pas encore distribuée sur addons.thunderbird.net.
 
-**Vérifier le fichier téléchargé (facultatif) :** chaque version est construite par GitHub à
-partir du dépôt, de façon reproductible.
-- Son empreinte est publiée à côté, dans `SHA256SUMS.txt`.
-- Sa provenance est signée : `gh attestation verify sync443-<version>.xpi --repo alfinium/sync443`
-  confirme qu'il a été construit par ce dépôt.
-- `python3 -I tools/build_xpi.py` reconstruit le même fichier à partir des sources de l'étiquette
-  correspondante.
+Chaque fichier publié est construit par GitHub Actions, de façon reproductible. Il peut être
+vérifié :
+- par son empreinte, publiée dans `SHA256SUMS.txt` ;
+- par son attestation de provenance :
+  `gh attestation verify sync443-<version>.xpi --repo alfinium/sync443` ;
+- en le reconstruisant à partir de l'étiquette correspondante : `python3 -I tools/build_xpi.py`.
 
 ## Configuration
 
-Ouvrir les réglages par **Outils → Réglages de Sync443…** (ou par le bouton **Synchroniser** de
-la barre d'outils, tant qu'aucune boîte n'est configurée), puis **Ajouter une boîte**. Pour chaque
-boîte, il suffit de renseigner :
-- l'adresse e-mail et le mot de passe (et l'identifiant de connexion, s'il diffère de l'adresse) ;
-- le nom de la boîte, tel qu'il apparaîtra dans Thunderbird ;
-- le serveur (par exemple `mail.exemple.com`, sans `/Microsoft-Server-ActiveSync`) ;
-- **les éléments à synchroniser :** courrier, agenda, contacts, tâches. Un seul, plusieurs ou les
-  quatre. Ce qui n'est pas coché n'est jamais téléchargé. Dans la version 0.1.0, seul le courrier
-  est synchronisé ; les autres choix sont enregistrés pour les versions suivantes ;
-- la fréquence de synchronisation (dès réception, ou toutes les N minutes) ;
-- la période de courrier à synchroniser.
+**Outils → Réglages de Sync443… → Ajouter une boîte**, puis renseigner :
+- l'adresse électronique, le mot de passe et, s'il diffère de l'adresse, l'identifiant de
+  connexion ;
+- le nom du compte dans Thunderbird ;
+- le serveur, sous la forme `mail.exemple.com` ;
+- les éléments à synchroniser : courrier, agenda, contacts, tâches ;
+- la fréquence de synchronisation et la période de courrier conservée.
 
-Les réglages vérifient la connexion (serveur, certificat, mot de passe) avant d'enregistrer quoi
-que ce soit. Chaque boîte devient un compte Thunderbird à part, avec ses dossiers ; ses messages
-partent par ActiveSync, jamais par un autre serveur d'envoi.
+La connexion (serveur, certificat, identifiants) est vérifiée avant tout enregistrement. Lorsque
+le serveur le permet, l'emploi d'un mot de passe d'application réservé à ActiveSync est
+recommandé.
 
-**Conseil :** si le serveur le permet (c'est le cas de mailcow), utilisez un **mot de passe
-d'application** réservé à ActiveSync. Il se révoque seul et n'ouvre pas tout le compte.
+## Réseau
 
-## Réseau et proxy
-
-Rien à configurer : l'extension demande à Thunderbird quel chemin il emprunterait pour joindre le
-serveur, selon ses réglages ou ceux du système.
-
-| Situation | Comportement |
-|---|---|
-| Connexion directe | connexion chiffrée ouverte par l'extension |
-| Proxy SOCKS | traversé, chiffrement de bout en bout |
-| Proxy HTTP | tunnel `CONNECT` ouvert par l'extension, chiffrement de bout en bout |
-| Proxy qui déchiffre le HTTPS | détecté, connexion refusée avant tout envoi |
-| Proxy exigeant une authentification | non pris en charge, signalé |
-| Portail captif (Wi-Fi public) | connexion refusée tant que le portail intercepte, reprise automatique ensuite |
+Aucun réglage n'est nécessaire. L'extension emprunte le chemin que Thunderbird utiliserait :
+connexion directe, proxy HTTP ou proxy SOCKS, selon ses réglages ou ceux du système. Le
+chiffrement reste de bout en bout. Un proxy qui déchiffre le trafic HTTPS est détecté, et la
+connexion est refusée avant tout envoi.
 
 ## Sécurité
 
-Le modèle de sécurité complet est décrit dans [docs/SECURITE.md](docs/SECURITE.md). L'essentiel :
+- Le certificat du serveur est vérifié avant l'envoi de toute donnée, sur la connexion même qui
+  porte les identifiants. Une exception de sécurité de Thunderbird ne suffit pas.
+- Le mot de passe n'est transmis qu'au serveur pour lequel il a été saisi. Aucune redirection
+  n'est suivie.
+- Toute demande d'effacement à distance est refusée.
+- Les données reçues du serveur sont validées et bornées avant usage.
+- Après un refus d'authentification, aucune nouvelle tentative automatique n'a lieu.
 
-- **Le mot de passe ne part que vers le serveur pour lequel il a été saisi.** Aucune redirection
-  n'est suivie, et changer de serveur oblige à retaper le mot de passe.
-- **Le certificat est contrôlé avant le moindre octet de requête**, sur la connexion même qui
-  portera le mot de passe. Il doit être émis par une autorité publique reconnue par Thunderbird
-  (comme Let's Encrypt). Approuver une autorité privée pour un serveur donné viendra dans une
-  version suivante.
-  - Une interception est refusée avant que rien ne soit envoyé.
-  - Une connexion qui ne passe que par une exception de sécurité est refusée aussi.
-- **Un effacement à distance demandé par le serveur est toujours refusé.**
-- **Tout ce qui vient du serveur est validé et plafonné** avant usage.
-- **Les erreurs ne s'acharnent pas.** Après un mot de passe refusé, plus aucune tentative
-  automatique ; les autres erreurs espacent les essais.
+ActiveSync repose le plus souvent sur l'authentification « Basic », où le mot de passe accompagne
+chaque requête. Ce risque est réduit par les mesures ci-dessus et par l'emploi d'un mot de passe
+d'application.
 
-**Limite connue :** ActiveSync, tel que la plupart des serveurs le proposent, n'accepte que
-l'authentification « Basic », où le mot de passe accompagne chaque requête. Les mesures ci-dessus
-en réduisent le risque, et un mot de passe d'application le limite encore.
-
-**Audits :** chaque étape se termine par un audit de sécurité indépendant. Voir
-[docs/audits/](docs/audits/).
-
-**Signaler une vulnérabilité :** voir [SECURITY.md](SECURITY.md). Pas de ticket public, s'il vous plaît.
+Modèle de sécurité : [docs/SECURITE.md](docs/SECURITE.md). Audits : [docs/audits/](docs/audits/).
+Signalement d'une vulnérabilité : [SECURITY.md](SECURITY.md).
 
 ## Vie privée
 
-- Aucune télémétrie, aucune statistique.
-- Le seul serveur contacté est le serveur ActiveSync configuré.
-- Seuls les éléments choisis (courrier, agenda, contacts, tâches) sont téléchargés.
-- Les mots de passe sont rangés dans le gestionnaire de mots de passe de Thunderbird. Pensez à
-  activer son mot de passe principal.
-- Le journal de l'extension ne contient pas de contenu personnel (ni objet, ni adresse, ni texte).
+Aucune télémétrie. Seul le serveur ActiveSync configuré est contacté, et seuls les éléments
+choisis sont téléchargés. Les mots de passe sont conservés dans le gestionnaire de mots de passe
+de Thunderbird. Le journal de diagnostic ne contient ni contenu, ni objet, ni adresse.
 
 ## Développement
 
-### Prérequis
-
-| Outil | Rôle |
-|---|---|
-| Python 3.9 ou plus récent | lanceurs de tests et contrôles |
-| Node.js 18 ou plus récent | tests unitaires (sous macOS, le moteur JavaScript intégré suffit) |
-| Thunderbird 140 ou plus récent | tests de bout en bout (connexion, comptes, courrier) |
-
-### Commandes
-
-Sous Windows, remplacer `python3` par `py -3`.
+Prérequis : Python 3.9 ou ultérieur ; Node.js 18 ou ultérieur (sous macOS, le moteur JavaScript
+du système suffit) ; Thunderbird 140 ou ultérieur pour les tests de bout en bout. Sous Windows,
+remplacer `python3` par `py -3`.
 
 | Commande | Rôle |
 |---|---|
-| `python3 -I tools/unit_tests.py` | tests unitaires et aléatoires du cœur |
-| `python3 -I tests/e2e/net/run_net_test.py` | connexion vérifiée dans un vrai Thunderbird, sans interface, avec un profil jetable |
-| `python3 -I tests/e2e/account/run_account_test.py` | comptes, « Dossiers locaux », serveur d'envoi neutre et mots de passe, dans un vrai Thunderbird |
-| `python3 -I tests/e2e/mail/run_mail_test.py` | courrier de bout en bout contre un faux serveur ActiveSync en TLS : boîtes, dossiers, messages, envoi, archivage, redémarrage, suppression d'une boîte (`--no-server-archives` : serveur sans dossier « Archives ») |
-| `python3 -I tools/build_xpi.py` | construit `dist/sync443-<version>.xpi`, de façon reproductible ; refuse tout fichier de test |
-| `python3 -I tools/check_source_chars.py` | refuse les caractères invisibles ou bidirectionnels dans le code |
-| `python3 -I tools/provenance_check.py --ref <dossier>` | vérifie qu'aucun code d'un projet tiers n'a été repris |
+| `python3 -I tools/unit_tests.py` | tests unitaires |
+| `python3 -I tests/e2e/net/run_net_test.py` | tests de bout en bout : connexion |
+| `python3 -I tests/e2e/account/run_account_test.py` | tests de bout en bout : comptes et mots de passe |
+| `python3 -I tests/e2e/mail/run_mail_test.py` | tests de bout en bout : courrier, contre un serveur ActiveSync simulé |
+| `python3 -I tools/build_xpi.py` | construction reproductible de `dist/sync443-<version>.xpi` |
+| `python3 -I tools/check_source_chars.py` | refus des caractères invisibles ou bidirectionnels |
+| `python3 -I tools/provenance_check.py --ref <dossier>` | contrôle de l'absence de code repris d'un autre projet |
 
-Les tests de bout en bout trouvent Thunderbird seuls, ou par la variable `THUNDERBIRD`. Ils
-utilisent un profil jetable et ne touchent jamais le profil de l'utilisateur.
+Les tests de bout en bout utilisent un profil jetable. Le chemin de Thunderbird peut être indiqué
+par la variable `THUNDERBIRD`.
 
-Les tests unitaires tournent automatiquement sous Windows, macOS et Linux à chaque envoi sur GitHub.
-
-### Organisation et méthode
-
-L'organisation du code, les étapes et la méthode sont décrites dans
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Quelques règles :
-
-- **Le code est écrit à partir des spécifications publiques :**
-  - Microsoft [MS-ASCMD], [MS-ASWBXML], [MS-ASPROV], [MS-ASHTTP], [MS-ASDTYPE], [MS-ASCAL], [MS-ASCNTC], [MS-ASTASK] ;
-  - IETF RFC 9110 et 9112 (HTTP), RFC 5545 (iCalendar), RFC 6350 (vCard), RFC 5322 (courrier).
-- **Aucune ligne n'est reprise d'un autre projet.**
-- **Tout ce qui vient du serveur passe par la validation** de `src/core/sanitize.mjs` et `src/core/protocol.mjs`.
-- **Le code privilégié reste minimal**, il valide chaque argument et borne ses ressources.
-- **Chaque correction de sécurité est accompagnée d'un test** de non-régression.
+Le code est écrit à partir des spécifications publiques (Microsoft MS-ASCMD, MS-ASWBXML,
+MS-ASPROV, MS-ASHTTP, MS-ASDTYPE ; IETF RFC 9110, 9112, 5322, 5545 et 6350), sans reprise de code
+d'autres projets. Architecture et méthode : [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Licence
 
 [MIT](LICENSE).
 
 Exchange et ActiveSync sont des marques de Microsoft ; Thunderbird est une marque de la Fondation
-Mozilla. Sync443 n'est affilié ni à Microsoft, ni à Mozilla, ni aux projets TbSync / EAS-4-TbSync.
+Mozilla. Sync443 n'est affilié ni à Microsoft, ni à Mozilla, ni aux projets TbSync et
+EAS-4-TbSync.
