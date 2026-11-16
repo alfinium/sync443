@@ -537,11 +537,17 @@ function start() {
   $("debug").addEventListener("change", onDebugChange);
   $("log-refresh").addEventListener("click", () => refreshLog());
   $("log-clear").addEventListener("click", onClearLog);
-  api.storage.onChanged.addListener((changes, area) => {
+  const onStorage = (changes, area) => {
     if (area !== "local" || !changes || typeof changes !== "object") return;
     const keys = Object.keys(changes);
     if (keys.some((k) => k === "mailboxes" || WATCHED.test(k))) later("list", refreshMailboxes);
     if (keys.some((k) => k === "log" || k === "settings")) later("log", refreshLog);
+  };
+  api.storage.onChanged.addListener(onStorage);
+  // Removed while the page can still reach the extension: Thunderbird 140 would
+  // otherwise remove it after closing the page's channel, and log an error.
+  window.addEventListener("pagehide", (event) => {
+    if (!event.persisted) api.storage.onChanged.removeListener(onStorage);
   });
   // Times shown ("Next attempt at 14:05", today or another day) stay right as time passes.
   setInterval(() => later("list", refreshMailboxes), 60_000);
