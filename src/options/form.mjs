@@ -12,7 +12,7 @@
 import { parseServer } from "../core/server.mjs";
 import { cleanText } from "../core/sanitize.mjs";
 import { SYNC_KINDS } from "../sync/store.mjs";
-import { t, uiLanguage, errorText, errorDetail, serverErrorText } from "../i18n.mjs";
+import { t, uiLanguage, errorText, errorDetail, serverErrorText, sentence } from "../i18n.mjs";
 
 /** Sync frequency, in minutes (0 = as soon as a message arrives: Ping), and its label. */
 export const FREQUENCIES = Object.freeze([
@@ -244,9 +244,6 @@ export function statusView(status, now = Date.now()) {
   const failed = failedText(s.failedItems);
   return failed ? { ...view, text: `${view.text} ${failed}` } : view;
 }
-
-/** The reason of a failure, ending with a full stop (statusBlocked, statusError). */
-const sentence = (text) => (/[.!?]$/.test(text) ? text : `${text}.`);
 
 /** `view` with the failure's French reason as `detail`, when its text does not show it already. */
 function withDetail(view, failure) {

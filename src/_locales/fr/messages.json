@@ -790,6 +790,9 @@
   "sendReasonUnexpected": {
     "message": "erreur inattendue."
   },
+  "sendReasonLowercase": {
+    "message": "yes"
+  },
   "sendReasonRefused": {
     "message": "$REASON$ (Status $STATUS$).",
     "placeholders": {

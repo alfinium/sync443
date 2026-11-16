@@ -52,7 +52,7 @@ import { cleanDraft } from "./core/mime.mjs";
 import { ERR } from "./transport/client.mjs";
 import { MAILBOX_ID, ACCOUNT_KEY } from "./core/ids.mjs";
 import { toHex } from "./core/sha256.mjs";
-import { t, errorText } from "./i18n.mjs";
+import { t, errorText, sentence } from "./i18n.mjs";
 
 export const MAX_MESSAGE_BYTES = 50 * 1024 * 1024;
 const MAX_HEADER_BYTES = 1024 * 1024;
@@ -196,7 +196,7 @@ export function installSendHandler(deps) {
 
   async function sendOne(tabId, identityId, { mailboxId, accountKey }) {
     let draftSaved = false;
-    // `reason`: a sentence that ends with a full stop, starting in lower case (it follows "Message not sent:").
+    // `reason`: a sentence that ends with a full stop; it follows "Message not sent:" (lower case where the language wants it).
     const fail = (code, reason, { uncertain = false } = {}) => {
       log.warn(uncertain ? `Envoi incertain (${code}).` : `Envoi échoué (${code}).`);
       if (uncertain) notify(t("sendUncertain", reason));
@@ -413,9 +413,11 @@ function explain(e) {
     return { code, uncertain: true, reason: t("sendReasonInterrupted") };
   }
   const text = code === "UNKNOWN" ? "" : errorText({ code, message: e?.message, key: e?.key }, "sendReasonUnexpected");
-  const reason = text ? (/[.!?]$/.test(text) ? text : `${text}.`) : t("sendReasonUnexpected");
+  const reason = text ? sentence(text) : t("sendReasonUnexpected");
   // "Identifiant refusé…" reads "Message non envoyé : identifiant refusé…"; "SendMail : …" stays as it is.
-  return { code, uncertain: false, reason: /^\p{Lu}\p{Ll}*(?![\p{L}\d])/u.test(reason) ? reason.charAt(0).toLowerCase() + reason.slice(1) : reason };
+  // Only in languages whose catalogue says so: a German noun, for one, keeps its capital.
+  const lower = t("sendReasonLowercase") === "yes" && /^\p{Lu}\p{Ll}*(?![\p{L}\d])/u.test(reason);
+  return { code, uncertain: false, reason: lower ? reason.charAt(0).toLowerCase() + reason.slice(1) : reason };
 }
 
 /** 32 hexadecimal digits from the CSPRNG: a fresh ClientId for every attempt. */

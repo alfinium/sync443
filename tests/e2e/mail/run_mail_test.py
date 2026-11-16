@@ -32,8 +32,8 @@ the strict mock ActiveSync server (mock_eas.py).
              e.g. en-US or fr; the build must ship that language): the
              scenario checks that the extension's texts (settings page,
              toolbar button, manifest) are in it. Without it, Thunderbird
-             keeps the language of its build, and the texts must match that
-             language (French or English)
+             keeps the language of its build; either way the texts must be those
+             of the catalogue Thunderbird picks for it (English when none fits)
 
 Windows, macOS, Linux; Python 3.8+ standard library only.
   THUNDERBIRD   path of the Thunderbird executable (otherwise looked for in

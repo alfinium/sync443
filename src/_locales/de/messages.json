@@ -1,0 +1,852 @@
+{
+  "extensionName": {
+    "message": "Sync443 – EAS Client for Thunderbird"
+  },
+  "extensionDescription": {
+    "message": "Natives Exchange ActiveSync in Thunderbird: E-Mail, Ordner und Versand, mit jedem kompatiblen Server."
+  },
+  "languageTag": {
+    "message": "de"
+  },
+  "actionSync": {
+    "message": "Synchronisieren"
+  },
+  "actionSyncLast": {
+    "message": "Synchronisieren (zuletzt synchronisiert um $TIME$)",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "actionCheckSettings": {
+    "message": "Sync443: $NAMES$ in den Einstellungen überprüfen",
+    "placeholders": {
+      "names": {
+        "content": "$1"
+      }
+    }
+  },
+  "syncRunning": {
+    "message": "Wird synchronisiert…"
+  },
+  "menuSyncAll": {
+    "message": "Sync443 jetzt synchronisieren"
+  },
+  "menuSettings": {
+    "message": "Sync443-Einstellungen…"
+  },
+  "menuSyncOne": {
+    "message": "Jetzt synchronisieren (Sync443)"
+  },
+  "optionsTitle": {
+    "message": "Sync443 – Einstellungen"
+  },
+  "optionsSubtitle": {
+    "message": "Exchange ActiveSync, nur über HTTPS"
+  },
+  "pageOutsideThunderbird": {
+    "message": "Diese Seite funktioniert nur, wenn sie in Thunderbird über die Einstellungen der Erweiterung geöffnet wird."
+  },
+  "mailboxesTitle": {
+    "message": "Postfächer"
+  },
+  "addMailbox": {
+    "message": "Postfach hinzufügen"
+  },
+  "mailboxesEmpty": {
+    "message": "Noch kein Postfach vorhanden. Klicken Sie auf „Postfach hinzufügen“."
+  },
+  "unnamed": {
+    "message": "unbenannt"
+  },
+  "metaMailPeriod": {
+    "message": "E-Mails: $PERIOD$",
+    "placeholders": {
+      "period": {
+        "content": "$1"
+      }
+    }
+  },
+  "confirmDeletes": {
+    "message": "Löschungen bestätigen"
+  },
+  "keepLocalCopies": {
+    "message": "Lokale Kopien behalten"
+  },
+  "syncButton": {
+    "message": "Synchronisieren"
+  },
+  "editButton": {
+    "message": "Bearbeiten"
+  },
+  "removeButton": {
+    "message": "Entfernen"
+  },
+  "removeConfirmButton": {
+    "message": "Postfach entfernen"
+  },
+  "cancel": {
+    "message": "Abbrechen"
+  },
+  "removeQuestion": {
+    "message": "Postfach „$NAME$“ entfernen? Das zugehörige Konto, seine lokalen Ordner und sein Passwort werden aus Thunderbird entfernt. Auf dem Server wird nichts gelöscht.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "discardConfirm": {
+    "message": "Die auf dem Server vorgenommenen Löschungen werden nicht übernommen: Die Nachrichten bleiben in Thunderbird, und die betroffenen Ordner werden erneut mit dem Server synchronisiert. Ein auf dem Server gelöschter Ordner bleibt hier erhalten, jedoch ohne Synchronisation."
+  },
+  "noAnswer": {
+    "message": "Die Erweiterung antwortet nicht. Laden Sie diese Seite neu."
+  },
+  "badAnswer": {
+    "message": "Unerwartete Antwort der Erweiterung."
+  },
+  "listFailed": {
+    "message": "Die Liste der Postfächer konnte nicht gelesen werden."
+  },
+  "editedRemoved": {
+    "message": "Das gerade bearbeitete Postfach wurde entfernt."
+  },
+  "deletesConfirmed": {
+    "message": "Löschungen bestätigt; Synchronisation gestartet."
+  },
+  "syncStarted": {
+    "message": "Synchronisation gestartet."
+  },
+  "syncNotStarted": {
+    "message": "Die Synchronisation konnte nicht gestartet werden."
+  },
+  "localCopiesKept": {
+    "message": "Lokale Kopien behalten; Synchronisation gestartet."
+  },
+  "deletesNotDiscarded": {
+    "message": "Die Löschungen konnten nicht verworfen werden."
+  },
+  "mailboxRemoved": {
+    "message": "Postfach „$NAME$“ entfernt.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "mailboxNotRemoved": {
+    "message": "Das Postfach konnte nicht entfernt werden."
+  },
+  "mailboxSaved": {
+    "message": "Postfach „$NAME$“ gespeichert.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "mailboxAdded": {
+    "message": "Postfach „$NAME$“ hinzugefügt. Erste Synchronisation läuft.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "mailboxNotSaved": {
+    "message": "Das Postfach konnte nicht gespeichert werden."
+  },
+  "logUnavailable": {
+    "message": "Protokoll nicht verfügbar."
+  },
+  "debugNotChanged": {
+    "message": "Der Debug-Modus konnte nicht geändert werden."
+  },
+  "logNotCleared": {
+    "message": "Das Protokoll konnte nicht geleert werden."
+  },
+  "newMailbox": {
+    "message": "Neues Postfach"
+  },
+  "editMailbox": {
+    "message": "„$NAME$“ bearbeiten",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "fieldEmail": {
+    "message": "E-Mail-Adresse"
+  },
+  "fieldPassword": {
+    "message": "Passwort"
+  },
+  "passwordHintNew": {
+    "message": "Falls der Server es erlaubt, verwenden Sie besser ein eigenes App-Passwort für ActiveSync."
+  },
+  "passwordHintEdit": {
+    "message": "Leer lassen, um das gespeicherte Passwort zu behalten. Ändern sich der Server oder der Benutzername, muss es erneut eingegeben werden."
+  },
+  "fieldName": {
+    "message": "Name des Postfachs"
+  },
+  "nameHint": {
+    "message": "Wird in der Kontenliste von Thunderbird angezeigt. Bleibt das Feld leer, wird die E-Mail-Adresse verwendet."
+  },
+  "fieldServer": {
+    "message": "Server"
+  },
+  "serverHint": {
+    "message": "Zum Beispiel mail.example.com, ohne /Microsoft-Server-ActiveSync. Immer über HTTPS."
+  },
+  "fieldUsername": {
+    "message": "Benutzername (optional)"
+  },
+  "usernameHint": {
+    "message": "Nur ausfüllen, wenn er von der E-Mail-Adresse abweicht, zum Beispiel DOMÄNE\\name."
+  },
+  "fieldFrequency": {
+    "message": "Häufigkeit"
+  },
+  "fieldPeriod": {
+    "message": "Zeitraum für E-Mails"
+  },
+  "fieldKinds": {
+    "message": "Zu synchronisierende Elemente"
+  },
+  "kindsHint": {
+    "message": "In dieser Version werden nur E-Mails synchronisiert. Die übrige Auswahl wird für später gespeichert."
+  },
+  "soon": {
+    "message": "demnächst"
+  },
+  "save": {
+    "message": "Speichern"
+  },
+  "saving": {
+    "message": "Wird gespeichert…"
+  },
+  "permissionMissing": {
+    "message": "Ohne die Berechtigung, auf $SERVER$ zuzugreifen, kann das Postfach nicht synchronisiert werden. Speichern Sie erneut und stimmen Sie der Anfrage von Thunderbird zu.",
+    "placeholders": {
+      "server": {
+        "content": "$1"
+      }
+    }
+  },
+  "freqPush": {
+    "message": "Sobald neue E-Mails eintreffen"
+  },
+  "freqEveryMinute": {
+    "message": "Jede Minute"
+  },
+  "freqEveryMinutes": {
+    "message": "Alle $COUNT$ Minuten",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "freqEveryHour": {
+    "message": "Jede Stunde"
+  },
+  "period1Day": {
+    "message": "1 Tag"
+  },
+  "period3Days": {
+    "message": "3 Tage"
+  },
+  "period1Week": {
+    "message": "1 Woche"
+  },
+  "period2Weeks": {
+    "message": "2 Wochen"
+  },
+  "period1Month": {
+    "message": "1 Monat"
+  },
+  "periodAll": {
+    "message": "Alle"
+  },
+  "periodUnknown": {
+    "message": "Unbekannt"
+  },
+  "kindMail": {
+    "message": "E-Mail"
+  },
+  "kindCalendar": {
+    "message": "Kalender"
+  },
+  "kindContacts": {
+    "message": "Kontakte"
+  },
+  "kindTasks": {
+    "message": "Aufgaben"
+  },
+  "kindSoon": {
+    "message": "$KIND$ (demnächst)",
+    "placeholders": {
+      "kind": {
+        "content": "$1"
+      }
+    }
+  },
+  "kindsNone": {
+    "message": "Nichts"
+  },
+  "emailMissing": {
+    "message": "Geben Sie die E-Mail-Adresse ein."
+  },
+  "emailTooLong": {
+    "message": "E-Mail-Adresse zu lang."
+  },
+  "emailInvalid": {
+    "message": "Ungültige E-Mail-Adresse (zum Beispiel: vorname.nachname@example.com)."
+  },
+  "usernameTooLong": {
+    "message": "Benutzername zu lang (höchstens 256 Zeichen)."
+  },
+  "usernameColon": {
+    "message": "Der Benutzername darf keinen Doppelpunkt ( : ) enthalten."
+  },
+  "usernameBadChar": {
+    "message": "Der Benutzername enthält ein unzulässiges Zeichen."
+  },
+  "passwordMissing": {
+    "message": "Geben Sie das Passwort ein."
+  },
+  "passwordRetype": {
+    "message": "Der Server oder der Benutzername wurde geändert: Geben Sie das Passwort erneut ein."
+  },
+  "passwordTooLong": {
+    "message": "Passwort zu lang."
+  },
+  "passwordBadChar": {
+    "message": "Das Passwort enthält ein unzulässiges Zeichen."
+  },
+  "nameTooLong": {
+    "message": "Name zu lang (höchstens 256 Zeichen)."
+  },
+  "chooseFrequency": {
+    "message": "Wählen Sie eine Häufigkeit für die Synchronisation."
+  },
+  "choosePeriod": {
+    "message": "Wählen Sie den Zeitraum der zu synchronisierenden E-Mails."
+  },
+  "chooseKind": {
+    "message": "Wählen Sie mindestens ein zu synchronisierendes Element."
+  },
+  "serverInvalid": {
+    "message": "Ungültiger Server."
+  },
+  "serverEmpty": {
+    "message": "Geben Sie den Server ein, zum Beispiel mail.example.com."
+  },
+  "serverSpace": {
+    "message": "Die Serveradresse darf keine Leerzeichen enthalten."
+  },
+  "serverNotHttps": {
+    "message": "Der Server muss über HTTPS erreichbar sein."
+  },
+  "serverCredentials": {
+    "message": "Die Serveradresse darf weder einen Benutzernamen noch ein Passwort enthalten."
+  },
+  "serverInvalidValue": {
+    "message": "Ungültiger Server: $VALUE$",
+    "placeholders": {
+      "value": {
+        "content": "$1"
+      }
+    }
+  },
+  "serverPortInvalid": {
+    "message": "Ungültiger Port: $VALUE$",
+    "placeholders": {
+      "value": {
+        "content": "$1"
+      }
+    }
+  },
+  "dateAtTime": {
+    "message": "$DAY$ um $TIME$",
+    "placeholders": {
+      "day": {
+        "content": "$1"
+      },
+      "time": {
+        "content": "$2"
+      }
+    }
+  },
+  "statusMassDelete": {
+    "message": "Synchronisation angehalten: Der Server hat $COUNT$ Nachrichten auf einmal gelöscht. Diese Löschungen werden erst nach Ihrer Bestätigung übernommen; Sie können auch die lokalen Kopien behalten.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusMassDeleteMany": {
+    "message": "Synchronisation angehalten: Der Server hat viele Nachrichten auf einmal gelöscht. Diese Löschungen werden erst nach Ihrer Bestätigung übernommen; Sie können auch die lokalen Kopien behalten."
+  },
+  "statusBlocked": {
+    "message": "Angehalten: $REASON$ Es erfolgt kein automatischer Versuch mehr: Klicken Sie auf „Synchronisieren“, um fortzufahren.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusSeriousError": {
+    "message": "schwerwiegender Fehler."
+  },
+  "statusError": {
+    "message": "Fehler: $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusErrorUnknown": {
+    "message": "unbekannter Fehler"
+  },
+  "statusRetryAt": {
+    "message": "Nächster Versuch um $TIME$.",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusSyncedAt": {
+    "message": "Synchronisiert um $TIME$.",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusSyncedOn": {
+    "message": "Synchronisiert am $DATE$.",
+    "placeholders": {
+      "date": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusNever": {
+    "message": "Noch nicht synchronisiert."
+  },
+  "failedOne": {
+    "message": "1 Nachricht konnte nicht importiert werden: Der Import wird automatisch wiederholt."
+  },
+  "failedMany": {
+    "message": "$COUNT$ Nachrichten konnten nicht importiert werden: Der Import wird automatisch wiederholt.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorDetail": {
+    "message": "Details (auf Französisch): $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "diagnosticTitle": {
+    "message": "Diagnose"
+  },
+  "diagnosticHint": {
+    "message": "Das Protokoll enthält keine Nachrichteninhalte, Betreffzeilen oder Adressen. Der Debug-Modus ergänzt es um technische Werte (Statuscodes, Schlüssel) und endet nach einer Stunde von selbst. Die Protokolleinträge sind auf Französisch."
+  },
+  "debugLabel": {
+    "message": "Debug-Modus für 1 Stunde"
+  },
+  "debugActiveUntil": {
+    "message": "Aktiv bis $TIME$.",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "logRefresh": {
+    "message": "Aktualisieren"
+  },
+  "logClear": {
+    "message": "Protokoll leeren"
+  },
+  "logLabel": {
+    "message": "Protokoll der Erweiterung"
+  },
+  "logEmpty": {
+    "message": "Das Protokoll ist leer."
+  },
+  "levelError": {
+    "message": "Fehler"
+  },
+  "levelWarn": {
+    "message": "Warnung"
+  },
+  "levelInfo": {
+    "message": "Info"
+  },
+  "levelDebug": {
+    "message": "Debug"
+  },
+  "unexpectedError": {
+    "message": "Unerwarteter Fehler."
+  },
+  "invalidRequest": {
+    "message": "Ungültige Anfrage."
+  },
+  "invalidEmail": {
+    "message": "Ungültige E-Mail-Adresse."
+  },
+  "invalidUsername": {
+    "message": "Ungültiger Benutzername."
+  },
+  "invalidFrequency": {
+    "message": "Ungültige Häufigkeit."
+  },
+  "invalidPeriod": {
+    "message": "Ungültiger Zeitraum."
+  },
+  "invalidPassword": {
+    "message": "Ungültiges Passwort."
+  },
+  "passwordType": {
+    "message": "Geben Sie das Passwort ein."
+  },
+  "mailboxGone": {
+    "message": "Dieses Postfach existiert nicht mehr."
+  },
+  "emailTaken": {
+    "message": "Diese Adresse ist bereits eingerichtet."
+  },
+  "emailFixed": {
+    "message": "Die Adresse eines Postfachs kann nicht geändert werden: Entfernen Sie das Postfach und fügen Sie ein neues hinzu."
+  },
+  "loginTaken": {
+    "message": "Ein anderes Postfach verwendet diesen Server bereits mit diesem Benutzernamen."
+  },
+  "permissionRefused": {
+    "message": "Zugriff auf den Server nicht erlaubt: Stimmen Sie der Anfrage von Thunderbird zu."
+  },
+  "cannotConnect": {
+    "message": "Verbindung zum Server nicht möglich."
+  },
+  "accountNotPrepared": {
+    "message": "Das Thunderbird-Konto konnte nicht vorbereitet werden ($CODE$).",
+    "placeholders": {
+      "code": {
+        "content": "$1"
+      }
+    }
+  },
+  "passwordNotSaved": {
+    "message": "Das Passwort konnte nicht gespeichert werden (ist das Hauptpasswort gesperrt?)."
+  },
+  "errorUnknownMailbox": {
+    "message": "Unbekanntes Postfach."
+  },
+  "errorPasswordLocked": {
+    "message": "Auf das Passwort kann derzeit nicht zugegriffen werden."
+  },
+  "errorPasswordAbsent": {
+    "message": "Kein Passwort gespeichert: Bearbeiten Sie das Postfach, um es einzugeben."
+  },
+  "errorAuth": {
+    "message": "Der Server hat den Benutzernamen oder das Passwort abgelehnt.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorDenied": {
+    "message": "Der Server erlaubt diesem Konto oder diesem Gerät keine Synchronisation.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorWipe": {
+    "message": "Der Server hat verlangt, dieses Gerät aus der Ferne zu löschen. Die Anforderung wurde abgelehnt: Es wurde nichts gelöscht, und die Synchronisation ist angehalten.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorConfig": {
+    "message": "Das Postfach kann mit seinen aktuellen Einstellungen nicht synchronisiert werden: Überprüfen Sie diese und speichern Sie das Postfach anschließend erneut.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorTls": {
+    "message": "Verbindung vor dem Senden des Passworts abgelehnt: Das Zertifikat des Servers wurde nicht akzeptiert.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorProxyAuth": {
+    "message": "Der Proxy dieses Netzwerks verlangt eine eigene Authentifizierung, die noch nicht unterstützt wird.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorProvision": {
+    "message": "Der Austausch der Sicherheitsrichtlinien mit dem Server ist fehlgeschlagen.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorHttp": {
+    "message": "Der Server hat mit einem HTTP-Fehler geantwortet.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorBusy": {
+    "message": "Der Server ist ausgelastet, oder es sind zu viele Verbindungen geöffnet. Später wird ein neuer Versuch unternommen.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorNetwork": {
+    "message": "Der Server ist nicht erreichbar.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorTimeout": {
+    "message": "Der Server hat nicht rechtzeitig geantwortet.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorTooLarge": {
+    "message": "Die Antwort des Servers ist zu groß.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorBadResponse": {
+    "message": "Der Server hat eine unerwartete oder ungültige Antwort gesendet.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorCancelled": {
+    "message": "Der Vorgang wurde abgebrochen.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorServer": {
+    "message": "Der Server hat die Anfrage abgelehnt.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorLocal": {
+    "message": "Die Änderungen konnten nicht in Thunderbird gespeichert werden.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorClosed": {
+    "message": "Die Synchronisation dieses Postfachs wurde beendet.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorOther": {
+    "message": "Unerwarteter Fehler.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendBusy": {
+    "message": "Diese Nachricht wird bereits gesendet."
+  },
+  "sendProtected": {
+    "message": "Nachricht nicht gesendet: Digitales Unterschreiben und Verschlüsseln (OpenPGP, S/MIME) werden von Sync443 noch nicht unterstützt, oder ihr Status konnte nicht überprüft werden. Deaktivieren Sie beides für diese Nachricht. Die Nachricht bleibt im Verfassen-Fenster."
+  },
+  "sendAccountUnchecked": {
+    "message": "Nachricht nicht gesendet: Sync443 konnte das Absendekonto nicht überprüfen, daher wurde nichts gesendet. Die Nachricht bleibt im Verfassen-Fenster."
+  },
+  "sendRouteUnchecked": {
+    "message": "Nachricht nicht gesendet: Sync443 konnte den Postausgang-Server dieses Kontos nicht überprüfen, daher wurde nichts gesendet. Die Nachricht bleibt im Verfassen-Fenster."
+  },
+  "sendUnexpected": {
+    "message": "Nachricht nicht gesendet: unerwarteter Fehler. Die Nachricht bleibt im Verfassen-Fenster."
+  },
+  "sendFailed": {
+    "message": "Nachricht nicht gesendet: $REASON$ Die Nachricht bleibt im Verfassen-Fenster.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendFailedDraft": {
+    "message": "Nachricht nicht gesendet: $REASON$ Die Nachricht bleibt im Verfassen-Fenster und in den Entwürfen.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendUncertain": {
+    "message": "Versand ungewiss: $REASON$ Überprüfen Sie den Ordner „Gesendet“, bevor Sie die Nachricht erneut senden; sie bleibt im Verfassen-Fenster.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendReasonDraft": {
+    "message": "Entwurf konnte nicht gespeichert werden."
+  },
+  "sendReasonDetails": {
+    "message": "Inhalt des Verfassen-Fensters konnte nicht erneut gelesen werden."
+  },
+  "sendReasonIdentity": {
+    "message": "Absender wurde während des Sendens geändert. Klicken Sie erneut auf „Senden“."
+  },
+  "sendReasonProtection": {
+    "message": "Digitales Unterschreiben oder Verschlüsseln (OpenPGP, S/MIME) wurde angefordert, was Sync443 noch nicht unterstützt."
+  },
+  "sendReasonFolder": {
+    "message": "Entwurf wurde nicht im Sync443-Konto dieses Absenders gespeichert. Überprüfen Sie den Entwürfe-Ordner der Identität."
+  },
+  "sendReasonEncrypted": {
+    "message": "Sync443 kann keine verschlüsselten Nachrichten (OpenPGP, S/MIME) senden."
+  },
+  "sendReasonMime": {
+    "message": "Nachricht konnte nicht vorbereitet werden."
+  },
+  "sendReasonTooLarge": {
+    "message": "Nachricht zu groß (mehr als $SIZE$ MB).",
+    "placeholders": {
+      "size": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendReasonRead": {
+    "message": "Entwurf konnte nicht gelesen werden."
+  },
+  "sendReasonEmpty": {
+    "message": "Entwurf ist leer."
+  },
+  "sendReasonStatus": {
+    "message": "unerwartete Antwort des Servers; die Nachricht wurde möglicherweise bereits versendet."
+  },
+  "sendReasonInterrupted": {
+    "message": "Verbindung wurde nach dem Senden der Anfrage unterbrochen; die Nachricht wurde möglicherweise bereits versendet."
+  },
+  "sendReasonUnexpected": {
+    "message": "unerwarteter Fehler."
+  },
+  "sendReasonLowercase": {
+    "message": "no"
+  },
+  "sendReasonRefused": {
+    "message": "$REASON$ (Status $STATUS$).",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      },
+      "status": {
+        "content": "$2"
+      }
+    }
+  },
+  "sendStatus107": {
+    "message": "Server lehnt das Format der Nachricht ab"
+  },
+  "sendStatus110": {
+    "message": "Serverfehler"
+  },
+  "sendStatus111": {
+    "message": "vorübergehender Serverfehler, versuchen Sie es später erneut"
+  },
+  "sendStatus113": {
+    "message": "Postfach auf dem Server ist voll"
+  },
+  "sendStatus114": {
+    "message": "Postfach auf dem Server ist vorübergehend nicht verfügbar"
+  },
+  "sendStatus115": {
+    "message": "Sendekontingent des Servers überschritten"
+  },
+  "sendStatus116": {
+    "message": "Server hat einen Empfänger nicht erkannt"
+  },
+  "sendStatus118": {
+    "message": "Server meldet, dass diese Nachricht bereits gesendet wurde"
+  },
+  "sendStatus119": {
+    "message": "Nachricht hat keinen Empfänger"
+  },
+  "sendStatus120": {
+    "message": "Server konnte die Nachricht nicht zustellen"
+  },
+  "sendStatus122": {
+    "message": "Anhang zu groß für den Server"
+  },
+  "sendStatusOther": {
+    "message": "vom Server abgelehnt"
+  },
+  "sentLeftoverDraft": {
+    "message": "Nachricht gesendet, aber ihr Entwurf konnte nicht gelöscht werden: Senden Sie sie nicht erneut."
+  },
+  "sentLeftoverWindow": {
+    "message": "Nachricht gesendet, aber das Verfassen-Fenster konnte nicht geschlossen werden: Senden Sie sie nicht erneut."
+  },
+  "sentLeftoverBoth": {
+    "message": "Nachricht gesendet, aber ihr Entwurf konnte nicht gelöscht und das Verfassen-Fenster nicht geschlossen werden: Senden Sie sie nicht erneut."
+  }
+}

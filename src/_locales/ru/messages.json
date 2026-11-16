@@ -1,0 +1,852 @@
+{
+  "extensionName": {
+    "message": "Sync443 – EAS Client for Thunderbird"
+  },
+  "extensionDescription": {
+    "message": "Встроенная поддержка Exchange ActiveSync в Thunderbird: почта, папки и отправка сообщений с любым совместимым сервером."
+  },
+  "languageTag": {
+    "message": "ru"
+  },
+  "actionSync": {
+    "message": "Синхронизировать"
+  },
+  "actionSyncLast": {
+    "message": "Синхронизировать (последняя синхронизация в $TIME$)",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "actionCheckSettings": {
+    "message": "Sync443: проверьте настройки для $NAMES$",
+    "placeholders": {
+      "names": {
+        "content": "$1"
+      }
+    }
+  },
+  "syncRunning": {
+    "message": "Синхронизация…"
+  },
+  "menuSyncAll": {
+    "message": "Синхронизировать Sync443 сейчас"
+  },
+  "menuSettings": {
+    "message": "Настройки Sync443…"
+  },
+  "menuSyncOne": {
+    "message": "Синхронизировать сейчас (Sync443)"
+  },
+  "optionsTitle": {
+    "message": "Sync443 – Настройки"
+  },
+  "optionsSubtitle": {
+    "message": "Exchange ActiveSync, только по HTTPS"
+  },
+  "pageOutsideThunderbird": {
+    "message": "Эта страница работает, только если она открыта из Thunderbird, в настройках расширения."
+  },
+  "mailboxesTitle": {
+    "message": "Почтовые ящики"
+  },
+  "addMailbox": {
+    "message": "Добавить почтовый ящик"
+  },
+  "mailboxesEmpty": {
+    "message": "Почтовых ящиков пока нет. Нажмите «Добавить почтовый ящик»."
+  },
+  "unnamed": {
+    "message": "без имени"
+  },
+  "metaMailPeriod": {
+    "message": "почта: $PERIOD$",
+    "placeholders": {
+      "period": {
+        "content": "$1"
+      }
+    }
+  },
+  "confirmDeletes": {
+    "message": "Подтвердить удаление"
+  },
+  "keepLocalCopies": {
+    "message": "Оставить локальные копии"
+  },
+  "syncButton": {
+    "message": "Синхронизировать"
+  },
+  "editButton": {
+    "message": "Изменить"
+  },
+  "removeButton": {
+    "message": "Удалить"
+  },
+  "removeConfirmButton": {
+    "message": "Удалить почтовый ящик"
+  },
+  "cancel": {
+    "message": "Отмена"
+  },
+  "removeQuestion": {
+    "message": "Удалить почтовый ящик «$NAME$»? Его учётная запись, локальные папки и пароль будут удалены из Thunderbird. На сервере ничего не удаляется.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "discardConfirm": {
+    "message": "Удаление, выполненное на сервере, не будет применено: сообщения останутся в Thunderbird, а затронутые папки будут заново синхронизированы с сервером. Папка, удалённая на сервере, останется здесь, но синхронизироваться не будет."
+  },
+  "noAnswer": {
+    "message": "Расширение не отвечает. Перезагрузите эту страницу."
+  },
+  "badAnswer": {
+    "message": "Неожиданный ответ от расширения."
+  },
+  "listFailed": {
+    "message": "Не удалось прочитать список почтовых ящиков."
+  },
+  "editedRemoved": {
+    "message": "Изменяемый почтовый ящик был удалён."
+  },
+  "deletesConfirmed": {
+    "message": "Удаление подтверждено; синхронизация запущена."
+  },
+  "syncStarted": {
+    "message": "Синхронизация запущена."
+  },
+  "syncNotStarted": {
+    "message": "Не удалось запустить синхронизацию."
+  },
+  "localCopiesKept": {
+    "message": "Локальные копии оставлены; синхронизация запущена."
+  },
+  "deletesNotDiscarded": {
+    "message": "Не удалось отклонить удаление."
+  },
+  "mailboxRemoved": {
+    "message": "Почтовый ящик «$NAME$» удалён.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "mailboxNotRemoved": {
+    "message": "Не удалось удалить почтовый ящик."
+  },
+  "mailboxSaved": {
+    "message": "Почтовый ящик «$NAME$» сохранён.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "mailboxAdded": {
+    "message": "Почтовый ящик «$NAME$» добавлен. Выполняется первая синхронизация.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "mailboxNotSaved": {
+    "message": "Не удалось сохранить почтовый ящик."
+  },
+  "logUnavailable": {
+    "message": "Журнал недоступен."
+  },
+  "debugNotChanged": {
+    "message": "Не удалось изменить режим отладки."
+  },
+  "logNotCleared": {
+    "message": "Не удалось очистить журнал."
+  },
+  "newMailbox": {
+    "message": "Новый почтовый ящик"
+  },
+  "editMailbox": {
+    "message": "Изменить «$NAME$»",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "fieldEmail": {
+    "message": "Адрес электронной почты"
+  },
+  "fieldPassword": {
+    "message": "Пароль"
+  },
+  "passwordHintNew": {
+    "message": "Если сервер это позволяет, лучше используйте пароль приложения, предназначенный только для ActiveSync."
+  },
+  "passwordHintEdit": {
+    "message": "Оставьте поле пустым, чтобы не менять сохранённый пароль. Если изменится сервер или имя пользователя, пароль нужно будет ввести заново."
+  },
+  "fieldName": {
+    "message": "Имя почтового ящика"
+  },
+  "nameHint": {
+    "message": "Отображается в списке учётных записей Thunderbird. Если поле пустое, используется адрес электронной почты."
+  },
+  "fieldServer": {
+    "message": "Сервер"
+  },
+  "serverHint": {
+    "message": "Например, mail.example.com, без /Microsoft-Server-ActiveSync. Всегда по HTTPS."
+  },
+  "fieldUsername": {
+    "message": "Имя пользователя (необязательно)"
+  },
+  "usernameHint": {
+    "message": "Заполните, только если оно отличается от адреса электронной почты, например ДОМЕН\\имя."
+  },
+  "fieldFrequency": {
+    "message": "Частота"
+  },
+  "fieldPeriod": {
+    "message": "Период синхронизации почты"
+  },
+  "fieldKinds": {
+    "message": "Элементы для синхронизации"
+  },
+  "kindsHint": {
+    "message": "В этой версии синхронизируется только почта. Остальные варианты сохраняются на будущее."
+  },
+  "soon": {
+    "message": "скоро"
+  },
+  "save": {
+    "message": "Сохранить"
+  },
+  "saving": {
+    "message": "Сохранение…"
+  },
+  "permissionMissing": {
+    "message": "Без разрешения на доступ к $SERVER$ почтовый ящик не может быть синхронизирован. Сохраните ещё раз и подтвердите запрос Thunderbird.",
+    "placeholders": {
+      "server": {
+        "content": "$1"
+      }
+    }
+  },
+  "freqPush": {
+    "message": "Сразу при поступлении почты"
+  },
+  "freqEveryMinute": {
+    "message": "Раз в минуту"
+  },
+  "freqEveryMinutes": {
+    "message": "Раз в $COUNT$ мин",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "freqEveryHour": {
+    "message": "Раз в час"
+  },
+  "period1Day": {
+    "message": "1 день"
+  },
+  "period3Days": {
+    "message": "3 дня"
+  },
+  "period1Week": {
+    "message": "1 неделя"
+  },
+  "period2Weeks": {
+    "message": "2 недели"
+  },
+  "period1Month": {
+    "message": "1 месяц"
+  },
+  "periodAll": {
+    "message": "Без ограничений"
+  },
+  "periodUnknown": {
+    "message": "Неизвестно"
+  },
+  "kindMail": {
+    "message": "Почта"
+  },
+  "kindCalendar": {
+    "message": "Календарь"
+  },
+  "kindContacts": {
+    "message": "Контакты"
+  },
+  "kindTasks": {
+    "message": "Задачи"
+  },
+  "kindSoon": {
+    "message": "$KIND$ (скоро)",
+    "placeholders": {
+      "kind": {
+        "content": "$1"
+      }
+    }
+  },
+  "kindsNone": {
+    "message": "Ничего"
+  },
+  "emailMissing": {
+    "message": "Введите адрес электронной почты."
+  },
+  "emailTooLong": {
+    "message": "Адрес электронной почты слишком длинный."
+  },
+  "emailInvalid": {
+    "message": "Недопустимый адрес электронной почты (например: ivan.petrov@example.com)."
+  },
+  "usernameTooLong": {
+    "message": "Имя пользователя слишком длинное (не более 256 символов)."
+  },
+  "usernameColon": {
+    "message": "Имя пользователя не должно содержать двоеточие ( : )."
+  },
+  "usernameBadChar": {
+    "message": "Имя пользователя содержит недопустимый символ."
+  },
+  "passwordMissing": {
+    "message": "Введите пароль."
+  },
+  "passwordRetype": {
+    "message": "Сервер или имя пользователя изменились: введите пароль ещё раз."
+  },
+  "passwordTooLong": {
+    "message": "Пароль слишком длинный."
+  },
+  "passwordBadChar": {
+    "message": "Пароль содержит недопустимый символ."
+  },
+  "nameTooLong": {
+    "message": "Имя слишком длинное (не более 256 символов)."
+  },
+  "chooseFrequency": {
+    "message": "Выберите частоту синхронизации."
+  },
+  "choosePeriod": {
+    "message": "Выберите период синхронизации почты."
+  },
+  "chooseKind": {
+    "message": "Выберите хотя бы один элемент для синхронизации."
+  },
+  "serverInvalid": {
+    "message": "Недопустимый адрес сервера."
+  },
+  "serverEmpty": {
+    "message": "Укажите сервер, например mail.example.com."
+  },
+  "serverSpace": {
+    "message": "Адрес сервера не должен содержать пробелов."
+  },
+  "serverNotHttps": {
+    "message": "Сервер должен быть доступен по HTTPS."
+  },
+  "serverCredentials": {
+    "message": "Адрес сервера не должен содержать имя пользователя или пароль."
+  },
+  "serverInvalidValue": {
+    "message": "Недопустимый адрес сервера: $VALUE$",
+    "placeholders": {
+      "value": {
+        "content": "$1"
+      }
+    }
+  },
+  "serverPortInvalid": {
+    "message": "Недопустимый порт: $VALUE$",
+    "placeholders": {
+      "value": {
+        "content": "$1"
+      }
+    }
+  },
+  "dateAtTime": {
+    "message": "$DAY$ в $TIME$",
+    "placeholders": {
+      "day": {
+        "content": "$1"
+      },
+      "time": {
+        "content": "$2"
+      }
+    }
+  },
+  "statusMassDelete": {
+    "message": "Синхронизация приостановлена: сервер удалил сразу много сообщений (количество: $COUNT$). Удаление будет применено только после вашего подтверждения; вы также можете оставить локальные копии.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusMassDeleteMany": {
+    "message": "Синхронизация приостановлена: сервер удалил сразу много сообщений. Удаление будет применено только после вашего подтверждения; вы также можете оставить локальные копии."
+  },
+  "statusBlocked": {
+    "message": "Синхронизация остановлена: $REASON$ Автоматических попыток больше не будет: нажмите «Синхронизировать», чтобы возобновить.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusSeriousError": {
+    "message": "серьёзная ошибка."
+  },
+  "statusError": {
+    "message": "Ошибка: $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusErrorUnknown": {
+    "message": "неизвестная ошибка"
+  },
+  "statusRetryAt": {
+    "message": "Следующая попытка: $TIME$.",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusSyncedAt": {
+    "message": "Синхронизировано в $TIME$.",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusSyncedOn": {
+    "message": "Синхронизировано $DATE$.",
+    "placeholders": {
+      "date": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusNever": {
+    "message": "Ещё не синхронизировано."
+  },
+  "failedOne": {
+    "message": "1 сообщение не удалось импортировать: повторная попытка будет выполнена автоматически."
+  },
+  "failedMany": {
+    "message": "Не удалось импортировать сообщения (количество: $COUNT$): повторная попытка будет выполнена автоматически.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorDetail": {
+    "message": "Подробности (на французском): $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "diagnosticTitle": {
+    "message": "Диагностика"
+  },
+  "diagnosticHint": {
+    "message": "Журнал не содержит ни текста сообщений, ни тем, ни адресов. Режим отладки добавляет в него технические значения (статусы, ключи) и сам отключается через час. Записи журнала ведутся на французском языке."
+  },
+  "debugLabel": {
+    "message": "Отладка в течение 1 часа"
+  },
+  "debugActiveUntil": {
+    "message": "Включена до $TIME$.",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "logRefresh": {
+    "message": "Обновить"
+  },
+  "logClear": {
+    "message": "Очистить журнал"
+  },
+  "logLabel": {
+    "message": "Журнал расширения"
+  },
+  "logEmpty": {
+    "message": "Журнал пуст."
+  },
+  "levelError": {
+    "message": "ошибка"
+  },
+  "levelWarn": {
+    "message": "внимание"
+  },
+  "levelInfo": {
+    "message": "инфо"
+  },
+  "levelDebug": {
+    "message": "отладка"
+  },
+  "unexpectedError": {
+    "message": "Непредвиденная ошибка."
+  },
+  "invalidRequest": {
+    "message": "Недопустимый запрос."
+  },
+  "invalidEmail": {
+    "message": "Недопустимый адрес электронной почты."
+  },
+  "invalidUsername": {
+    "message": "Недопустимое имя пользователя."
+  },
+  "invalidFrequency": {
+    "message": "Недопустимая частота."
+  },
+  "invalidPeriod": {
+    "message": "Недопустимый период."
+  },
+  "invalidPassword": {
+    "message": "Недопустимый пароль."
+  },
+  "passwordType": {
+    "message": "Введите пароль."
+  },
+  "mailboxGone": {
+    "message": "Этот почтовый ящик больше не существует."
+  },
+  "emailTaken": {
+    "message": "Этот адрес уже настроен."
+  },
+  "emailFixed": {
+    "message": "Адрес почтового ящика изменить нельзя: удалите почтовый ящик и добавьте новый."
+  },
+  "loginTaken": {
+    "message": "Другой почтовый ящик уже использует этот сервер с этим именем пользователя."
+  },
+  "permissionRefused": {
+    "message": "Доступ к серверу не разрешён: подтвердите запрос Thunderbird."
+  },
+  "cannotConnect": {
+    "message": "Не удаётся подключиться к серверу."
+  },
+  "accountNotPrepared": {
+    "message": "Не удалось подготовить учётную запись Thunderbird ($CODE$).",
+    "placeholders": {
+      "code": {
+        "content": "$1"
+      }
+    }
+  },
+  "passwordNotSaved": {
+    "message": "Не удалось сохранить пароль (не заблокирован ли основной пароль?)."
+  },
+  "errorUnknownMailbox": {
+    "message": "Неизвестный почтовый ящик."
+  },
+  "errorPasswordLocked": {
+    "message": "Пароль сейчас недоступен."
+  },
+  "errorPasswordAbsent": {
+    "message": "Нет сохранённого пароля: измените почтовый ящик и введите пароль."
+  },
+  "errorAuth": {
+    "message": "Сервер отклонил имя пользователя или пароль.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorDenied": {
+    "message": "Сервер не разрешает синхронизацию для этой учётной записи или этого устройства.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorWipe": {
+    "message": "Сервер запросил удалённую очистку этого устройства. Запрос отклонён: ничего не стёрто, синхронизация остановлена.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorConfig": {
+    "message": "Почтовый ящик нельзя синхронизировать с текущими настройками: проверьте их, затем снова сохраните почтовый ящик.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorTls": {
+    "message": "Подключение отклонено до отправки пароля: сертификат сервера не был принят.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorProxyAuth": {
+    "message": "Прокси-сервер этой сети требует собственной аутентификации, которая пока не поддерживается.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorProvision": {
+    "message": "Не удалось обменяться политиками безопасности с сервером.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorHttp": {
+    "message": "Сервер ответил ошибкой HTTP.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorBusy": {
+    "message": "Сервер занят, или открыто слишком много подключений. Попытка будет повторена позже.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorNetwork": {
+    "message": "Сервер недоступен.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorTimeout": {
+    "message": "Сервер не ответил вовремя.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorTooLarge": {
+    "message": "Ответ сервера слишком большой.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorBadResponse": {
+    "message": "Сервер отправил неожиданный или некорректный ответ.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorCancelled": {
+    "message": "Операция отменена.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorServer": {
+    "message": "Сервер отклонил запрос.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorLocal": {
+    "message": "Не удалось записать изменения в Thunderbird.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorClosed": {
+    "message": "Синхронизация этого почтового ящика остановлена.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorOther": {
+    "message": "Непредвиденная ошибка.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendBusy": {
+    "message": "Это сообщение уже отправляется."
+  },
+  "sendProtected": {
+    "message": "Сообщение не отправлено: подпись и шифрование (OpenPGP, S/MIME) пока не поддерживаются Sync443, или не удалось проверить их состояние. Отключите их для этого сообщения. Оно остаётся в окне составления сообщения."
+  },
+  "sendAccountUnchecked": {
+    "message": "Сообщение не отправлено: Sync443 не удалось проверить учётную запись для отправки, поэтому ничего не отправлено. Сообщение остаётся в окне составления сообщения."
+  },
+  "sendRouteUnchecked": {
+    "message": "Сообщение не отправлено: Sync443 не удалось проверить сервер исходящей почты этой учётной записи, поэтому ничего не отправлено. Сообщение остаётся в окне составления сообщения."
+  },
+  "sendUnexpected": {
+    "message": "Сообщение не отправлено: непредвиденная ошибка. Оно остаётся в окне составления сообщения."
+  },
+  "sendFailed": {
+    "message": "Сообщение не отправлено: $REASON$ Оно остаётся в окне составления сообщения.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendFailedDraft": {
+    "message": "Сообщение не отправлено: $REASON$ Оно остаётся в окне составления сообщения и в черновиках.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendUncertain": {
+    "message": "Результат отправки неизвестен: $REASON$ Прежде чем отправлять сообщение повторно, проверьте папку «Отправленные»; оно остаётся в окне составления сообщения.",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendReasonDraft": {
+    "message": "не удалось сохранить черновик."
+  },
+  "sendReasonDetails": {
+    "message": "не удалось повторно прочитать окно составления сообщения."
+  },
+  "sendReasonIdentity": {
+    "message": "отправитель изменился во время отправки сообщения. Нажмите «Отправить» ещё раз."
+  },
+  "sendReasonProtection": {
+    "message": "запрошены подпись или шифрование (OpenPGP, S/MIME), которые Sync443 пока не поддерживает."
+  },
+  "sendReasonFolder": {
+    "message": "черновик не был сохранён в учётной записи Sync443 этого отправителя. Проверьте папку черновиков, заданную для этого отправителя."
+  },
+  "sendReasonEncrypted": {
+    "message": "зашифрованные сообщения (OpenPGP, S/MIME) не могут быть отправлены через Sync443."
+  },
+  "sendReasonMime": {
+    "message": "не удалось подготовить сообщение."
+  },
+  "sendReasonTooLarge": {
+    "message": "сообщение слишком большое (более $SIZE$ МБ).",
+    "placeholders": {
+      "size": {
+        "content": "$1"
+      }
+    }
+  },
+  "sendReasonRead": {
+    "message": "не удалось прочитать черновик."
+  },
+  "sendReasonEmpty": {
+    "message": "черновик пуст."
+  },
+  "sendReasonStatus": {
+    "message": "неожиданный ответ сервера; возможно, сообщение уже отправлено."
+  },
+  "sendReasonInterrupted": {
+    "message": "соединение прервалось после отправки запроса; возможно, сообщение уже отправлено."
+  },
+  "sendReasonUnexpected": {
+    "message": "непредвиденная ошибка."
+  },
+  "sendReasonLowercase": {
+    "message": "yes"
+  },
+  "sendReasonRefused": {
+    "message": "$REASON$ (Status $STATUS$).",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      },
+      "status": {
+        "content": "$2"
+      }
+    }
+  },
+  "sendStatus107": {
+    "message": "сервер отклоняет формат сообщения"
+  },
+  "sendStatus110": {
+    "message": "ошибка сервера"
+  },
+  "sendStatus111": {
+    "message": "временная ошибка сервера, повторите попытку позже"
+  },
+  "sendStatus113": {
+    "message": "почтовый ящик на сервере переполнен"
+  },
+  "sendStatus114": {
+    "message": "почтовый ящик на сервере временно недоступен"
+  },
+  "sendStatus115": {
+    "message": "превышена квота отправки на сервере"
+  },
+  "sendStatus116": {
+    "message": "сервер не распознал одного из получателей"
+  },
+  "sendStatus118": {
+    "message": "сервер сообщает, что это сообщение уже было отправлено"
+  },
+  "sendStatus119": {
+    "message": "у сообщения нет получателей"
+  },
+  "sendStatus120": {
+    "message": "сервер не смог доставить сообщение"
+  },
+  "sendStatus122": {
+    "message": "вложение слишком велико для сервера"
+  },
+  "sendStatusOther": {
+    "message": "отклонено сервером"
+  },
+  "sentLeftoverDraft": {
+    "message": "Сообщение отправлено, но его черновик не удалось удалить: не отправляйте сообщение повторно."
+  },
+  "sentLeftoverWindow": {
+    "message": "Сообщение отправлено, но окно составления сообщения не удалось закрыть: не отправляйте сообщение повторно."
+  },
+  "sentLeftoverBoth": {
+    "message": "Сообщение отправлено, но его черновик не удалось удалить, а окно составления сообщения не удалось закрыть: не отправляйте сообщение повторно."
+  }
+}

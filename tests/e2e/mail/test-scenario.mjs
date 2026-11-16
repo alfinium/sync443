@@ -286,13 +286,18 @@ async function finish(phase) {
 async function checkLanguage(boxes) {
   await step("2b. Langue de l'interface");
   const ui = browser.i18n.getUILanguage();
-  const lang = /^fr(?:-|$)/i.test(E.uiLocale ?? ui) ? "fr" : "en";
+  // The catalogue Thunderbird picks: the same tag, else the same language (es-AR → es_ES), else English.
+  const wanted = String(E.uiLocale ?? ui).toLowerCase();
+  const folders = Object.keys(E.catalogues ?? {});
+  const tag = (folder) => folder.replace("_", "-").toLowerCase();
+  const lang =
+    folders.find((f) => tag(f) === wanted) ?? folders.find((f) => tag(f).split("-")[0] === wanted.split("-")[0]) ?? "en";
   const texts = E.catalogues?.[lang];
   await info("uiLanguage", { ui, requested: E.uiLocale ?? null, catalogue: lang });
   if (!(await check(`catalogue « ${lang} » transmis par le lanceur`, texts, Object.keys(E.catalogues ?? {})))) return;
   if (E.uiLocale) await check(`Thunderbird en ${E.uiLocale} (intl.locale.requested)`, ui.toLowerCase().startsWith(E.uiLocale.slice(0, 2).toLowerCase()), ui);
   const picked = { addMailbox: browser.i18n.getMessage("addMailbox"), languageTag: browser.i18n.getMessage("languageTag") };
-  await check(`textes de l'extension pris dans le catalogue « ${lang} »`, picked.addMailbox === texts.addMailbox && picked.languageTag === lang, picked);
+  await check(`textes de l'extension pris dans le catalogue « ${lang} »`, picked.addMailbox === texts.addMailbox && picked.languageTag === texts.languageTag, picked);
   const manifest = browser.runtime.getManifest();
   await check("manifeste : nom et description traduits", manifest.name === texts.extensionName && manifest.description === texts.extensionDescription, {
     name: manifest.name,
@@ -331,7 +336,7 @@ async function checkLanguage(boxes) {
   await info("optionsPage", shown);
   await check(
     `page de réglages en « ${lang} » : langue, titre, boutons, choix`,
-    shown.lang === lang &&
+    shown.lang === texts.languageTag &&
       shown.title === texts.optionsTitle &&
       shown.add === texts.addMailbox &&
       shown.heading === texts.mailboxesTitle &&

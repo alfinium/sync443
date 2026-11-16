@@ -22,8 +22,17 @@ export async function readText(path) {
   return fs.readFileSync(path, "utf8");
 }
 
-export const LOCALES = Object.freeze(["en", "fr"]);
+/**
+ * The translations (folders of src/_locales, Thunderbird's locale codes): the ten
+ * languages Thunderbird is most used in (stats.thunderbird.net, locales.json),
+ * English first, the default. tools/build_xpi.py checks every folder there is
+ * against English as well (this engine cannot list a directory).
+ */
+export const LOCALES = Object.freeze(["en", "ru", "de", "es_ES", "ja", "pl", "fr", "it", "pt_BR", "cs"]);
 export const DEFAULT_LOCALE = "en";
+
+/** "pt_BR" → "pt-BR": the BCP 47 tag of a folder. */
+export const tagOf = (folder) => folder.replace("_", "-");
 
 /** { language: { key: { message, placeholders?, description? } } }, as written in the files. */
 export const CATALOGS = {};
@@ -46,13 +55,13 @@ export function render(entry, subs = []) {
   });
 }
 
-/** A browser.i18n of one language (the default language fills in missing keys, as Thunderbird does). */
+/** A browser.i18n of one language, by its folder (the default language fills in missing keys, as Thunderbird does). */
 export function fakeI18n(lang = "fr") {
   const index = (catalog) => new Map(Object.entries(catalog).map(([k, v]) => [k.toLowerCase(), v]));
   const own = index(CATALOGS[lang]);
   const fallback = index(CATALOGS[DEFAULT_LOCALE]);
   return {
-    getUILanguage: () => lang,
+    getUILanguage: () => tagOf(lang),
     getMessage(key, subs = []) {
       const entry = own.get(String(key).toLowerCase()) ?? fallback.get(String(key).toLowerCase());
       if (!entry) throw new Error(`message inconnu : ${key}`);

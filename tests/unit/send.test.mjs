@@ -12,6 +12,7 @@ import { installSendHandler, topContentType, protectionAsked, sendTimeout, MAX_M
 import { el, text, at, child } from "../../src/core/wbxml.mjs";
 import { encodeUtf8, decodeUtf8 } from "../../src/core/utf8.mjs";
 import { EasError, ERR } from "../../src/transport/client.mjs";
+import { CATALOGS, render, withLanguage } from "./i18n-fake.mjs";
 
 const MAILBOX = "0123456789ab";
 const ACCOUNT = "account7";
@@ -285,6 +286,23 @@ test("échec : mot de passe refusé, fenêtre et brouillon gardés, raison affic
   eq(t.names(), ["accountOfIdentity", "saveMessage", "getComposeDetails", "messages.get", "getRaw", "clientFor", "command"]);
   eq(t.notes, ["Message non envoyé : identifiant ou mot de passe refusé par le serveur. Il reste dans la fenêtre de rédaction et dans les brouillons."]);
   eq(t.logs, [["warn", "Envoi échoué (AUTH)."]]);
+});
+
+test("échec, dans d'autres langues : raison choisie par le code ; minuscule seulement si la langue le veut", async () => {
+  const fail = async () => {
+    const t = setup({ commandError: new EasError(ERR.AUTH, "Identifiant ou mot de passe refusé par le serveur.", { status: 401 }) });
+    await t.send();
+    await t.handler.idle();
+    return t.notes;
+  };
+  await withLanguage("en", async () => {
+    eq(await fail(), ["Message not sent: the server refused the sign-in name or the password. It remains in the compose window and in the drafts."]);
+  });
+  // German keeps the capital of the reason (sendReasonLowercase: no), whatever its first word.
+  await withLanguage("de", async () => {
+    const reason = render(CATALOGS.de.errorAuth, ["x"]);
+    eq(await fail(), [render(CATALOGS.de.sendFailedDraft, [/[.!?]$/.test(reason) ? reason : `${reason}.`])]);
+  });
 });
 
 test("échec : message de serveur occupé gardé tel quel (commande en tête)", async () => {

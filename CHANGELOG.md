@@ -11,10 +11,14 @@ de publication à son fichier `.xpi` dans les
 
 ### Nouveautés
 
-- **Interface en anglais et en français,** selon la langue de Thunderbird ; l'anglais est la
-  langue par défaut. Sont traduits : la page de réglages, les notifications d'envoi, le bouton
-  « Synchroniser », les menus, ainsi que le nom et la description de l'extension. Les textes
-  français sont inchangés.
+- **Interface en dix langues,** selon la langue de Thunderbird : anglais, russe, allemand,
+  espagnol, japonais, polonais, français, italien, portugais du Brésil et tchèque. Ce sont les
+  dix langues les plus employées dans Thunderbird (stats.thunderbird.net, 52 semaines jusqu'au
+  15 novembre 2026). Toute autre langue affiche l'anglais ; l'espagnol d'Amérique latine
+  affiche l'espagnol, le portugais du Portugal le portugais du Brésil.
+- Sont traduits : la page de réglages, les notifications d'envoi, le bouton « Synchroniser »,
+  les menus, ainsi que le nom et la description de l'extension. Les textes français sont
+  inchangés.
 - Les erreurs du moteur sont affichées selon leur code. En français, la raison détaillée reste
   affichée telle quelle ; dans une autre langue, elle figure en info-bulle.
 
@@ -25,9 +29,11 @@ de publication à son fichier `.xpi` dans les
 ### Développement
 
 - `tools/build_xpi.py` vérifie les traductions (`src/_locales`) : catalogue de la langue par
-  défaut présent, messages non vides, clés `__MSG_…__` du manifeste existantes.
-- Nouveau test unitaire `tests/unit/i18n.test.mjs` : mêmes clés et mêmes paramètres dans chaque
-  langue, toute clé employée existe, tout message est employé.
+  défaut présent, messages non vides, clés `__MSG_…__` du manifeste existantes, mêmes messages
+  et mêmes paramètres dans chaque langue.
+- Nouveau test unitaire `tests/unit/i18n.test.mjs`, pour les dix langues : mêmes clés et mêmes
+  paramètres, toute clé employée existe, tout message est employé, textes composés sans
+  paramètre oublié.
 - `tests/e2e/mail/run_mail_test.py --locale=en-US` : le scénario vérifie la langue de la page de
   réglages, du bouton et du manifeste.
 

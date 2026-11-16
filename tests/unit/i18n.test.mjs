@@ -15,9 +15,9 @@
  */
 
 import { test, eq, assert } from "./harness.mjs";
-import { CATALOGS, LOCALES, DEFAULT_LOCALE, readText, render, withLanguage } from "./i18n-fake.mjs";
+import { CATALOGS, LOCALES, DEFAULT_LOCALE, readText, render, withLanguage, tagOf } from "./i18n-fake.mjs";
 import { t, errorText, errorDetail, serverErrorText, ERROR_KEYS, KEYED_ERRORS, SERVER_ERROR_KEYS } from "../../src/i18n.mjs";
-import { statusView, formatTime, frequencyLabel, periodLabel, kindsLabel, logText, validateForm } from "../../src/options/form.mjs";
+import { statusView, formatTime, frequencyLabel, periodLabel, kindsLabel, logText, validateForm, debugText } from "../../src/options/form.mjs";
 import { parseServer } from "../../src/core/server.mjs";
 import { recordFailure } from "../../src/sync/health.mjs";
 import { EasError, ERR } from "../../src/transport/client.mjs";
@@ -112,9 +112,26 @@ test("traductions : anglais par défaut, nom et description du manifeste traduit
   const { manifest } = await extensionFiles();
   eq(manifest.default_locale, DEFAULT_LOCALE);
   eq([manifest.name, manifest.description, manifest.browser_action.default_title], ["__MSG_extensionName__", "__MSG_extensionDescription__", "__MSG_actionSync__"]);
-  for (const lang of LOCALES) eq(CATALOGS[lang].extensionName.message, "Sync443 – EAS Client for Thunderbird", lang);
-  eq(CATALOGS.en.languageTag.message, "en");
-  eq(CATALOGS.fr.languageTag.message, "fr");
+  eq(LOCALES[0], DEFAULT_LOCALE);
+  eq(LOCALES.length, 10, "les dix langues les plus employées dans Thunderbird");
+  for (const lang of LOCALES) {
+    eq(CATALOGS[lang].extensionName.message, "Sync443 – EAS Client for Thunderbird", lang);
+    eq(CATALOGS[lang].languageTag.message, tagOf(lang), `${lang} : languageTag`);
+    assert(/^[a-z]{2,3}(?:_[A-Z]{2})?$/.test(lang), `${lang} : code de dossier de Thunderbird attendu (pt_BR…)`);
+  }
+});
+
+test("traductions : erreurs du moteur traduites hors du français, réglage de casse yes ou no", () => {
+  const engine = [...ERROR_KEYS.values(), "errorOther"];
+  for (const lang of LOCALES) {
+    for (const key of engine) {
+      const text = render(CATALOGS[lang][key], ["<raison>"]);
+      if (lang === "fr") eq(text, "<raison>", `fr : ${key} montre la raison du moteur`);
+      else assert(!text.includes("<raison>") && text.trim(), `${lang} : ${key} doit être traduit, sans la raison française`);
+    }
+    assert(["yes", "no"].includes(CATALOGS[lang].sendReasonLowercase.message), `${lang} : sendReasonLowercase`);
+  }
+  eq(CATALOGS.de.sendReasonLowercase.message, "no", "de : les noms gardent leur majuscule");
 });
 
 test("traductions : les mêmes clés dans chaque langue (sans doublon à la casse près)", () => {
@@ -296,4 +313,43 @@ test("traductions : page de réglages en anglais (choix, état, journal, erreurs
   });
   // Back in French: no detail, the reason is in the text.
   eq(statusView({ lastError: { code: "NETWORK", message: "Serveur injoignable." } }, now), { tone: "error", text: "Erreur : Serveur injoignable.", massDelete: null });
+});
+
+test("traductions : chaque langue compose la page sans paramètre oublié ni ponctuation doublée", async () => {
+  const now = new Date(2026, 10, 15, 16, 30).getTime();
+  const at = (h, m) => new Date(2026, 10, 15, h, m).getTime();
+  for (const lang of LOCALES) {
+    await withLanguage(lang, () => {
+      const texts = [
+        frequencyLabel(0),
+        frequencyLabel(15),
+        frequencyLabel(7),
+        periodLabel("5"),
+        kindsLabel({ mail: true, calendar: true, contacts: true, tasks: true }),
+        statusView({}, now).text,
+        statusView({ running: true, failedItems: 1 }, now).text,
+        statusView({ lastSuccessAt: at(16, 2), failedItems: 12 }, now).text,
+        statusView({ lastSuccessAt: new Date(2025, 0, 3, 8, 0).getTime() }, now).text,
+        statusView({ blocked: { code: "MASS_DELETE" }, pendingDeletes: 120 }, now).text,
+        statusView({ blocked: { code: "MASS_DELETE" } }, now).text,
+        statusView({ blocked: { code: "AUTH", message: "Identifiant ou mot de passe refusé par le serveur." } }, now).text,
+        statusView({ blocked: { code: "X" } }, now).text,
+        statusView({ lastError: { code: "TLS", message: "Certificat refusé" }, nextAttemptAt: at(16, 45) }, now).text,
+        statusView({ lastError: { code: "LOCAL" } }, now).text,
+        logText([{ t: now, level: "debug", msg: "x" }]),
+        logText([]),
+        debugText(now + 3_600_000, now),
+        ...validateForm({ email: "a", password: "", server: "http://x", username: "a:b", syncMinutes: "2", filterType: "9", sync: {} }).errors.map((e) => e.message),
+        t("removeQuestion", "Work"),
+        t("sendReasonRefused", t("sendStatus116"), "116"),
+        t("sendFailedDraft", t("sendReasonTooLarge", 50)),
+      ];
+      for (const text of texts) {
+        assert(typeof text === "string" && text.trim(), `${lang} : texte vide`);
+        assert(!/\$[A-Za-z0-9_@]+\$|\$\d/.test(text), `${lang} : paramètre non remplacé : ${text}`);
+        assert(!/[.。!?！？]\.$|\.\.$/.test(text.replace(/…$/, "")), `${lang} : ponctuation doublée : ${text}`);
+      }
+      eq(t("languageTag"), tagOf(lang), lang);
+    });
+  }
 });

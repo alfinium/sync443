@@ -3,8 +3,9 @@
 
 /**
  * The texts of the interface: browser.i18n, from _locales/<language>/messages.json.
- * English is the default; French is the other translation. Thunderbird picks
- * the catalogue of its own language, English when there is none for it.
+ * The ten languages Thunderbird is most used in, English first and default.
+ * Thunderbird picks the catalogue of its own language (or of the same
+ * language for another country: es-AR → es_ES), English when there is none.
  *
  * Every key is written out where it is used, as t("key"), data-i18n="key"
  * (pages) or __MSG_key__ (manifest), so that tests/unit/i18n.test.mjs can find
@@ -36,6 +37,9 @@ export function uiLanguage() {
     return "en";
   }
 }
+
+/** `text` ending with a full stop: "." added unless it already ends a sentence (also as Japanese and Chinese do). */
+export const sentence = (text) => (/[.!?。！？]$/u.test(text) ? text : `${text}.`);
 
 /** The page's texts: data-i18n="key" (text) and data-i18n-aria-label="key" (attribute). */
 export function localizePage(doc) {

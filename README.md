@@ -29,7 +29,7 @@ L'agenda, les tâches et les contacts sont prévus dans les versions suivantes
 |---|---|
 | Thunderbird | 140 ESR et versions ultérieures (vérifiée sur 140.17 ESR et 160) |
 | Systèmes | Windows, macOS, Linux |
-| Langues | Interface en anglais et en français, selon la langue de l'application (anglais par défaut). Le journal de diagnostic reste en français. |
+| Langues | Interface en allemand, anglais, espagnol, français, italien, japonais, polonais, portugais (Brésil), russe et tchèque, selon la langue de l'application ; anglais pour toute autre langue. Le journal de diagnostic reste en français. |
 | Serveurs | Exchange Server sur site, et tout serveur Exchange ActiveSync 12.1 à 14.1 acceptant l'authentification par identifiant et mot de passe |
 | Non pris en charge | Microsoft 365 / Exchange Online (OAuth2) ; proxy exigeant sa propre authentification ; certificat émis par une autorité privée |
 

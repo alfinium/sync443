@@ -976,6 +976,10 @@
     "message": "unexpected error.",
     "description": "Reason (in sendFailed)."
   },
+  "sendReasonLowercase": {
+    "message": "yes",
+    "description": "A setting, not a text: “yes” if a reason that follows “Message not sent:” (one of the engine's errors) starts with a lower-case letter in this language, “no” otherwise (German, where nouns keep their capital; languages without letter case). Only “yes” or “no”."
+  },
   "sendReasonRefused": {
     "message": "$REASON$ (Status $STATUS$).",
     "description": "Reason (in sendFailed); $REASON$: one of the sendStatus… messages; $STATUS$: the server's status code.",
