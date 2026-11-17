@@ -23,9 +23,11 @@
  * Thunderbird flags these by NAME at every start; Junk is flagged by name
  * the same way when it exists (special mailboxes of a local store). So no
  * other server folder may take one of these eight names at the root,
- * whatever the case: a server folder named "Templates" becomes
- * "/Templates (2)", and one named "Junk" becomes "/Junk (2)" rather than a
- * junk folder whose messages Thunderbird may purge.
+ * whatever the case, unless the engine binds it to that folder on purpose
+ * (localPaths: `archives` and `roles`). The server's own "Templates" and
+ * "Junk" at the top are bound that way (sync/mailbox.mjs), the account
+ * being set never to purge its junk folder (sync443Account); any other
+ * folder of such a name gets " (2)".
  */
 
 import * as v from "./sanitize.mjs";
@@ -74,6 +76,14 @@ export const SPECIAL_PATHS = new Map([
 ]);
 /** The local account's archives folder (Thunderbird's "Archive" action), synchronised once bound (see localPaths). */
 export const ARCHIVES_PATH = "/Archives";
+/**
+ * Local folders that hold a role of Thunderbird's by their name, and that
+ * the server's folder of the same name at the top is bound to: role → path.
+ */
+export const ROLE_PATHS = new Map([
+  ["templates", "/Templates"],
+  ["junk", "/Junk"],
+]);
 /** Names no ordinary folder takes at the root (compared without regard to case, nor to look-alike letters). */
 export const RESERVED_ROOT_NAMES = Object.freeze(["Inbox", "Drafts", "Trash", "Sent", "Unsent Messages", "Templates", "Junk", "Archives"]);
 
@@ -450,8 +460,11 @@ export function specialFolders(tree) {
  *    action, never chosen by name). Unless it is a special folder, it goes
  *    to "/Archives", the local account's archives folder, with its
  *    subfolders.
+ *  - `roles` (optional): { templates?, junk? }, the ServerId of the folder
+ *    bound to each role of ROLE_PATHS. Unless it is a special folder or
+ *    the archives folder, it goes to the role's path, with its subfolders.
  */
-export function localPaths(tree, { archives = null } = {}) {
+export function localPaths(tree, { archives = null, roles = null } = {}) {
   const nodes = tree instanceof Map ? tree : tree?.nodes;
   const paths = new Map();
   if (!(nodes instanceof Map)) return paths;
@@ -463,6 +476,10 @@ export function localPaths(tree, { archives = null } = {}) {
   const special = specialFolders(mail);
   const pinned = new Map([...special].map(([id, use]) => [id, SPECIAL_PATHS.get(use)]));
   if (typeof archives === "string" && mail.has(archives) && !special.has(archives)) pinned.set(archives, ARCHIVES_PATH);
+  for (const [role, path] of ROLE_PATHS) {
+    const id = roles?.[role];
+    if (typeof id === "string" && mail.has(id) && !special.has(id) && !pinned.has(id)) pinned.set(id, path);
+  }
   const children = new Map(); // parentId → ids in ServerId order
   for (const [id, n] of mail) {
     if (pinned.has(id)) continue;

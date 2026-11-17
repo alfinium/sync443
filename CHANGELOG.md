@@ -7,6 +7,30 @@ One section per published version, most recent first. The section of a version s
 release notes of its `.xpi` file on the [Releases](https://github.com/alfinium/sync443/releases)
 page.
 
+## 0.6.0
+
+The server's templates and junk folders take their place in Thunderbird. Verified on Thunderbird
+140.17 ESR and Thunderbird 160.
+
+### New
+
+- **Templates and junk folders.** A folder named "Templates" or "Junk" at the top of the mailbox
+  on the server now appears as Thunderbird's own Templates or Junk folder, instead of beside it
+  as "Templates (2)" or "Junk (2)". A mailbox already synchronized is rearranged at the next
+  synchronization, without downloading its messages again. Nothing is renamed on the server. A
+  server that gives these folders another name ("Spam", "Junk Email") keeps them under that name.
+
+### Changed
+
+- The account is set never to delete its junk messages by age: Thunderbird's option "Automatically
+  delete junk mail older than…" stays off for it, since these messages are the server's. Emptying
+  the junk folder yourself still works, and is carried to the server.
+
+### Known limits
+
+- A template saved from Thunderbird stays in Thunderbird only: the protocol does not let a client
+  add a message to a folder of the server.
+
 ## 0.5.1
 
 Internal clean-up, without any change of behaviour. Verified on Thunderbird 140.17 ESR and

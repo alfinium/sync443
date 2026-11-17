@@ -77,6 +77,7 @@ const S = Object.freeze({
   alreadySent: "E2E deja envoye",
   alreadyDeleted: "E2E deja supprime",
   archive: "E2E archive serveur",
+  junk: "E2E indesirable serveur",
   invoice: "E2E facture",
   bob1: "E2E pour Bob 1",
   bob2: "E2E pour Bob 2",
@@ -473,6 +474,15 @@ async function phase1() {
     await check("le dossier « Archives » du serveur a sa place locale (/Archives (2) à côté du dossier d'archives, ou /Archives lui-même)", serverArchivesAt !== null, paths);
   }
   const use = (p) => folders.find((f) => f.path === p)?.uses ?? [];
+  // The server's own "Junk" at the top: in the folder that holds this role, never beside it. (The same binding of
+  // "Templates" is covered by the unit tests: this scenario keeps "/Templates" as its local-only folder.)
+  const junk = await localMessages(A.accountKey, "/Junk");
+  await check(
+    "« Junk » du serveur est dans le dossier Indésirables, sans dossier « /Junk (2) »",
+    withSubject(junk, S.junk).length === 1 && !paths.includes("/Junk (2)"),
+    { junk: junk?.map((m) => m.subject), paths, uses: use("/Junk") },
+  );
+  await info("junkRoleAtFirstSync", use("/Junk"));
   await check(
     "dossiers spéciaux sur /Inbox /Drafts /Sent /Trash (par leur rôle)",
     use("/Inbox").includes("inbox") && use("/Drafts").includes("drafts") && use("/Sent").includes("sent") && use("/Trash").includes("trash"),
@@ -916,6 +926,11 @@ async function phase2(previous) {
   await step("Redémarrage : correspondances, actions locales immédiates");
   await check("après redémarrage : les deux boîtes sont là, avec leur compte", A?.accountKey && B?.accountKey && ctx.entries.get(A.id)?.sync && ctx.entries.get(B.id)?.sync);
   await checkLocalFolders("après redémarrage");
+  // Thunderbird gives the junk role by name at a start: the server's "Junk" now holds it, and nothing left it.
+  const junkUses = (await localFolders(A.accountKey)).find((f) => f.path === "/Junk")?.uses ?? [];
+  const junkLocal = withSubject(await localMessages(A.accountKey, "/Junk"), S.junk).length;
+  const junkServer = (await serverFind(login, S.junk)).length;
+  await check("après redémarrage : « /Junk » a le rôle Indésirables et garde le message du serveur, des deux côtés", junkUses.includes("junk") && junkLocal === 1 && junkServer === 1, { junkUses, junkLocal, junkServer });
   const inboxSid = E.folders.alice.Inbox;
   // Read as the engine reads it (its record format is its own business).
   const { loadCollection } = await import("./sync/mail.mjs");

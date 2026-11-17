@@ -84,7 +84,7 @@ const isSafeNeutral = (s) =>
 /**
  * Archive and junk settings of an account (identity: archive_granularity 0,
  * archive_keep_folder_structure false, archive_folder = archivesUri; server:
- * moveOnSpam false, stored and loaded): [ok, details].
+ * moveOnSpam and purgeSpam false, stored and loaded): [ok, details].
  */
 async function mailSettings(accountKey, archivesUri) {
   const info = await helper.inspect(accountKey);
@@ -97,11 +97,15 @@ async function mailSettings(accountKey, archivesUri) {
       (p) => p.archive_granularity === 0 && p.archive_keep_folder_structure === false && p.archive_folder === archivesUri,
     ) &&
     server.moveOnSpam === false &&
-    info.moveOnSpamLoaded === false;
+    info.moveOnSpamLoaded === false &&
+    server.purgeSpam === false &&
+    info.purgeSpamLoaded === false;
   const details = {
     identities: identities.map((p) => [p.archive_granularity, p.archive_keep_folder_structure, p.archive_folder]),
     moveOnSpam: server.moveOnSpam,
     loaded: info.moveOnSpamLoaded,
+    purgeSpam: server.purgeSpam,
+    purgeLoaded: info.purgeSpamLoaded,
   };
   return [ok, details];
 }
@@ -440,7 +444,7 @@ async function inspectNewAccount(r, { email, name, fullName, mailboxId }, lf) {
     identity?.effectiveSmtpKey);
   const [settled, settings] = await mailSettings(r.accountKey, folder(info, "/Archives")?.uri);
   await check("archivage dans /Archives même (archive_granularity 0, archive_keep_folder_structure false, archive_folder), " +
-    "indésirables jamais déplacés (moveOnSpam false, enregistré et chargé)", settled, settings);
+    "indésirables jamais déplacés ni purgés (moveOnSpam et purgeSpam false, enregistrés et chargés)", settled, settings);
   return { info, identity, neutral };
 }
 
@@ -571,15 +575,15 @@ async function phase1() {
       archive_keep_folder_structure: true,
       archive_folder: folder(info, "/Inbox").uri,
     });
-    await helper.setBranchPrefs(`mail.server.${info.serverKey}.`, { moveOnSpam: true });
+    await helper.setBranchPrefs(`mail.server.${info.serverKey}.`, { moveOnSpam: true, purgeSpam: true });
     await helper.reloadSpamSettings(r1.accountKey);
     return !(await mailSettings(r1.accountKey, archivesUri))[0];
   };
-  await check("(réglages d'archivage et d'indésirables changés : par mois, arborescence copiée, vers /Inbox, déplacement des indésirables)",
+  await check("(réglages d'archivage et d'indésirables changés : par mois, arborescence copiée, vers /Inbox, déplacement et purge des indésirables)",
     await breakSettings());
   await api.ensureAccount({ mailboxId: M1, email: "alice.martin@example.com", name: "Alice" });
   let [settled, settings] = await mailSettings(r1.accountKey, archivesUri);
-  await check("ensureAccount d'un compte existant rétablit l'archivage dans /Archives et moveOnSpam false", settled, settings);
+  await check("ensureAccount d'un compte existant rétablit l'archivage dans /Archives, moveOnSpam et purgeSpam false", settled, settings);
   await check("(changés de nouveau)", await breakSettings());
   const routeAnswer = await api.checkSendRoute();
   [settled, settings] = await mailSettings(r1.accountKey, archivesUri);

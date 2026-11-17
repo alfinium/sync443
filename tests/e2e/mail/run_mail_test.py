@@ -202,6 +202,8 @@ def setup_fixture(srv, server_archives=True):
     if server_archives:
         srv.add_folder(a, "Archives")
     srv.add_folder(a, "Factures: 2026")
+    # "Junk" at the top: bound to the local junk folder. No "Templates": the scenario needs "/Templates" local only.
+    srv.add_folder(a, "Junk")
     masse = srv.add_folder(a, "Masse")
     srv.add_folder(a, "Agenda perso", type_=FolderType.USER_CALENDAR)
     srv.add_folder(a, "Contacts perso", type_=FolderType.USER_CONTACTS)
@@ -233,6 +235,7 @@ def setup_fixture(srv, server_archives=True):
     if server_archives:
         add("Archives", "E2E archive serveur")
     add("Factures: 2026", "E2E facture")
+    add("Junk", "E2E indesirable serveur")
     for n in range(1, 61):
         add(masse, f"E2E masse {n:02d}")
     srv.add_message(b, "Inbox", subject="E2E pour Bob 1", to=b)

@@ -727,8 +727,9 @@ var sync443Account = (() => {
    * Where Thunderbird's own actions put messages of this account, so that
    * they stay in synchronised folders: Archive into the account's /Archives
    * folder itself (archive_granularity 0: no yearly or monthly subfolders;
-   * archive_keep_folder_structure false); junk left where it is (moveOnSpam
-   * false on the server, also in Thunderbird's loaded junk settings).
+   * archive_keep_folder_structure false); junk left where it is and never
+   * purged by age (moveOnSpam and purgeSpam false on the server, also in
+   * Thunderbird's loaded junk settings).
    * Written explicitly, whatever Thunderbird's defaults are. True if
    * anything changed.
    */
@@ -756,6 +757,12 @@ var sync443Account = (() => {
     const branch = serverBranch(server);
     if (branch && !hasBool(branch, "moveOnSpam", false)) {
       branch.setBoolPref("moveOnSpam", false);
+      changed = true;
+    }
+    // The junk folder may be the server's own (sync/mailbox.mjs): Thunderbird never empties it by age,
+    // which would delete these messages on the server too.
+    if (branch && !hasBool(branch, "purgeSpam", false)) {
+      branch.setBoolPref("purgeSpam", false);
       changed = true;
     }
     if (changed) {

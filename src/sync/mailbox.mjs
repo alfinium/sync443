@@ -54,7 +54,11 @@
  * no other folder can hold them. The engine never changes a folder's role,
  * never renames, moves or deletes a special folder (locally or on the
  * server), and creates a missing default folder under its default name.
- * "/Templates" has no server counterpart: local only. "/Archives", the
+ * "/Templates" and "/Junk", which hold their role by their name too, are
+ * bound to the server's ordinary folder of that name at the top when it
+ * has one (chosen by name at every pass; a server that names it otherwise
+ * keeps them local). A message written in Thunderbird stays local there:
+ * the protocol adds no mail to a folder. "/Archives", the
  * folder of Thunderbird's Archive action, gets one the first time a message
  * is archived: a server folder "Archives" at the top (created, or the
  * existing one), bound by its ServerId; archiving is then an ordinary move.
@@ -80,7 +84,7 @@
  */
 
 import { folderSyncRequest, parseFolderSync, folderCreateRequest, folderUpdateRequest, folderDeleteRequest, parseFolderChange, ProtocolError } from "../core/protocol.mjs";
-import { applyChanges, buildTree, localPaths, specialFolders, specialUse, compareIds, nameKey, SPECIAL_PATHS, ARCHIVES_PATH, ROOT_ID, FOLDER_TYPE } from "../core/folder-tree.mjs";
+import { applyChanges, buildTree, localPaths, specialFolders, specialUse, compareIds, nameKey, SPECIAL_PATHS, ARCHIVES_PATH, ROLE_PATHS, ROOT_ID, FOLDER_TYPE } from "../core/folder-tree.mjs";
 import * as v from "../core/sanitize.mjs";
 import { EasError, ERR, FATAL } from "../transport/client.mjs";
 import { initialHealth, recordSuccess, recordFailure, canSyncAutomatically, clearForUser } from "./health.mjs";
@@ -103,6 +107,8 @@ const MASS_FOLDER_RATIO = 0.5;
 const KINDS = Object.freeze({ mail: true, calendar: false, contacts: false, tasks: false });
 const { TRASH: TRASH_TYPE, INBOX: INBOX_TYPE, OUTBOX: OUTBOX_TYPE, USER_MAIL: USER_MAIL_TYPE } = FOLDER_TYPE;
 const ARCHIVES_NAME = "Archives";
+/** Local folders a server folder is bound to on purpose, besides the special ones. */
+const ROLE_FOLDERS = new Set([ARCHIVES_PATH, ...ROLE_PATHS.values()]);
 /** FolderCreate / FolderUpdate / FolderDelete statuses worth another try ([MS-ASCMD] 2.2.3.177.x). */
 const FOLDER_TRANSIENT = new Set(["6", "8", "9", "11"]);
 /** Record: the calendar part has run for this mailbox (its calendars may exist in Thunderbird). */
@@ -941,7 +947,21 @@ export class MailboxSync {
         log?.info?.(`Archives : dossier local lié au dossier ${found} du serveur.`);
       }
     }
-    const paths = localPaths(tree, { archives: archivesId });
+    // The server's own "Templates" and "Junk" at the top (ordinary mail folders for the protocol): bound to the
+    // local folders that hold these roles, never synchronised beside them as "/Templates (2)" and "/Junk (2)".
+    const roles = {};
+    const rolePath = new Map(archivesId ? [[archivesId, ARCHIVES_PATH]] : []); // ServerId → the role folder it is bound to
+    for (const [role, path] of ROLE_PATHS) {
+      const key = nameKey(basename(path));
+      const found = [...tree.nodes]
+        .filter(([sid, n]) => n.parentId === ROOT_ID && n.type === USER_MAIL_TYPE && nameKey(n.name) === key && !rolePath.has(sid))
+        .map(([sid]) => sid)
+        .sort(compareIds)[0];
+      if (!found) continue;
+      roles[role] = found;
+      rolePath.set(found, path);
+    }
+    const paths = localPaths(tree, { archives: archivesId, roles });
     const specials = specialFolders(tree);
     const names = await records.names();
     const colls = new Map();
@@ -1295,7 +1315,7 @@ export class MailboxSync {
         if (occupant && occupant !== cur) {
           const o = owner.get(occupant);
           if (o === undefined) {
-            if (sid === archivesId && cur && movable(sid) && isSpecialLocal(occupant) && (await merge(sid, cur, occupant))) {
+            if (rolePath.has(sid) && cur && movable(sid) && isSpecialLocal(occupant) && (await merge(sid, cur, occupant))) {
               progress = true;
             } else if (!cur || isSpecialLocal(occupant) || !movable(sid)) {
               // A local folder no collection holds, in its place: taken (its table is rebuilt there).
@@ -1316,10 +1336,15 @@ export class MailboxSync {
           placed.add(sid);
           continue;
         }
-        if (cur && cur === ARCHIVES_PATH && sid !== archivesId && !specials.has(sid)) {
-          // The local archives folder, no longer bound to this server folder (moved or deleted there): it gets a
-          // folder of its own where the server has it; "/Archives" stays as it is, local.
-          log?.info?.(`Dossier ${sid} : n'est plus le dossier d'archives, il reçoit son propre dossier local.`);
+        if (cur && ROLE_FOLDERS.has(cur) && rolePath.get(sid) !== cur && !specials.has(sid)) {
+          // The local archives folder (or the templates or junk folder), no longer bound to this server folder
+          // (moved, renamed or deleted there): it gets a folder of its own where the server has it; the local
+          // folder stays as it is, local.
+          log?.info?.(
+            cur === ARCHIVES_PATH
+              ? `Dossier ${sid} : n'est plus le dossier d'archives, il reçoit son propre dossier local.`
+              : `Dossier ${sid} : n'est plus lié au dossier local « ${basename(cur)} », il reçoit son propre dossier local.`,
+          );
           owner.delete(cur);
           c.path = null;
           remap.set(sid, remap.get(sid) ?? null);

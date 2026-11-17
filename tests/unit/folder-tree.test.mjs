@@ -472,6 +472,19 @@ test("localPaths : à la racine, un nom qui ressemble à un nom réservé est su
   eq(paths.get("30"), "/Inbox");
 });
 
+test("localPaths : dossiers liés aux rôles Modèles et Indésirables par leur ServerId", () => {
+  const rows = [["1", "0", "Inbox", 2], ["2", "0", "Templates", 12], ["3", "0", "Junk", 12], ["4", "3", "Vu", 12], ["5", "0", "junk", 12], ["6", "0", "Archives", 12]];
+  const tree = buildTree(table(rows), { kinds: MAIL });
+  eq([localPaths(tree).get("2"), localPaths(tree).get("3")], ["/Templates (2)", "/Junk (2)"], "sans lien : noms réservés");
+  const bound = localPaths(tree, { roles: { templates: "2", junk: "3" } });
+  eq([bound.get("2"), bound.get("3"), bound.get("4")], ["/Templates", "/Junk", "/Junk/Vu"], "liés, leurs sous-dossiers les suivent");
+  eq(bound.get("5"), "/junk (2)", "un autre dossier du même nom garde son suffixe");
+  eq(localPaths(tree, { roles: { junk: "1" } }).get("1"), "/Inbox", "un dossier spécial garde sa place");
+  eq(localPaths(tree, { roles: { junk: "99" } }).get("3"), "/Junk (2)", "lien vers un dossier absent : ignoré");
+  eq(localPaths(tree, { archives: "6", roles: { junk: "6" } }).get("6"), "/Archives", "le dossier d'archives reste le dossier d'archives");
+  eq(new Set(localPaths(tree, { archives: "6", roles: { templates: "2", junk: "3" } }).values()).size, rows.length, "aucun chemin partagé");
+});
+
 test("localPaths : dossier d'archives lié par son ServerId, jamais par son nom", () => {
   const rows = [["1", "0", "Inbox", 2], ["2", "0", "Archives", 12], ["3", "0", "Classement", 12], ["4", "3", "2026", 12]];
   const tree = buildTree(table(rows), { kinds: MAIL });

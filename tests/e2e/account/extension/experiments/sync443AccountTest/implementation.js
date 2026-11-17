@@ -224,6 +224,7 @@ var sync443AccountTest = (() => {
               localPathExists: await IOUtils.exists(localPath),
               rootURI: server.rootFolder.URI,
               moveOnSpamLoaded: server.spamSettings?.moveOnSpam ?? null,
+              purgeSpamLoaded: server.spamSettings?.purge ?? null,
               folders: walk(server.rootFolder, "", []),
               identities: account.identities.map((identity) => ({
                 key: identity.key,

@@ -357,6 +357,73 @@ test("audit #6 : le serveur a déjà un dossier « Archives » : lié à /Archiv
   assert(!w.store.folders.has("/Archives (2)"));
 });
 
+test("rôles : « Templates » et « Junk » du serveur sont liés aux dossiers Modèles et Indésirables dès la première synchro", async () => {
+  const w = world({ store: archiveStore(), folders: extra([["8", "0", "Templates"], ["9", "0", "Junk"], ["10", "9", "Vu"]]) });
+  w.store.folders.get("/Templates").msgs.set("local-1", { id: "local-1", mid: "modele-local@x", flags: {} });
+  w.server.addMessage("8", mime("modele-serveur@x"));
+  w.server.addMessage("9", mime("pub@x"));
+  w.server.addMessage("10", mime("pub-vue@x"));
+  await w.runAll();
+  assert(!w.store.folders.has("/Templates (2)") && !w.store.folders.has("/Junk (2)"), "aucun dossier « (2) »");
+  eq([(await loadCollection(w.records, "8")).path, (await loadCollection(w.records, "9")).path, (await loadCollection(w.records, "10")).path], ["/Templates", "/Junk", "/Junk/Vu"]);
+  assert(w.store.mids("/Templates").includes("modele-serveur@x"), "le modèle du serveur est là");
+  assert(w.store.folders.get("/Templates").msgs.has("local-1"), "le modèle écrit dans Thunderbird reste");
+  eq(w.store.mids("/Junk"), ["pub@x"]);
+  eq(w.store.mids("/Junk/Vu"), ["pub-vue@x"]);
+  eq(w.server.folders.size, DEFAULT_FOLDERS.length + 3, "aucun dossier créé sur le serveur");
+  // A message put in the junk folder by the user: an ordinary move on the server.
+  const sid = w.server.addMessage("1", mime("arnaque@x"));
+  await w.runAll({ reason: "timer" });
+  await w.sync.recordIntent(w.store.userMove("/Inbox", "arnaque@x", "/Junk"));
+  await w.runAll({ reason: "timer" });
+  eq(w.server.sent("MoveItems").map((r) => [text(r.children[0], "SrcMsgId"), text(r.children[0], "DstFldId")]), [[sid, "9"]]);
+  eq(w.server.items.get("8").size, 1, "rien de supprimé dans les modèles du serveur");
+});
+
+test("rôles : « Templates (2) » et « Junk (2) » laissés par une version antérieure rejoignent les dossiers de rôle sans retéléchargement", async () => {
+  const w = world({ store: archiveStore(), folders: extra([["8", "0", "Templates"], ["9", "0", "Junk"]]) });
+  w.server.addMessage("8", mime("m1@x"));
+  w.server.addMessage("9", mime("j1@x"));
+  w.server.addMessage("9", mime("j2@x"));
+  await w.runAll();
+  // What an earlier version left: both synchronised beside the role folders; no local "/Junk".
+  for (const [id, role, old] of [["8", "/Templates", "/Templates (2)"], ["9", "/Junk", "/Junk (2)"]]) {
+    w.store.folders.set(old, { specialUse: [], msgs: new Map(w.store.folders.get(role).msgs) });
+    w.store.folders.get(role).msgs.clear();
+    const c = await loadCollection(w.records, id);
+    c.path = old;
+    c.snapshotNeeded = true;
+    await saveCollection(w.records, c);
+  }
+  w.store.folders.delete("/Junk");
+  const imports = w.imports();
+  await w.runAll({ reason: "timer" });
+  eq(w.store.mids("/Templates"), ["m1@x"]);
+  eq(w.store.mids("/Junk"), ["j1@x", "j2@x"]);
+  assert(!w.store.folders.has("/Templates (2)") && !w.store.folders.has("/Junk (2)"), "les anciens dossiers ne sont plus à côté");
+  eq(w.store.mids("/Trash"), [], "aucun message à la corbeille");
+  eq(w.imports(), imports, "rien de retéléchargé");
+  eq([w.server.items.get("8").size, w.server.items.get("9").size], [1, 2], "rien de supprimé sur le serveur");
+  const c9 = await loadCollection(w.records, "9");
+  eq([c9.path, c9.items.size, c9.syncKey === "0"], ["/Junk", 2, false], "table gardée, pas de resynchro complète");
+});
+
+test("rôles : « Templates » renommé sur le serveur quitte le dossier Modèles, qui reste local", async () => {
+  const w = world({ store: archiveStore(), folders: extra([["8", "0", "Templates"]]) });
+  w.server.addMessage("8", mime("m1@x"));
+  await w.runAll();
+  eq((await loadCollection(w.records, "8")).path, "/Templates");
+  w.server.updateFolder("8", { name: "Gabarits" });
+  await w.runAll({ reason: "timer" });
+  await w.runAll({ reason: "timer" });
+  eq((await loadCollection(w.records, "8")).path, "/Gabarits");
+  eq(w.store.mids("/Gabarits"), ["m1@x"]);
+  assert(w.store.folders.has("/Templates"), "le dossier Modèles de Thunderbird reste");
+  // As for the archives folder: a special local folder is never emptied nor renamed, its copies stay, local.
+  eq(w.store.mids("/Templates"), ["m1@x"]);
+  eq(w.server.items.get("8").size, 1, "rien de supprimé sur le serveur");
+});
+
 test("audit #6 : « Archives » du serveur tenu en « /Archives (2) » par une version antérieure : regroupé dans /Archives sans retéléchargement", async () => {
   const w = world({ store: archiveStore(), folders: extra([["8", "0", "Archives"], ["9", "8", "2025"]]) });
   w.server.addMessage("8", mime("a1@x"));

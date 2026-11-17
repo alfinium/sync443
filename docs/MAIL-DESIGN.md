@@ -132,7 +132,7 @@ Namespace `sync443Account`, background page only, every argument validated, erro
     - Windows reserved names (`CON`, `PRN`, `AUX`, `NUL`, `COM1`…`COM9`, `LPT1`…`LPT9`, extension included) are suffixed with `_`;
     - a name ending in `.msf` or `.sbd` (case-insensitive), like Thunderbird's files next to a folder, is suffixed with `_`;
     - at most 55 UTF-16 units.
-  - Collisions between siblings (case-insensitive), and with the names of the special folders at the root, receive a suffix ` (2)`, ` (3)`… in ServerId order: the result is deterministic.
+  - Collisions between siblings (case-insensitive), and with the names of the special folders at the root, receive a suffix ` (2)`, ` (3)`… in ServerId order: the result is deterministic. The server's own "Archives", "Templates" and "Junk" at the root are the exception: they are bound to the local folder of that role (below).
   - At the root, a name that resembles a reserved name also receives a suffix: case, width, accents, letters from other alphabets that look like Latin letters ("Inbox" written with a Cyrillic I), `I l 1`, `0 o`.
 
 ## Sync engine (stage 3)
@@ -218,6 +218,12 @@ Namespace `sync443Account`, background page only, every argument validated, erro
   - If it does not exist, it is created on the server the first time a synchronized message is archived.
   - Held as "/Archives (2)" by an earlier version: its messages join `/Archives` (moved, not downloaded again), its table is kept, its subfolders follow, and the old folder, once emptied, goes to the local trash.
   - The link is dropped if this folder leaves the root or goes to the server's trash (deleted in webmail): `/Archives` becomes local again, the server folder receives its own local folder, and the next archiving creates a new "Archives" folder at the root. It is also dropped when, in a list restarted from scratch, its ServerId designates a folder with another name (renumbered): the "Archives" folder at the root is then linked again.
+- **Templates and junk:** the protocol has no folder type for them, and Thunderbird gives both roles by name at the root of a local account (`/Templates`, `/Junk`).
+  - The ordinary folder named "Templates" or "Junk" at the root of the server (name compared case-insensitively) maps onto that local folder, never next to it as "/Templates (2)" or "/Junk (2)". It is chosen by name at every pass, without a record; a server that names the folder otherwise ("Spam", "Junk Email") keeps it under its own name, without the role.
+  - Held as "/Templates (2)" or "/Junk (2)" by an earlier version: its messages join the role folder (moved, or the folder renamed when the role folder does not exist yet), not downloaded again; its table is kept.
+  - A template saved from Thunderbird stays local in the same folder: the protocol adds no mail to a folder. A message moved by the user into the junk folder, or out of it, is an ordinary move (`MoveItems`).
+  - The account is set never to move junk by itself and never to purge its junk folder by age (`moveOnSpam` and `purgeSpam` false, written again at every start): emptying the folder stays the user's own action, under the mass-deletion threshold.
+  - Renamed on the server, the folder leaves the role folder and receives its own local folder; the copies already in the role folder stay there, local.
 - **Names sent to the server:** a folder created or renamed locally is sent with the name the user gave it; a moved folder keeps its server name, never a decorated local name ("X (2)", "CON_").
 - **`close()`**: stops the current pass and waits for it, stops Ping, writes the journal. After that, the instance writes nothing more: `run()` returns without a pass, `recordIntent()` is refused (code `CLOSED`). The background page calls it before replacing a mailbox's engine, so that two engines never work on the same records.
 
