@@ -7,6 +7,17 @@ One section per published version, most recent first. The section of a version s
 release notes of its `.xpi` file on the [Releases](https://github.com/alfinium/sync443/releases)
 page.
 
+## 0.5.1
+
+Internal clean-up, without any change of behaviour. Verified on Thunderbird 140.17 ESR and
+Thunderbird 160.
+
+### Changed
+
+- An unused style rule is removed, and two pieces of code that were written twice (the reason
+  shown when a sending fails, and the list of invisible characters removed from texts) are now
+  written once.
+
 ## 0.5.0
 
 Unchecked mail leaves Thunderbird, and private certificate authorities. Verified on Thunderbird

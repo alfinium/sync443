@@ -6,7 +6,7 @@ Sync443 is a Thunderbird extension that provides native support for the **Exchan
 (EAS) protocol. Each ActiveSync mailbox becomes a regular Thunderbird account, with no gateway
 and no IMAP or SMTP configuration: all traffic goes over a single HTTPS connection to the server.
 
-**Current version: 0.5.0.** It supports mail (folders, messages and sending), calendars, tasks,
+**Current version: 0.5.1.** It supports mail (folders, messages and sending), calendars, tasks,
 meeting invitations and contacts, with an interface in ten languages
 ([roadmap](docs/ARCHITECTURE.md)).
 
