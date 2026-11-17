@@ -119,6 +119,14 @@
       }
     }
   },
+  "uncheckMailConfirm": {
+    "message": "Die E-Mails von „$NAME$“ nicht mehr synchronisieren? Die Kopien seiner Nachrichten werden aus Thunderbird entfernt; Nachrichten, die nur in Thunderbird vorhanden sind, bleiben erhalten. Auf dem Server wird nichts gelöscht. Noch nicht an den Server gesendete Aktionen gehen verloren.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
   "uncheckBothConfirm": {
     "message": "Kalender und Aufgaben von „$NAME$“ nicht mehr synchronisieren? Seine Kalender werden mit ihren Terminen und Aufgaben aus Thunderbird entfernt. Auf dem Server wird nichts gelöscht. Noch nicht an den Server gesendete Änderungen gehen verloren.",
     "placeholders": {
@@ -261,6 +269,18 @@
   },
   "moreSettings": {
     "message": "Weitere Einstellungen"
+  },
+  "fieldCaFingerprint": {
+    "message": "Fingerabdruck einer privaten Zertifizierungsstelle (optional)"
+  },
+  "caFingerprintHint": {
+    "message": "Nur wenn das Zertifikat Ihres Servers von einer Zertifizierungsstelle Ihrer Organisation stammt. Geben Sie den SHA-256-Fingerabdruck des Zertifikats dieser Stelle oder des Servers ein, so wie Ihr Administrator ihn mitgeteilt hat. Übernehmen Sie ihn niemals aus einer Warnmeldung: In einem Netzwerk, das Verbindungen abfängt, wäre es der des Angreifers. Die Zertifizierungsstelle muss außerdem in Thunderbird oder im System installiert sein."
+  },
+  "caFingerprintInvalid": {
+    "message": "Ein SHA-256-Fingerabdruck besteht aus 64 Hexadezimalziffern (Doppelpunkte und Leerzeichen werden ignoriert)."
+  },
+  "caFingerprintServerChanged": {
+    "message": "Der Server wurde geändert: Ein Fingerabdruck gilt nur für einen Server. Geben Sie ihn für den neuen Server erneut ein oder lassen Sie dieses Feld leer."
   },
   "fieldKinds": {
     "message": "Zu synchronisierende Elemente"
@@ -642,7 +662,7 @@
     }
   },
   "errorTls": {
-    "message": "Verbindung vor dem Senden des Passworts abgelehnt: Das Zertifikat des Servers wurde nicht akzeptiert. Möglicherweise werden HTTPS-Verbindungen im Netzwerk abgefangen. Zertifikate einer privaten Zertifizierungsstelle werden noch nicht unterstützt.",
+    "message": "Verbindung vor dem Senden des Passworts abgelehnt: Das Zertifikat des Servers wurde nicht akzeptiert. Möglicherweise werden HTTPS-Verbindungen im Netzwerk abgefangen. Wenn Ihr Server eine Zertifizierungsstelle Ihrer Organisation verwendet, geben Sie deren Fingerabdruck unter „Weitere Einstellungen“ ein.",
     "placeholders": {
       "reason": {
         "content": "$1"

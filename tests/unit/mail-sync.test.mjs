@@ -526,6 +526,26 @@ export class FakeMailStore {
     }
     return { deleted, skipped };
   }
+  async purgeMessages(ids) {
+    this.#check();
+    let n = 0;
+    for (const id of ids) {
+      const at = this.#locate(id);
+      if (!at) continue;
+      at.f.msgs.delete(id);
+      this.writes.push(["purge", at.path, at.m.mid]);
+      n++;
+    }
+    return n;
+  }
+  async deleteEmptyFolder(path) {
+    this.#check();
+    const f = this.folders.get(path);
+    if (!f || f.specialUse.length || f.msgs.size || [...this.folders.keys()].some((p) => p.startsWith(`${path}/`))) return false;
+    this.folders.delete(path);
+    this.writes.push(["folderDelete", path]);
+    return true;
+  }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────

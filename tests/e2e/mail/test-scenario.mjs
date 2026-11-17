@@ -1042,6 +1042,7 @@ async function phase3() {
     const view = { ...A, server: `127.0.0.1:${E.port}` };
     const seqOff = await mock("last_seq");
     const savedAt = Date.now() / 1000;
+    const templatesBefore = (await localMessages(A.accountKey, "/Templates").catch(() => [])).length;
     const res = await ctx.saveMailbox(input(view, { sync: { mail: false, calendar: true, contacts: false, tasks: false } }), null);
     const A2 = await mailboxById(A.id);
     await check("A enregistrée sans le courrier (mot de passe gardé, non retapé)", res?.id === A.id && A2 && !A2.sync.mail && A2.sync.calendar, A2?.sync);
@@ -1062,12 +1063,14 @@ async function phase3() {
     );
     await check("… le nouveau message du serveur n'est pas importé", !withSubject(await localMessages(A.accountKey, "/Inbox"), S.mailOff).length);
     const stillAccount = await T.inspect(A.accountKey);
-    if (stillAccount) {
-      await gap(
-        "courrier décoché : le compte de courrier local de A (et ses messages) reste en place ; ARCHITECTURE.md « Removing an item » prévoit sa suppression après confirmation, non faite dans cette version",
-        { accountKey: A.accountKey, folders: stillAccount.folders.length },
-      );
-    }
+    await check("courrier décoché : le compte de A reste en place (il porte l'identité des réunions)", Boolean(stillAccount), A.accountKey);
+    const inboxLeft = await localMessages(A.accountKey, "/Inbox");
+    await check("… les copies locales des messages du serveur ont quitté Thunderbird", inboxLeft.length === 0, inboxLeft.map((x) => x.subject).slice(0, 8));
+    const templatesAfter = (await localMessages(A.accountKey, "/Templates").catch(() => [])).length;
+    await check("… un message qui n'existe que dans Thunderbird (dossier purement local) reste", templatesAfter === templatesBefore && templatesBefore > 0, { before: templatesBefore, after: templatesAfter });
+    const namesLeft = (await browser.storage.local.get(null));
+    const mailRecords = Object.keys(namesLeft).filter((k) => k.startsWith(`mb/${A.id}/coll:`) || k === `mb/${A.id}/layout`);
+    await check("… et plus rien n'est retenu pour le courrier de A", mailRecords.length === 0, mailRecords.slice(0, 5));
     // A local action in that account, now that mail is no longer synchronised.
     const m = withSubject(await localMessages(A.accountKey, "/Inbox"), S.witness)[0];
     if (m) {

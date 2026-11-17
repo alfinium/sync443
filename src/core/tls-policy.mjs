@@ -11,11 +11,14 @@
  * public authorities, or an authority added locally.
  *
  * Accepted: a valid chain ending in a built-in root, or a valid chain whose
- * leaf or root has a SHA-256 fingerprint pinned for this server. Pins are
- * set only by test builds for now (no setting offers them yet), so a
- * private authority is not supported. Anything else is refused before the
- * password is sent, including a connection that only works through a
- * certificate exception.
+ * leaf or root has a SHA-256 fingerprint pinned for this server: that of
+ * a private authority, which the user typed in the mailbox's settings as
+ * its administrator gave it (never offered from what a connection shows:
+ * on a network that intercepts, it would be the interceptor's). The chain
+ * must be valid all the same: the authority is installed in Thunderbird
+ * or in the system. Anything else is refused before the password is
+ * sent, including a connection that only works through a certificate
+ * exception.
  *
  * `info` is what webRequest.getSecurityInfo(id, {certificateChain: true})
  * returns.
@@ -64,8 +67,8 @@ export function tlsMessage(reason, issuer = "") {
     case "not-public-root": {
       const warning =
         "Connexion refusée avant l'envoi du mot de passe : autorité du certificat non reconnue par " +
-        "Thunderbird. Le réseau intercepte peut-être les connexions HTTPS ; les autorités privées ne " +
-        "sont pas prises en charge.";
+        "Thunderbird. Le réseau intercepte peut-être les connexions HTTPS. Autorité privée : voir " +
+        "« Plus de réglages ».";
       if (!shown) return warning;
       const before = " Émetteur, un nom que n'importe qui peut choisir : « ";
       const after = " ».";

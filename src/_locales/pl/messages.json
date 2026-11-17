@@ -119,6 +119,14 @@
       }
     }
   },
+  "uncheckMailConfirm": {
+    "message": "Przestać synchronizować pocztę skrzynki „$NAME$”? Kopie jej wiadomości zostaną usunięte z Thunderbirda; wiadomości istniejące tylko w Thunderbirdzie pozostaną. Na serwerze nic nie zostanie usunięte. Działania, które nie zostały jeszcze wysłane na serwer, zostaną utracone.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
   "uncheckBothConfirm": {
     "message": "Przestać synchronizować kalendarz i zadania skrzynki „$NAME$”? Jej kalendarze zostaną usunięte z Thunderbirda wraz z wydarzeniami i zadaniami. Na serwerze nic nie zostanie usunięte. Zmiany, które nie zostały jeszcze wysłane na serwer, zostaną utracone.",
     "placeholders": {
@@ -261,6 +269,18 @@
   },
   "moreSettings": {
     "message": "Więcej ustawień"
+  },
+  "fieldCaFingerprint": {
+    "message": "Odcisk palca prywatnego urzędu certyfikacji (opcjonalnie)"
+  },
+  "caFingerprintHint": {
+    "message": "Tylko jeśli certyfikat serwera pochodzi z urzędu certyfikacji Twojej organizacji. Wpisz odcisk SHA-256 certyfikatu tego urzędu lub samego serwera, taki, jaki podał administrator. Nigdy nie przepisuj go z ostrzeżenia: w sieci przechwytującej połączenia byłby to odcisk przechwytującego. Urząd musi być też zainstalowany w Thunderbirdzie lub w systemie."
+  },
+  "caFingerprintInvalid": {
+    "message": "Odcisk SHA-256 składa się z 64 cyfr szesnastkowych (dwukropki i spacje są pomijane)."
+  },
+  "caFingerprintServerChanged": {
+    "message": "Serwer się zmienił: odcisk palca dotyczy tylko jednego serwera. Wpisz go ponownie dla nowego serwera albo pozostaw to pole puste."
   },
   "fieldKinds": {
     "message": "Elementy do synchronizacji"
@@ -642,7 +662,7 @@
     }
   },
   "errorTls": {
-    "message": "Połączenie zostało odrzucone przed wysłaniem hasła: certyfikat serwera nie został zaakceptowany. Możliwe, że sieć przechwytuje połączenia HTTPS. Certyfikaty prywatnych urzędów certyfikacji nie są jeszcze obsługiwane.",
+    "message": "Połączenie zostało odrzucone przed wysłaniem hasła: certyfikat serwera nie został zaakceptowany. Możliwe, że sieć przechwytuje połączenia HTTPS. Jeśli serwer korzysta z urzędu certyfikacji Twojej organizacji, wpisz jego odcisk palca w sekcji „Więcej ustawień”.",
     "placeholders": {
       "reason": {
         "content": "$1"

@@ -45,6 +45,7 @@ import { PimSync } from "./sync/pim.mjs";
 import { ContactStore } from "./tb/contact-store.mjs";
 import { contactSync } from "./sync/contacts.mjs";
 import { lookupAvailability } from "./sync/availability.mjs";
+import { TLS_PIN } from "./core/ids.mjs";
 import { MAX_MEETING_RECIPIENTS } from "./core/itip.mjs";
 import { toHex } from "./core/sha256.mjs";
 import { t, uiLanguage, errorText, errorDetail, serverErrorText, calendarNotice, cleanLine } from "./i18n.mjs";
@@ -640,7 +641,15 @@ function checkInput(input) {
   if (calendarPeriod !== null && !CALENDAR_PERIODS.includes(calendarPeriod)) throw new FieldError("calendarPeriod", t("chooseCalendarPeriod"));
   const taskFilter = choice(input.taskFilter);
   if (taskFilter !== null && !TASK_FILTERS.includes(taskFilter)) throw new FieldError("taskFilter", t("chooseTaskFilter"));
-  return { email, username, name, server, syncMinutes, filterType, sync, calendarPeriod, taskFilter };
+  // The fingerprints trusted for this server (a private authority). Absent: the mailbox keeps its own.
+  let tlsPins = null;
+  if (input.tlsPins !== undefined && input.tlsPins !== null) {
+    if (!Array.isArray(input.tlsPins) || input.tlsPins.length > 4 || input.tlsPins.some((p) => typeof p !== "string" || !TLS_PIN.test(p))) {
+      throw new FieldError("caFingerprint", t("caFingerprintInvalid"));
+    }
+    tlsPins = [...new Set(input.tlsPins)];
+  }
+  return { email, username, name, server, syncMinutes, filterType, sync, calendarPeriod, taskFilter, tlsPins };
 }
 
 /** Errors of the connection check, pointed at the field the user can fix. */
@@ -706,6 +715,10 @@ async function saveMailboxChecked(input, password) {
 
   const ids = existing ? { mailboxId: existing.id, deviceId: existing.deviceId } : newIds();
   const originChanged = Boolean(existing) && existing.origin !== v.server.origin;
+  // A fingerprint holds for one server only (rule 3): left as it was while the server changed, it is asked again.
+  if (originChanged && v.tlsPins?.length && existing.tlsPins.length && v.tlsPins.every((p) => existing.tlsPins.includes(p))) {
+    throw new FieldError("caFingerprint", t("caFingerprintServerChanged"));
+  }
   const draft = checkMailbox({
     id: ids.mailboxId,
     email: v.email,
@@ -720,7 +733,7 @@ async function saveMailboxChecked(input, password) {
     taskFilter: v.taskFilter ?? existing?.taskFilter,
     accountKey: existing?.accountKey ?? null,
     // Pins hold for one server only (rule 3).
-    tlsPins: existing && !originChanged ? existing.tlsPins : testConfig?.pins ?? [],
+    tlsPins: v.tlsPins ?? (existing && !originChanged ? existing.tlsPins : testConfig?.pins ?? []),
     sync: v.sync,
   });
 
@@ -873,6 +886,7 @@ async function mailboxView(mb) {
     calendarPeriod: mb.calendarPeriod,
     taskFilter: mb.taskFilter,
     sync: mb.sync,
+    tlsPins: [...mb.tlsPins],
     status: {
       running: Boolean(entry?.inFlight),
       lastSuccessAt: health.lastSuccessAt,

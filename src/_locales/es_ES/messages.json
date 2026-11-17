@@ -119,6 +119,14 @@
       }
     }
   },
+  "uncheckMailConfirm": {
+    "message": "¿Dejar de sincronizar el correo de «$NAME$»? Las copias de sus mensajes se quitarán de Thunderbird; los mensajes que solo existen en Thunderbird permanecen. No se elimina nada en el servidor. Las acciones que aún no se han enviado al servidor se pierden.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
   "uncheckBothConfirm": {
     "message": "¿Dejar de sincronizar el calendario y las tareas de «$NAME$»? Sus calendarios se quitarán de Thunderbird, con sus eventos y tareas. No se elimina nada en el servidor. Los cambios que aún no se han enviado al servidor se pierden.",
     "placeholders": {
@@ -261,6 +269,18 @@
   },
   "moreSettings": {
     "message": "Más ajustes"
+  },
+  "fieldCaFingerprint": {
+    "message": "Huella digital de una autoridad de certificación privada (opcional)"
+  },
+  "caFingerprintHint": {
+    "message": "Solo si el certificado de su servidor procede de una autoridad de su organización. Introduzca la huella SHA-256 del certificado de esa autoridad, o del propio servidor, tal como se la ha dado su administrador. No la copie nunca de una advertencia: en una red que intercepta las conexiones, sería la del interceptor. La autoridad también debe estar instalada en Thunderbird o en el sistema."
+  },
+  "caFingerprintInvalid": {
+    "message": "Una huella SHA-256 tiene 64 dígitos hexadecimales (los dos puntos y los espacios se ignoran)."
+  },
+  "caFingerprintServerChanged": {
+    "message": "El servidor ha cambiado: una huella solo vale para un servidor. Introdúzcala de nuevo para el nuevo servidor o deje este campo vacío."
   },
   "fieldKinds": {
     "message": "Elementos que sincronizar"
@@ -642,7 +662,7 @@
     }
   },
   "errorTls": {
-    "message": "Conexión rechazada antes de enviar la contraseña: no se ha aceptado el certificado del servidor. Es posible que la red esté interceptando las conexiones HTTPS. Los certificados de una autoridad privada aún no se admiten.",
+    "message": "Conexión rechazada antes de enviar la contraseña: no se ha aceptado el certificado del servidor. Es posible que la red esté interceptando las conexiones HTTPS. Si su servidor usa una autoridad de certificación de su organización, introduzca su huella digital en «Más ajustes».",
     "placeholders": {
       "reason": {
         "content": "$1"

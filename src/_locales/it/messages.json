@@ -119,6 +119,14 @@
       }
     }
   },
+  "uncheckMailConfirm": {
+    "message": "Interrompere la sincronizzazione della posta di “$NAME$”? Le copie dei relativi messaggi verranno rimosse da Thunderbird; i messaggi che esistono solo in Thunderbird restano. Nulla viene eliminato sul server. Le azioni non ancora inviate al server vanno perse.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
   "uncheckBothConfirm": {
     "message": "Interrompere la sincronizzazione del calendario e delle attività di “$NAME$”? I relativi calendari verranno rimossi da Thunderbird, con i loro eventi e le loro attività. Nulla viene eliminato sul server. Le modifiche non ancora inviate al server vanno perse.",
     "placeholders": {
@@ -261,6 +269,18 @@
   },
   "moreSettings": {
     "message": "Altre impostazioni"
+  },
+  "fieldCaFingerprint": {
+    "message": "Impronta digitale di un’autorità di certificazione privata (facoltativo)"
+  },
+  "caFingerprintHint": {
+    "message": "Solo se il certificato del server proviene da un’autorità della propria organizzazione. Inserire l’impronta SHA-256 del certificato di tale autorità, o di quello del server, così come fornita dall’amministratore. Non copiarla mai da un avviso: su una rete che intercetta le connessioni sarebbe quella dell’intercettatore. L’autorità deve inoltre essere installata in Thunderbird o nel sistema."
+  },
+  "caFingerprintInvalid": {
+    "message": "Un’impronta SHA-256 è composta da 64 cifre esadecimali (i due punti e gli spazi vengono ignorati)."
+  },
+  "caFingerprintServerChanged": {
+    "message": "Il server è cambiato: un’impronta vale per un solo server. Inserirla di nuovo per il nuovo server oppure lasciare vuoto questo campo."
   },
   "fieldKinds": {
     "message": "Elementi da sincronizzare"
@@ -642,7 +662,7 @@
     }
   },
   "errorTls": {
-    "message": "Connessione rifiutata prima dell’invio della password: il certificato del server non è stato accettato. È possibile che la rete stia intercettando le connessioni HTTPS. I certificati di un’autorità privata non sono ancora supportati.",
+    "message": "Connessione rifiutata prima dell’invio della password: il certificato del server non è stato accettato. È possibile che la rete stia intercettando le connessioni HTTPS. Se il server usa un’autorità di certificazione della propria organizzazione, inserirne l’impronta digitale in “Altre impostazioni”.",
     "placeholders": {
       "reason": {
         "content": "$1"

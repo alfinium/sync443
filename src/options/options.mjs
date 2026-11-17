@@ -131,9 +131,9 @@ import { t, localizePage } from "../i18n.mjs";
 const api = globalThis.messenger ?? globalThis.browser;
 const FIELDS = new Set(FIELD_ORDER);
 // Fields read and filled through their value (the check boxes of the items are apart).
-const VALUE_FIELDS = ["email", "password", "name", "server", "username", "syncMinutes", "period"];
+const VALUE_FIELDS = ["email", "password", "name", "server", "username", "syncMinutes", "period", "caFingerprint"];
 /** The fields inside "More settings" (a details element, closed for a new mailbox). */
-const MORE_FIELDS = new Set(["name", "username", "syncMinutes"]);
+const MORE_FIELDS = new Set(["name", "username", "syncMinutes", "caFingerprint"]);
 const WATCHED = /^mb\/[a-f0-9]{12}\/(?:health|pendingDeletes|status)$/;
 
 const $ = (id) => document.getElementById(id);

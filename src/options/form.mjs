@@ -76,7 +76,7 @@ const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
 const HIDDEN = /[\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2028\u2029\u2060-\u2069\ufeff]/;
 
 /** The fields in the order of the page: errors are listed (and the first one focused) in that order. */
-export const FIELD_ORDER = Object.freeze(["email", "password", "server", "sync", "period", "name", "username", "syncMinutes"]);
+export const FIELD_ORDER = Object.freeze(["email", "password", "server", "sync", "period", "name", "username", "syncMinutes", "caFingerprint"]);
 
 /** Host permission covering one server (match patterns have no port). */
 export const permissionPattern = (host) => `https://${host}/*`;
@@ -156,6 +156,10 @@ export function validateForm(values, existing = null) {
   const sync = Object.fromEntries(SYNC_KINDS.map((k) => [k, values.sync?.[k] === true]));
   if (!SYNC_KINDS.some((k) => sync[k])) error("sync", t("chooseKind"));
 
+  // The fingerprint of a private authority: 64 hexadecimal digits, however they are grouped; empty for none.
+  const fingerprint = str(values.caFingerprint).replace(/[\s:]/g, "").toUpperCase();
+  if (fingerprint !== "" && !/^[0-9A-F]{64}$/.test(fingerprint)) error("caFingerprint", t("caFingerprintInvalid"));
+
   if (errors.length) {
     errors.sort((a, b) => FIELD_ORDER.indexOf(a.field) - FIELD_ORDER.indexOf(b.field));
     return { ok: false, errors, server, permission: null, request: null };
@@ -178,6 +182,7 @@ export function validateForm(values, existing = null) {
         // Not asked in the form: a mailbox keeps the one it has.
         taskFilter: TASK_FILTERS.includes(existing?.taskFilter) ? existing.taskFilter : DEFAULTS.taskFilter,
         sync,
+        tlsPins: fingerprint ? [fingerprint] : [],
       },
       password: password || null,
     },
@@ -197,6 +202,7 @@ export function formValues(mailbox = null) {
       server: "",
       syncMinutes: String(DEFAULTS.syncMinutes),
       period: DEFAULTS.period,
+      caFingerprint: "",
       sync: { ...DEFAULTS.sync },
     };
   }
@@ -209,8 +215,15 @@ export function formValues(mailbox = null) {
     server: str2(mailbox.server),
     syncMinutes: String(FREQUENCIES.some(([m]) => m === mailbox.syncMinutes) ? mailbox.syncMinutes : DEFAULTS.syncMinutes),
     period: periodOf(mailbox),
+    caFingerprint: fingerprintShown(mailbox.tlsPins),
     sync,
   };
+}
+
+/** The fingerprint a mailbox has, as it is shown: pairs of digits separated by colons; "" for none. */
+export function fingerprintShown(pins) {
+  const pin = Array.isArray(pins) && typeof pins[0] === "string" && /^[0-9A-F]{64}$/.test(pins[0]) ? pins[0] : "";
+  return pin ? pin.match(/../g).join(":") : "";
 }
 
 const str2 = (v) => (typeof v === "string" ? v : "");
@@ -270,13 +283,14 @@ export const discardConfirm = (mailbox = null) => (mailbox?.sync?.contacts === t
  * it are lost. `existing`: the mailbox as the background lists it; `sync`:
  * the items as the form has them; `name`: how the page names the mailbox.
  * → the question, or "" when the save removes nothing (a new mailbox,
- * nothing unchecked, mail unchecked). Contacts unchecked have a question
- * of their own, added to the other when both apply.
+ * nothing unchecked). Mail and contacts unchecked each have a question of
+ * their own, added to the others when several apply.
  */
 export function uncheckConfirm(existing, sync, name) {
   const dropped = (kind) => existing?.sync?.[kind] === true && sync?.[kind] !== true;
   const label = shown(name);
   const questions = [];
+  if (dropped("mail")) questions.push(t("uncheckMailConfirm", label));
   if (dropped("calendar") && dropped("tasks")) questions.push(t("uncheckBothConfirm", label));
   else if (dropped("calendar")) questions.push(t("uncheckCalendarConfirm", label));
   else if (dropped("tasks")) questions.push(t("uncheckTasksConfirm", label));

@@ -265,10 +265,10 @@ test("traductions : échec du moteur choisi par son code ; en français, la rais
   await withLanguage("en", () => {
     eq(errorText(auth), "The server refused the sign-in name or the password.");
     eq(errorDetail(auth, errorText(auth)), "Details (in French): Identifiant ou mot de passe refusé par le serveur.");
-    eq(errorText({ code: "TLS", message: "Connexion refusée : certificat du serveur non reconnu." }), "Connection refused before the password was sent: the server's certificate was not accepted. The network may be intercepting HTTPS connections. Certificates from a private authority are not supported yet.");
+    eq(errorText({ code: "TLS", message: "Connexion refusée : certificat du serveur non reconnu." }), "Connection refused before the password was sent: the server's certificate was not accepted. The network may be intercepting HTTPS connections. If your server uses a certificate authority of your organization, enter its fingerprint under “More settings”.");
     eq(errorText({ code: "NOT_A_CODE", message: "x" }), "Unexpected error.");
     eq(errorText({ code: "__proto__", message: "x" }), "Unexpected error.");
-    eq(errorText({ code: "TLS" }), "Connection refused before the password was sent: the server's certificate was not accepted. The network may be intercepting HTTPS connections. Certificates from a private authority are not supported yet.");
+    eq(errorText({ code: "TLS" }), "Connection refused before the password was sent: the server's certificate was not accepted. The network may be intercepting HTTPS connections. If your server uses a certificate authority of your organization, enter its fingerprint under “More settings”.");
     for (const key of ERROR_KEYS.values()) assert(t(key, "raison") !== "raison" && !t(key, "raison").includes("raison"), key);
   });
 });

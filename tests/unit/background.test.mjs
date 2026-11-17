@@ -284,6 +284,31 @@ test("arrière-plan : mot de passe non enregistré, le compte créé est retiré
   eq([w.accounts.size, (await x.store.listMailboxes()).length, w.granted.has(perm(OTHER))], [1, 1, false]);
 });
 
+test("arrière-plan : empreinte d'une autorité privée saisie par l'utilisateur, gardée pour ce serveur seulement", async () => {
+  const { w, x } = await load();
+  const [mb] = await x.store.listMailboxes();
+  const pin = PIN.leaf.toUpperCase();
+  // Typed in the form: stored, and shown again by the list.
+  await x.saveMailbox(input({ id: mb.id, tlsPins: [pin] }), null);
+  await settle(x);
+  eq((await x.store.getMailbox(mb.id)).tlsPins, [pin]);
+  // A save that says nothing of it keeps it; an empty list removes it.
+  await x.saveMailbox(input({ id: mb.id }), null);
+  await settle(x);
+  eq((await x.store.getMailbox(mb.id)).tlsPins, [pin]);
+  // What is not a fingerprint is refused, on its field.
+  for (const bad of [["abc"], [pin.toLowerCase()], "x", [pin, pin + "0"], Array.from({ length: 5 }, (_, i) => pin.slice(0, 63) + i)]) {
+    await rejects(x.saveMailbox(input({ id: mb.id, tlsPins: bad }), null), (e) => e.field === "caFingerprint", JSON.stringify(bad).slice(0, 40));
+  }
+  // Another server with the fingerprint left as it was: asked again, nothing saved.
+  w.granted.add(perm(OTHER));
+  await rejects(x.saveMailbox(input({ id: mb.id, server: `https://${OTHER}`, tlsPins: [pin] }), "pw3"), (e) => e.field === "caFingerprint");
+  eq([(await x.store.getMailbox(mb.id)).origin, (await x.store.getMailbox(mb.id)).tlsPins], [`https://${HOST}`, [pin]]);
+  await x.saveMailbox(input({ id: mb.id, tlsPins: [] }), null);
+  await settle(x);
+  eq((await x.store.getMailbox(mb.id)).tlsPins, []);
+});
+
 test("arrière-plan : changement de serveur, empreintes oubliées, ancien mot de passe et ancienne autorisation retirés (H1)", async () => {
   const { w, x } = await load();
   const [mb] = await x.store.listMailboxes();

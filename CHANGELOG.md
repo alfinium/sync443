@@ -7,6 +7,29 @@ One section per published version, most recent first. The section of a version s
 release notes of its `.xpi` file on the [Releases](https://github.com/alfinium/sync443/releases)
 page.
 
+## 0.5.0
+
+Unchecked mail leaves Thunderbird, and private certificate authorities. Verified on Thunderbird
+140.17 ESR and Thunderbird 160.
+
+### New
+
+- **Unchecking mail removes its local copies.** After a confirmation, the copies of the server's
+  messages leave Thunderbird, and a folder left empty is removed. A message that exists only in
+  Thunderbird stays. The account stays too: meeting messages are sent with its identity. Mail
+  checked again is synchronized from the start. Nothing is deleted on the server.
+- **Private certificate authority.** A server whose certificate comes from an authority of your
+  organization can be used: install the authority in Thunderbird or in the system, then enter its
+  SHA-256 fingerprint under "More settings", as your administrator gave it to you.
+
+### Security
+
+- A fingerprint is typed by the user and never offered from what a connection shows: on a
+  network that intercepts HTTPS, the fingerprint shown would be the interceptor's.
+- A fingerprint holds for one server only: when the server of a mailbox changes, it is asked
+  again.
+- A certificate accepted only through a security exception is still refused.
+
 ## 0.4.1
 
 Availability of attendees. Verified on Thunderbird 140.17 ESR and Thunderbird 160.

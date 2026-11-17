@@ -31,6 +31,7 @@ import {
   FIELD_ORDER,
   failedText,
   shown,
+  fingerprintShown,
 } from "../../src/options/form.mjs";
 import { SYNC_KINDS } from "../../src/sync/store.mjs";
 import { withLanguage, LOCALES } from "./i18n-fake.mjs";
@@ -80,6 +81,7 @@ test("formulaire : nouvelle boîte valable, requête et autorisation d'hôte", (
       calendarPeriod: "7",
       taskFilter: "0",
       sync: { mail: true, calendar: false, contacts: false, tasks: false },
+      tlsPins: [],
     },
     password: "s3cret pass",
   });
@@ -198,6 +200,7 @@ test("formValues : valeurs par défaut, puis celles d'une boîte", () => {
     server: "",
     syncMinutes: "0",
     period: "6m",
+    caFingerprint: "",
     sync: { mail: true, calendar: true, contacts: true, tasks: true },
   });
   // existing(): a mailbox saved before calendar and tasks were synchronised, without the two fields.
@@ -209,6 +212,7 @@ test("formValues : valeurs par défaut, puis celles d'une boîte", () => {
     server: "mail.example.com",
     syncMinutes: "15",
     period: "2w",
+    caFingerprint: "",
     sync: { mail: true, calendar: true, contacts: false, tasks: false },
   });
   eq(formValues(existing({ syncMinutes: 7 })).syncMinutes, "0");
@@ -345,7 +349,10 @@ test("calendar or tasks unchecked: a question before saving (what leaves Thunder
   eq(uncheckConfirm(before({ calendar: true, tasks: true }), now({ calendar: true, tasks: true }), "Travail"), "");
   eq(uncheckConfirm(before(), now({ calendar: true, tasks: true }), "Travail"), "");
   eq(uncheckConfirm(before({ tasks: true }), now({ calendar: false, tasks: true }), "Travail"), "");
-  eq(uncheckConfirm(before({ calendar: true }), { ...now({ calendar: true }), mail: false }, "Travail"), "", "unchecking mail removes nothing");
+  const mailOff = uncheckConfirm(before({ calendar: true }), { ...now({ calendar: true }), mail: false }, "Travail");
+  assert(mailOff.includes("courrier de « Travail »") && mailOff.includes("Rien n'est supprimé sur le serveur") && mailOff.includes("n'existent que dans Thunderbird"), "unchecking mail asks too");
+  const both = uncheckConfirm(before({ calendar: true }), { ...now({ calendar: false }), mail: false }, "Travail");
+  assert(both.startsWith(mailOff) && both.includes("agenda"), "one question for each kind that goes");
   eq(uncheckConfirm(before({ calendar: "true" }), now(), "Travail"), "", "only a real boolean");
   // The name is shown as text, cleaned; every language names it and says that the server keeps everything.
   const odd = `Tra${String.fromCharCode(0x202e)}vail${String.fromCharCode(10)}B`;
@@ -438,7 +445,7 @@ test("events and tasks that cannot be imported: counted apart from messages (whi
 });
 
 test("page : ordre des champs et texte affiché partagés avec options.mjs", () => {
-  eq([...FIELD_ORDER], ["email", "password", "server", "sync", "period", "name", "username", "syncMinutes"]);
+  eq([...FIELD_ORDER], ["email", "password", "server", "sync", "period", "name", "username", "syncMinutes", "caFingerprint"]);
   eq(shown("a\u202eb\nc"), "ab c");
   eq(shown(42), "");
   eq(shown("x".repeat(400)).length, 300);
@@ -493,5 +500,26 @@ test("periodOf: what a saved mailbox shows, the closest choice for a pair no cho
     calendarPeriod: "4",
     taskFilter: "0",
     sync: { mail: true, calendar: true, contacts: false, tasks: false },
+    tlsPins: [],
   });
+});
+
+// ── The fingerprint of a private certificate authority ────────────────────
+
+test("empreinte : acceptée quelle que soit sa présentation, rendue en 64 chiffres ; vide pour aucune", () => {
+  const PIN = "AB".repeat(32);
+  const base = { email: "a@example.com", password: "p", server: "mail.example.com", syncMinutes: "0", period: "6m", sync: { mail: true } };
+  for (const typed of [PIN, PIN.toLowerCase(), PIN.match(/../g).join(":"), ` ${PIN.match(/.{4}/g).join(" ")} `]) {
+    const r = validateForm({ ...base, caFingerprint: typed });
+    eq([r.ok, r.request.mailbox.tlsPins], [true, [PIN]], typed);
+  }
+  eq(validateForm({ ...base, caFingerprint: "" }).request.mailbox.tlsPins, []);
+  eq(validateForm(base).request.mailbox.tlsPins, []);
+  for (const bad of ["AB", PIN + "A", PIN.slice(0, 63) + "G", "sha256:" + PIN]) {
+    const r = validateForm({ ...base, caFingerprint: bad });
+    eq([r.ok, r.errors.map((e) => e.field)], [false, ["caFingerprint"]], bad);
+  }
+  eq(fingerprintShown([PIN]), PIN.match(/../g).join(":"));
+  eq([fingerprintShown([]), fingerprintShown(null), fingerprintShown(["x"])], ["", "", ""]);
+  eq(formValues({ email: "a@example.com", server: "mail.example.com", syncMinutes: 0, sync: {}, tlsPins: [PIN] }).caFingerprint, PIN.match(/../g).join(":"));
 });

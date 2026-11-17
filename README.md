@@ -6,7 +6,7 @@ Sync443 is a Thunderbird extension that provides native support for the **Exchan
 (EAS) protocol. Each ActiveSync mailbox becomes a regular Thunderbird account, with no gateway
 and no IMAP or SMTP configuration: all traffic goes over a single HTTPS connection to the server.
 
-**Current version: 0.4.1.** It supports mail (folders, messages and sending), calendars, tasks,
+**Current version: 0.5.0.** It supports mail (folders, messages and sending), calendars, tasks,
 meeting invitations and contacts, with an interface in ten languages
 ([roadmap](docs/ARCHITECTURE.md)).
 
@@ -32,7 +32,8 @@ meeting invitations and contacts, with an interface in ten languages
 | Thunderbird | 140 ESR and later (verified on 140.17 ESR and 160) |
 | Operating systems | Windows, macOS, Linux |
 | Servers | Exchange Server (on-premises), and any Exchange ActiveSync 12.1 to 14.1 server that accepts user name and password authentication |
-| Not supported | Microsoft 365 / Exchange Online (OAuth2); proxies that require their own authentication; certificates issued by a private authority |
+| Private certificate authority | Supported when the authority is installed in Thunderbird or in the system and its SHA-256 fingerprint is entered for the mailbox ([details](#configuration)) |
+| Not supported | Microsoft 365 / Exchange Online (OAuth2); proxies that require their own authentication; self-signed certificates accepted only through a security exception |
 
 ## Languages
 
@@ -114,7 +115,19 @@ Each published file is built by GitHub Actions, reproducibly. It can be verified
   between; future events are always synchronized, and contacts and tasks have no period.
 
 "More settings" holds what has a default value: the account name shown in Thunderbird, the login
-name when it differs from the address, and the synchronization frequency.
+name when it differs from the address, the synchronization frequency, and the fingerprint of a
+private certificate authority.
+
+**Private certificate authority.** A server whose certificate comes from an authority of your
+organization is refused by default: on a network that intercepts HTTPS, the interceptor's authority
+looks the same. To use such a server, install the authority in Thunderbird or in the system, then
+enter the SHA-256 fingerprint of its certificate (or of the server's own) as your administrator
+gave it to you. Sync443 never offers the fingerprint it sees: copied from a warning on an
+intercepted network, it would be the interceptor's. A fingerprint holds for one server only.
+
+**Unchecking an item.** After a confirmation, what Thunderbird held for it is removed: the
+calendars, the address books, or the local copies of the server's messages. A message that
+exists only in Thunderbird stays, and nothing is ever deleted on the server.
 
 The connection (server, certificate, credentials) is verified before anything is saved. Where the
 server allows it, an application password dedicated to ActiveSync is recommended.

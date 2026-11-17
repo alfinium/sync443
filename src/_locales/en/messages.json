@@ -149,6 +149,15 @@
       }
     }
   },
+  "uncheckMailConfirm": {
+    "message": "Stop synchronizing the mail of “$NAME$”? The copies of its messages will be removed from Thunderbird; messages that exist only in Thunderbird stay. Nothing is deleted on the server. Actions not yet sent to the server are lost.",
+    "description": "Asked before a mailbox is saved with its mail unchecked (it was synchronized until now); $NAME$: name of the mailbox.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
   "uncheckBothConfirm": {
     "message": "Stop synchronizing the calendar and the tasks of “$NAME$”? Its calendars will be removed from Thunderbird, with their events and tasks. Nothing is deleted on the server. Changes not yet sent to the server are lost.",
     "description": "Asked before a mailbox is saved with both its calendar and its tasks unchecked (they were synchronized until now); $NAME$: name of the mailbox.",
@@ -327,6 +336,22 @@
   "moreSettings": {
     "message": "More settings",
     "description": "Title of the folded part of the mailbox form (account name, sign-in name, frequency)."
+  },
+  "fieldCaFingerprint": {
+    "message": "Fingerprint of a private certificate authority (optional)",
+    "description": "Label of the optional field, under More settings, for the SHA-256 fingerprint of a private certificate authority."
+  },
+  "caFingerprintHint": {
+    "message": "Only if your server's certificate comes from an authority of your organization. Enter the SHA-256 fingerprint of that authority's certificate, or of the server's own, as your administrator gave it to you. Never copy it from a warning: on a network that intercepts connections, it would be the interceptor's. The authority must also be installed in Thunderbird or in the system.",
+    "description": "Hint under the fingerprint field."
+  },
+  "caFingerprintInvalid": {
+    "message": "A SHA-256 fingerprint has 64 hexadecimal digits (colons and spaces are ignored).",
+    "description": "Error: the fingerprint typed is not 64 hexadecimal digits."
+  },
+  "caFingerprintServerChanged": {
+    "message": "The server changed: a fingerprint holds for one server only. Enter it again for the new server, or leave this field empty.",
+    "description": "Error: the server of the mailbox changed and the fingerprint was left as it was."
   },
   "fieldKinds": {
     "message": "Items to synchronize",
@@ -800,7 +825,7 @@
     }
   },
   "errorTls": {
-    "message": "Connection refused before the password was sent: the server's certificate was not accepted. The network may be intercepting HTTPS connections. Certificates from a private authority are not supported yet.",
+    "message": "Connection refused before the password was sent: the server's certificate was not accepted. The network may be intercepting HTTPS connections. If your server uses a certificate authority of your organization, enter its fingerprint under “More settings”.",
     "description": "Engine error TLS. $REASON$: the engine's own reason, written in French (the French catalogue shows it as it is; other languages may leave it out).",
     "placeholders": {
       "reason": {

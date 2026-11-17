@@ -331,6 +331,53 @@ export class MailStore {
   }
 
   /**
+   * Deletes messages of this account for good, wherever they are: the
+   * copies of server messages that leave Thunderbird when the mailbox no
+   * longer synchronizes its mail. Nothing is touched on the server.
+   * → the number of messages deleted (one that is not this account's, or
+   * is gone, is skipped)
+   */
+  async purgeMessages(ids) {
+    const mine = [];
+    const intents = [];
+    for (const id of Array.isArray(ids) ? ids : []) {
+      const m = await this.#message(id);
+      if (!m) continue;
+      mine.push(id);
+      intents.push({ kind: "delete", path: m.folder.path, messageId: m.headerMessageId });
+    }
+    if (mine.length) await this.#withEcho(intents, () => this.#browser.messages.delete(mine, { deletePermanently: true, isUserAction: false }));
+    return mine.length;
+  }
+
+  /**
+   * Deletes a folder of this account that holds nothing: no message, no
+   * subfolder, no special use. → true when it is gone; false when it was
+   * left (not empty, special, or Thunderbird refused).
+   */
+  async deleteEmptyFolder(path) {
+    const f = await this.#find(path);
+    if (!f || this.#special(f)) return false;
+    const all = await this.listFolders();
+    if (all.some((x) => x.path.startsWith(`${path}/`))) return false;
+    const first = await this.#browser.messages.list(f.id);
+    if ((first?.messages ?? []).length) return false;
+    try {
+      await this.#withEcho([{ kind: "folderDelete", path }], () => this.#browser.folders.delete(f.id));
+    } catch {
+      return false;
+    }
+    // Thunderbird may have moved it to the trash instead: an empty folder of that name there goes too.
+    const trash = await this.#trashPath();
+    const moved = trash ? await this.#find(`${trash}/${basename(path)}`) : null;
+    if (moved && !this.#special(moved)) {
+      const inside = await this.#browser.messages.list(moved.id);
+      if (!(inside?.messages ?? []).length) await this.#browser.folders.delete(moved.id).catch(() => {});
+    }
+    return !(await this.folderExists(path));
+  }
+
+  /**
    * Not permanent: a move to the account's trash. Permanent: only for
    * messages inside the trash (any other is skipped).
    */

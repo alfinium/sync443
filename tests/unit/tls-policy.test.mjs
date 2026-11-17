@@ -126,8 +126,7 @@ test("tls : un émetteur choisi par l'attaquant ne chasse pas l'avertissement du
 test("tls : messages en français pour chaque motif", () => {
   const m = tlsMessage("not-public-root", "CN=Proxy d'entreprise");
   assert(m.includes("autorité du certificat non reconnue par Thunderbird") && m.includes("CN=Proxy d'entreprise"), m);
-  assert(m.includes("autorités privées ne sont pas prises en charge"), m);
-  assert(!m.includes("réglages"), "aucun réglage promis");
+  assert(m.includes("Autorité privée : voir « Plus de réglages »"), m);
   assert(!tlsMessage("not-public-root").includes("émetteur"), "pas d'émetteur vide");
   for (const reason of ["untrusted", "domain-mismatch", "expired", "insecure", "no-certificate", "inconnu"]) {
     const msg = tlsMessage(reason);

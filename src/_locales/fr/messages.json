@@ -119,6 +119,14 @@
       }
     }
   },
+  "uncheckMailConfirm": {
+    "message": "Ne plus synchroniser le courrier de « $NAME$ » ? Les copies de ses messages seront retirées de Thunderbird ; les messages qui n'existent que dans Thunderbird restent. Rien n'est supprimé sur le serveur. Les actions pas encore envoyées au serveur sont perdues.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
   "uncheckBothConfirm": {
     "message": "Ne plus synchroniser l'agenda ni les tâches de « $NAME$ » ? Ses agendas seront retirés de Thunderbird, avec leurs événements et leurs tâches. Rien n'est supprimé sur le serveur. Les modifications pas encore envoyées au serveur sont perdues.",
     "placeholders": {
@@ -261,6 +269,18 @@
   },
   "moreSettings": {
     "message": "Plus de réglages"
+  },
+  "fieldCaFingerprint": {
+    "message": "Empreinte d'une autorité de certification privée (facultatif)"
+  },
+  "caFingerprintHint": {
+    "message": "Seulement si le certificat de votre serveur vient d'une autorité de votre organisation. Saisissez l'empreinte SHA-256 du certificat de cette autorité, ou de celui du serveur, telle que votre administrateur vous l'a donnée. Ne la recopiez jamais depuis un avertissement : sur un réseau qui intercepte les connexions, ce serait celle de l'intercepteur. L'autorité doit aussi être installée dans Thunderbird ou dans le système."
+  },
+  "caFingerprintInvalid": {
+    "message": "Une empreinte SHA-256 compte 64 chiffres hexadécimaux (les deux-points et les espaces sont ignorés)."
+  },
+  "caFingerprintServerChanged": {
+    "message": "Le serveur a changé : une empreinte ne vaut que pour un serveur. Saisissez-la de nouveau pour le nouveau serveur, ou videz ce champ."
   },
   "fieldKinds": {
     "message": "Éléments à synchroniser"

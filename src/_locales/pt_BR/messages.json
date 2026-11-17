@@ -119,6 +119,14 @@
       }
     }
   },
+  "uncheckMailConfirm": {
+    "message": "Parar de sincronizar o e-mail de “$NAME$”? As cópias das mensagens dela serão removidas do Thunderbird; as mensagens que só existem no Thunderbird permanecem. Nada é excluído no servidor. As ações ainda não enviadas ao servidor são perdidas.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
   "uncheckBothConfirm": {
     "message": "Parar de sincronizar a agenda e as tarefas de “$NAME$”? As agendas dela serão removidas do Thunderbird, com seus eventos e tarefas. Nada é excluído no servidor. As alterações ainda não enviadas ao servidor são perdidas.",
     "placeholders": {
@@ -261,6 +269,18 @@
   },
   "moreSettings": {
     "message": "Mais configurações"
+  },
+  "fieldCaFingerprint": {
+    "message": "Impressão digital de uma autoridade certificadora privada (opcional)"
+  },
+  "caFingerprintHint": {
+    "message": "Somente se o certificado do seu servidor vier de uma autoridade da sua organização. Informe a impressão digital SHA-256 do certificado dessa autoridade, ou do próprio servidor, como o administrador a forneceu. Nunca a copie de um aviso: em uma rede que intercepta as conexões, seria a do interceptador. A autoridade também precisa estar instalada no Thunderbird ou no sistema."
+  },
+  "caFingerprintInvalid": {
+    "message": "Uma impressão digital SHA-256 tem 64 dígitos hexadecimais (dois-pontos e espaços são ignorados)."
+  },
+  "caFingerprintServerChanged": {
+    "message": "O servidor mudou: uma impressão digital vale para um único servidor. Informe-a novamente para o novo servidor ou deixe este campo vazio."
   },
   "fieldKinds": {
     "message": "Itens a sincronizar"
@@ -642,7 +662,7 @@
     }
   },
   "errorTls": {
-    "message": "Conexão recusada antes do envio da senha: o certificado do servidor não foi aceito. A rede pode estar interceptando as conexões HTTPS. Certificados de uma autoridade privada ainda não são aceitos.",
+    "message": "Conexão recusada antes do envio da senha: o certificado do servidor não foi aceito. A rede pode estar interceptando as conexões HTTPS. Se o seu servidor usa uma autoridade certificadora da sua organização, informe a impressão digital dela em “Mais configurações”.",
     "placeholders": {
       "reason": {
         "content": "$1"

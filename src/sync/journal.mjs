@@ -248,6 +248,22 @@ export class Journal {
     }
   }
 
+  /**
+   * Forget every entry (the mailbox no longer synchronizes mail: what was
+   * not sent never will be). The sequence stays: an id is never given twice.
+   */
+  async clear() {
+    await this.#load();
+    for (const [n, list] of this.#chunks) {
+      list.length = 0;
+      this.#dirty.add(n);
+    }
+    this.#size = 0;
+    this.#openCount = 0;
+    this.#lastRun.clear();
+    await this.flush();
+  }
+
   /** Flush, then refuse any further change (the engine is being replaced). */
   async close() {
     this.#closed = true;

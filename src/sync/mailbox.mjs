@@ -477,7 +477,9 @@ export class MailboxSync {
     // Calendar and tasks both unchecked since the calendar part last ran: it runs once more, to remove what it left.
     const tidyPim = !wantPim && Boolean(this.#pim) && (await records.get(PIM_ACTIVE, null)) === true;
     const tidyContacts = !wantContacts && Boolean(this.#contacts) && (await records.get(CONTACTS_ACTIVE, null)) === true;
-    if (!wantMail && !wantPim && !tidyPim && !wantContacts && !tidyContacts) return result; // nothing chosen
+    // Mail unchecked while copies of server messages are still here: this pass removes them.
+    const tidyMail = !wantMail && Boolean(this.#mailStore) && storedCollections(await records.names()).length > 0;
+    if (!wantMail && !wantPim && !tidyPim && !wantContacts && !tidyContacts && !tidyMail) return result; // nothing chosen
     if (opts.newRun || !this.#run) this.#run++;
 
     try {
@@ -501,7 +503,10 @@ export class MailboxSync {
         }
       };
       if (wantMail) await part(() => this.#mailPart(client, signal, state, opts, { confirm: Boolean(opts.confirmDeletes && held.mail), count: held.mail }, result)); // 2, 3, 4
-      else await this.#withoutMail(state);
+      else {
+        if (tidyMail) await part(() => this.#removeMail(signal));
+        await this.#withoutMail(state);
+      }
       let failedCalendarItems = 0;
       if (wantPim || tidyPim) {
         if (signal.aborted) throw new EasError(ERR.CANCELLED, "Synchronisation annulée.");
@@ -623,6 +628,59 @@ export class MailboxSync {
     if (!names.includes(LIST_BEFORE) && storedCollections(names).length) await this.#records.setMap(LIST_BEFORE, state.previous);
     await this.#saveHierarchy(state);
     state.previous = null;
+  }
+
+  /**
+   * Mail is no longer chosen for the mailbox (the settings page asked
+   * before saving): the local copies of the server's messages leave
+   * Thunderbird, and everything recorded for mail is forgotten, so that
+   * mail checked again starts as a first synchronization.
+   *  - In each folder of a collection, as many messages are deleted for a
+   *    Message-ID as the collection links to it (those whose deletion by
+   *    the server was held for the user included), and no more: a message
+   *    that exists only in Thunderbird stays, and so does every folder
+   *    that is not a collection's.
+   *  - A folder left empty, without a special use, is removed.
+   *  - The account stays: it carries the identity meeting messages are
+   *    sent with.
+   * Nothing is touched on the server. A collection is forgotten once its
+   * copies are gone: stopped in between, the next pass goes on.
+   */
+  async #removeMail(signal) {
+    const records = this.#records;
+    const names = await records.names();
+    const layout = checkLayout(await records.getMap("layout"));
+    // Copies whose deletion by the server was held for the user's answer are copies of server messages too.
+    const held = await loadPendingDeletes(records);
+    let removed = 0;
+    let kept = 0;
+    for (const cid of storedCollections(names)) {
+      if (signal.aborted) throw new EasError(ERR.CANCELLED, "Synchronisation annulée.");
+      const path = layout.get(cid)?.path ?? null;
+      if (path && (await this.#mailStore.folderExists(path))) {
+        const coll = await loadCollection(records, cid, names);
+        const left = new Map(); // Message-ID → copies still to delete
+        for (const [, mid] of held.get(cid)?.items ?? []) left.set(mid, (left.get(mid) ?? coll.allRefs(mid)) + 1);
+        const ids = [];
+        const local = await this.#mailStore.listMessages(path);
+        for (const m of local) {
+          const n = left.has(m.messageId) ? left.get(m.messageId) : coll.allRefs(m.messageId);
+          if (n > 0) ids.push(m.id);
+          left.set(m.messageId, Math.max(0, n - 1));
+        }
+        kept += local.length - ids.length;
+        for (let i = 0; i < ids.length; i += 200) removed += await this.#mailStore.purgeMessages(ids.slice(i, i + 200));
+      }
+      await removeCollection(records, cid, names);
+    }
+    // Folders left empty, the deepest first.
+    const folders = (await this.#mailStore.listFolders()).filter((f) => !f.specialUse.length).sort((a, b) => b.path.split("/").length - a.path.split("/").length);
+    let gone = 0;
+    for (const f of folders) if (layout.size && [...layout.values()].some((e) => e.path === f.path) && (await this.#mailStore.deleteEmptyFolder(f.path).catch(() => false))) gone++;
+    await this.#journal.clear();
+    await this.#invitations?.clear();
+    await records.removeMany(["layout", "pendingDeletes", "archives", "renaming", LIST_BEFORE]);
+    this.#log?.info?.(`Courrier décoché : ${removed} copie(s) locale(s) retirée(s), ${kept} message(s) propre(s) à Thunderbird gardé(s), ${gone} dossier(s) vide(s) retiré(s).`);
   }
 
   /**

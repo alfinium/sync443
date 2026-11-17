@@ -798,22 +798,45 @@ test("calendar: keeping the local copies holds for messages and for events alike
   eq((await w.health()).blocked, null);
 });
 
-test("calendar: held mail deletions do not block the calendar of a mailbox whose mail is unchecked", async () => {
+test("mail unchecked: the copies of server messages leave Thunderbird, what is only local stays, and mail checked again starts over", async () => {
   const w = calendarWorld();
   await hundredEach(w);
+  w.mail.addMessage("6", mime("p@x"));
+  await w.sync.run({ reason: "user" });
+  // A message of the user's own in a synchronized folder, one that copies a server message, and a folder of their own.
+  w.store.folders.get("/Inbox").msgs.set(9001, { mid: "local@x", read: true, flagged: false, bytes: new Uint8Array(1) });
+  const first = w.store.messages("/Inbox")[0];
+  w.store.folders.get("/Inbox").msgs.set(9002, { ...first, id: undefined });
+  w.store.userAddFolder("/Perso");
+  w.store.folders.get("/Perso").msgs.set(9003, { mid: "perso@x", read: true, flagged: false, bytes: new Uint8Array(1) });
+  // Held deletions and a waiting local action: they go with the mail.
   for (const sid of [...w.mail.items.get("1").keys()].slice(0, 60)) w.mail.deleteMessage("1", sid);
   eq((await w.sync.run({ reason: "timer" })).pendingDeletes, 60);
-  // Mail unchecked: nothing could apply them. They wait, uncounted, and the calendar goes on.
+  const serverBefore = w.mail.items.get("1").size;
+
   w.make({ sync: { mail: false, calendar: true, contacts: false, tasks: true } });
   w.cal.addItem(CAL, event({ uid: "plus", summary: "Plus tard" }));
   const r = await w.sync.run({ reason: "timer" });
   eq([r.status, r.pendingDeletes, (await w.health()).blocked], ["ok", 0, null]);
-  assert(w.titles().includes("Plus tard"));
-  eq(w.store.messages("/Inbox").length, 100);
-  // Mail checked again: they are the user's to decide, as before.
+  assert(w.titles().includes("Plus tard"), "the calendar goes on");
+  eq(w.store.mids("/Inbox"), [first.mid, "local@x"].sort(), "one copy too many and the user's own message stay");
+  eq(w.store.mids("/Perso"), ["perso@x"]);
+  assert(!w.store.folders.has("/Inbox/Projets"), "a folder left empty is removed");
+  assert(w.store.folders.has("/Inbox") && w.store.folders.has("/Sent"), "special folders stay");
+  eq(w.mail.items.get("1").size, serverBefore, "nothing is touched on the server");
+  const names = await w.records.names();
+  eq(names.filter((n) => n.startsWith("coll:") || n.startsWith("journal:") || ["layout", "pendingDeletes", "archives", "renaming", "foldersBefore"].includes(n)), []);
+  // A second pass has nothing more to remove.
+  const writes = w.store.writes.length;
+  await w.sync.run({ reason: "timer" });
+  eq(w.store.writes.length, writes);
+
+  // Mail checked again: a first synchronization.
   w.make();
-  const again = await w.sync.run({ reason: "timer" });
-  eq([again.status, again.pendingDeletes], ["blocked", 60]);
+  const again = await w.sync.run({ reason: "user" });
+  eq([again.status, again.pendingDeletes], ["ok", 0]);
+  eq(w.store.messages("/Inbox").length, serverBefore + 2, "what the server holds, and the two messages that were the user's own");
+  eq(w.store.mids("/Inbox/Projets"), ["p@x"]);
 });
 
 test("calendar: Ping also watches the calendar and the tasks, each with its class; a change reported there starts a pass for that folder", async () => {
@@ -984,14 +1007,12 @@ test("calendar: calendar and tasks unchecked, one more pass removes their calend
   eq(c.order.length, n);
 });
 
-test("calendar: the folder list starts over while mail is unchecked; when mail comes back, no ServerId is taken at face value", async () => {
+test("mail unchecked: the folder list starts over meanwhile; when mail comes back it is a first synchronization of the new list", async () => {
   const w = calendarWorld();
   w.mail.addMessage("6", mime("p@x"));
   w.cal.addItem(CAL, event({ uid: "e1", summary: "Réunion" }));
   await w.sync.run({ reason: "user" });
   eq([w.store.mids("/Inbox/Projets"), (await loadCollection(w.records, "6")).path], [["p@x"], "/Inbox/Projets"]);
-  const imports = () => w.store.writes.filter((x) => x[0] === "import").length;
-  const imported = imports();
   // Mail unchecked. The server then renumbers its folders (a partnership reset): "6" now names another
   // folder, and "Projets" is "9".
   w.make({ sync: { mail: false, calendar: true, contacts: false, tasks: true } });
@@ -1001,19 +1022,14 @@ test("calendar: the folder list starts over while mail is unchecked; when mail c
   await w.records.set("hierarchy", { syncKey: "999" }); // refused: Status 9, then the whole list again
   eq((await w.sync.run({ reason: "timer" })).status, "ok");
   eq([text(w.mail.sent("FolderSync").at(-1), "SyncKey"), (await w.records.getMap("folders")).get("6").name], ["0", "Autre"], "the new list is saved");
-  eq((await w.records.getMap("foldersBefore")).get("6").name, "Projets", "the one the mail tables knew is kept");
-  // A second restart while mail is still unchecked: the list kept stays the one the tables knew.
-  await w.records.set("hierarchy", { syncKey: "998" });
-  await w.sync.run({ reason: "timer" });
-  eq((await w.records.getMap("foldersBefore")).get("6").name, "Projets");
-  eq(w.store.mids("/Inbox/Projets"), ["p@x"], "nothing moved in the mail");
-  // Mail checked again: the tables are matched by place, as after any restart.
+  // The mail tables are gone with the copies: no older list has to be kept for them.
+  assert(!(await w.records.names()).includes("foldersBefore"));
+  assert(!w.store.folders.has("/Inbox/Projets"));
+  // Mail checked again: each folder of the new list gets its messages.
   w.make();
   eq((await w.sync.run({ reason: "user" })).status, "ok");
-  eq([w.store.mids("/Inbox/Projets"), w.store.mids("/Autre")], [["p@x"], ["autre@x"]], "each folder keeps its messages");
+  eq([w.store.mids("/Inbox/Projets"), w.store.mids("/Autre")], [["p@x"], ["autre@x"]]);
   eq([(await loadCollection(w.records, "9")).path, (await loadCollection(w.records, "6")).path], ["/Inbox/Projets", "/Autre"]);
-  eq(imports(), imported + 1, "only the message of the new folder is imported");
-  assert(!(await w.records.names()).includes("foldersBefore"), "the list kept is forgotten once the tables are matched");
   // A mailbox that never had mail keeps nothing.
   const bare = calendarWorld({ sync: { mail: false, calendar: true, contacts: false, tasks: false } });
   await bare.sync.run({ reason: "user" });

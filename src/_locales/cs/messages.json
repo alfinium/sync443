@@ -119,6 +119,14 @@
       }
     }
   },
+  "uncheckMailConfirm": {
+    "message": "Přestat synchronizovat poštu schránky „$NAME$“? Kopie jejích zpráv budou z Thunderbirdu odebrány; zprávy, které existují pouze v Thunderbirdu, zůstanou. Na serveru se nic nesmaže. Akce, které ještě nebyly odeslány na server, budou ztraceny.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
   "uncheckBothConfirm": {
     "message": "Přestat synchronizovat kalendář a úkoly schránky „$NAME$“? Její kalendáře budou z Thunderbirdu odebrány včetně událostí a úkolů. Na serveru se nic nesmaže. Změny, které ještě nebyly odeslány na server, budou ztraceny.",
     "placeholders": {
@@ -261,6 +269,18 @@
   },
   "moreSettings": {
     "message": "Další nastavení"
+  },
+  "fieldCaFingerprint": {
+    "message": "Otisk soukromé certifikační autority (nepovinné)"
+  },
+  "caFingerprintHint": {
+    "message": "Pouze pokud certifikát vašeho serveru pochází od autority vaší organizace. Zadejte otisk SHA-256 certifikátu této autority nebo samotného serveru tak, jak vám jej sdělil správce. Nikdy jej neopisujte z varování: v síti, která zachytává spojení, by to byl otisk útočníka. Autorita musí být také nainstalována v Thunderbirdu nebo v systému."
+  },
+  "caFingerprintInvalid": {
+    "message": "Otisk SHA-256 má 64 šestnáctkových číslic (dvojtečky a mezery se ignorují)."
+  },
+  "caFingerprintServerChanged": {
+    "message": "Server se změnil: otisk platí jen pro jeden server. Zadejte jej pro nový server znovu, nebo nechte toto pole prázdné."
   },
   "fieldKinds": {
     "message": "Položky k synchronizaci"
@@ -642,7 +662,7 @@
     }
   },
   "errorTls": {
-    "message": "Spojení bylo odmítnuto ještě před odesláním hesla: certifikát serveru nebyl přijat. Síť možná zachytává spojení HTTPS. Certifikáty soukromých certifikačních autorit zatím nejsou podporovány.",
+    "message": "Spojení bylo odmítnuto ještě před odesláním hesla: certifikát serveru nebyl přijat. Síť možná zachytává spojení HTTPS. Pokud váš server používá certifikační autoritu vaší organizace, zadejte její otisk v části „Další nastavení“.",
     "placeholders": {
       "reason": {
         "content": "$1"
