@@ -82,7 +82,7 @@ company and job title, birthday and anniversary, web page, notes, categories and
 | Properties Thunderbird does not show | Kept. What the server holds and a Thunderbird card cannot say (an assistant's name, the names of children, a radio telephone) is sent back unchanged when you edit a contact. |
 | Properties ActiveSync cannot hold | Kept in Thunderbird. A fourth e-mail address, a telephone number of another type or the properties of other programs stay in the card, and are not sent. |
 | Deletions | A contact is deleted on the server only when you delete it in Thunderbird while Sync443 is running. A contact that is simply no longer there (a restored profile, a book emptied while the extension was disabled) stays on the server. |
-| Other address books | Never read or written: Sync443 only touches the address books it created. |
+| Other address books | Never read or written: Sync443 only touches the address books it created. A contact you move to another address book leaves the mailbox (it is deleted on the server) and is yours from then on. |
 | Limits | A picture removed in Thunderbird is not removed on the server; it can only be replaced. The name shown in Thunderbird is the one the server files the contact under. |
 
 ## Installation

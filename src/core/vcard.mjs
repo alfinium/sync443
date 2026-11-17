@@ -37,7 +37,8 @@
  */
 
 import { checkContact, displayName, CONTACT_FIELDS } from "./contact-item.mjs";
-import { parseDate } from "./eas-timezone.mjs";
+import { parseDate, conversionError } from "./eas-timezone.mjs";
+import { LIMITS } from "./calendar-item.mjs";
 
 /** Most characters of a card that is read, most properties, and most characters kept from an existing card. */
 export const VCARD_MAX = 1024 * 1024;
@@ -46,6 +47,8 @@ const KEPT_MAX = 256 * 1024;
 
 const isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 const KNOWN = new Set(CONTACT_FIELDS.map((f) => f.tag));
+const LIMIT_OF = new Map(CONTACT_FIELDS.map((f) => [f.tag, f.max]));
+const tooLarge = () => conversionError("TOO_LARGE", "contact trop volumineux");
 
 const NAME_PARTS = ["LastName", "FirstName", "MiddleName", "Title", "Suffix"];
 const ADDRESS_KINDS = ["Business", "Home", "Other"];
@@ -440,7 +443,13 @@ export function buildVCard(contact, { existing = null } = {}) {
  *  - `base`: the projection of the card when it was last written or
  *    acknowledged (null for a new contact);
  *  - `now`: the projection of the card as it is;
- *  - `uid`: the uid of the description.
+ *  - `uid`: the uid of the description;
+ *  - `said`: `now` in the form `base` is kept in, when that is not the
+ *    form of `now` (the caller may keep hashes of the notes and of the
+ *    picture): what is compared with `base`.
+ *
+ * Throws (code "TOO_LARGE") when a text the user changed is longer than
+ * the contact can hold.
  *
  * Only what differs between `base` and `now` is changed in `item`: a
  * property the card cannot say, or says in another way than the server,
@@ -448,7 +457,7 @@ export function buildVCard(contact, { existing = null } = {}) {
  * kept with it. The picture is the one the card holds.
  * → a checked contact description (checkContact), `readOnly` as in `item`.
  */
-export function mergeLocal(item, base, now, uid) {
+export function mergeLocal(item, base, now, uid, said = now) {
   const before = isRecord(item) ? item : null;
   const b = isRecord(base) ? base : { fields: {}, categories: [], description: "", birthday: null, anniversary: null, picture: null };
   const fields = { ...(before?.fields ?? {}) };
@@ -458,7 +467,13 @@ export function mergeLocal(item, base, now, uid) {
     if (value === "") delete fields[tag];
     else fields[tag] = value;
   }
-  const changed = (key) => JSON.stringify(now[key] ?? null) !== JSON.stringify(b[key] ?? null);
+  // Nothing the user wrote is cut without a word: a text over its bound is refused, and the caller tells the user.
+  for (const tag of MAPPED_FIELDS) {
+    const value = now.fields?.[tag] ?? "";
+    if (value !== (b.fields?.[tag] ?? "") && value.length > LIMIT_OF.get(tag)) throw tooLarge();
+  }
+  if ((now.description ?? "").length > LIMITS.description) throw tooLarge();
+  const changed = (key) => JSON.stringify(said[key] ?? null) !== JSON.stringify(b[key] ?? null);
   const day = (key) => (changed(key) || !before ? [now[key] ?? null, null] : [before[key] ?? null, before[`${key}At`] ?? null]);
   const [birthday, birthdayAt] = day("birthday");
   const [anniversary, anniversaryAt] = day("anniversary");

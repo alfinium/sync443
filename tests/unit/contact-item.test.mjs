@@ -153,6 +153,12 @@ test("contact: a birthday is the day meant, and its instant is given back unchan
   }
 });
 
+test("contact: an instant at noon UTC is the day it is in UTC", () => {
+  eq(dayOfInstant(Date.UTC(1980, 4, 15, 12, 0, 0)) >= "1980-05-15", true);
+  // Unless noon UTC is midnight on this computer, noon is that day, and one minute later the next.
+  if (new Date(Date.UTC(1980, 4, 15, 12, 0, 0)).getHours() !== 0) eq(dayOfInstant(Date.UTC(1980, 4, 15, 12, 0, 0)), "1980-05-15");
+});
+
 test("contact: a day changed here is written as midnight of that day on this computer", () => {
   const contact = read([C("Birthday", "1980-05-14T22:00:00.000Z")]);
   const changed = checkContact({ ...contact, birthday: "1980-05-20" });

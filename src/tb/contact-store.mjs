@@ -21,7 +21,8 @@
  * ids are kept in the record `abBooks`. No call ever names another book,
  * and a contact is reached only through one of them.
  *
- * What is kept for each contact of a book (records `abItems:<book>:<n>`):
+ * What is kept for each contact of a book (records `abItems:<book>:<n>`,
+ * 64 contacts each, filled one after the other):
  * the server's ids, the description last synchronized (`item`, without its
  * picture) and what its card said when it was last written or
  * acknowledged (`base`, a projection: core/vcard.mjs). A local change is
@@ -59,13 +60,19 @@ export const MAX_BATCH = 200;
 /** Most address books of one mailbox, and most contacts held in one book. */
 export const MAX_BOOKS = 30;
 export const MAX_CONTACTS = 20_000;
-const BUCKETS = 32;
+/** Contacts kept in one record: a batch of new contacts fills a few records, an edit rewrites one. */
+const BUCKET_SIZE = 64;
 const BOOKS = "abBooks";
 const MAIN_SLOT = "main";
 const MAX_NAME = 256;
 const BOOK_ID = /^[\x21-\x7e]{1,100}$/;
-const CONTACT_ID = /^[\x21-\x39\x3b-\x7e]{1,100}$/; // no colon: it separates the parts of a change id
-const CHANGE = /^([amd]):([\x21-\x39\x3b-\x7e]{1,100}):(\d{1,9})$/;
+const CONTACT_ID = /^[\x21-\x7e]{1,100}$/;
+/** A change id: the operation, the contact id (percent-encoded: it may hold a colon) and the revision. */
+const CHANGE = /^([amd]):([A-Za-z0-9_.!~*'()%-]{1,300}):(\d{1,9})$/;
+/** The ids this module gives the contacts it makes from the server's. */
+const OURS = /^sync443-[0-9a-f]{32}$/;
+/** What stands for a card that is there and cannot be read (too large, or no card): it equals no projection. */
+const UNREADABLE = Object.freeze({ fields: Object.freeze({}), categories: Object.freeze([]), description: "?", birthday: null, anniversary: null, picture: null, unreadable: true });
 const SERVER_OPS = new Set(["put", "remove", "detach", "lock"]);
 /** How long an event that follows a write of this module is taken for its echo. */
 const OWN_WRITE_MS = 5000;
@@ -79,16 +86,11 @@ export class ContactStoreError extends Error {
 }
 
 const isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
-const itemsRecord = (bookId, n) => `abItems:${bookId}:${n}`;
+const itemsPrefix = (bookId) => `abItems:${bookId}:`;
+const itemsRecord = (bookId, n) => `${itemsPrefix(bookId)}${n}`;
 const goneRecord = (bookId) => `abGone:${bookId}`;
 const serverKey = (collectionId, serverId) => `${collectionId}\n${serverId}`;
 const hashOf = (text) => toHex(sha256(encodeUtf8(text)).subarray(0, 16));
-
-function bucketOf(id) {
-  let h = 2166136261;
-  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619);
-  return (h >>> 0) % BUCKETS;
-}
 
 function nameOf(value) {
   if (typeof value !== "string") return null;
@@ -96,9 +98,13 @@ function nameOf(value) {
   return name || null;
 }
 
-/** A projection with its picture replaced by a short hash: what is stored, and compared. */
+/** A projection with its picture and its notes replaced by short hashes: what is stored, and compared. */
 function slim(projection) {
-  return { ...projection, picture: typeof projection.picture === "string" ? `h:${hashOf(projection.picture)}` : null };
+  return {
+    ...projection,
+    picture: typeof projection.picture === "string" ? `h:${hashOf(projection.picture)}` : null,
+    description: projection.description ? `h:${hashOf(projection.description)}` : "",
+  };
 }
 
 /** A description without its picture, as it is stored. */
@@ -113,7 +119,7 @@ export class ContactStore {
   #contacts;
   #now;
   #owned = null; // Map<bookId, { slot, name }>, from the record
-  #state = new Map(); // bookId → { entries, byServer, gone, dirty: Set<bucket>, scan }
+  #state = new Map(); // bookId → { entries, byServer, gone, dirty: Set<record number>, bucket, sizes, last }
   #mine = new Map(); // contact id → until when an event about it is our own echo
   #listeners = new Set();
   #stop = null;
@@ -167,20 +173,24 @@ export class ContactStore {
     return calendarId;
   }
 
+  /** Whether Thunderbird still has the book. Only its list says that a book is gone: a call that fails says nothing. */
   async #exists(bookId) {
+    let list;
     try {
-      return Boolean(await this.#books.get(bookId));
+      list = await this.#books.list();
     } catch {
-      return false;
+      throw new ContactStoreError("INTERNAL", "liste des carnets illisible");
     }
+    if (!Array.isArray(list)) throw new ContactStoreError("INTERNAL", "liste des carnets invalide");
+    return list.some((book) => book?.id === bookId);
   }
 
   /** Forget a book and everything kept for it (Thunderbird's book is not touched here). */
   async #forget(bookId) {
     this.#state.delete(bookId);
-    const names = [goneRecord(bookId)];
-    for (let n = 0; n < BUCKETS; n++) names.push(itemsRecord(bookId, n));
-    await this.#records.removeMany(names);
+    const prefix = itemsPrefix(bookId);
+    const names = (await this.#records.names()).filter((name) => name.startsWith(prefix));
+    await this.#records.removeMany([goneRecord(bookId), ...names]);
     if (this.#owned?.delete(bookId)) await this.#saveBooks();
   }
 
@@ -229,7 +239,7 @@ export class ContactStore {
       try {
         await this.#books.delete(calendarId);
       } catch {
-        return !(await this.#exists(calendarId));
+        return !(await this.#exists(calendarId).catch(() => true));
       }
       return true;
     });
@@ -264,12 +274,24 @@ export class ContactStore {
   async #load(bookId) {
     let state = this.#state.get(bookId);
     if (state) return state;
-    state = { entries: new Map(), byServer: new Map(), gone: new Set(), dirty: new Set(), scan: true };
-    for (let n = 0; n < BUCKETS; n++) {
+    // `bucket`: the record each contact is kept in; `sizes`: how many each record holds; `last`: the one being filled.
+    state = { entries: new Map(), byServer: new Map(), gone: new Set(), dirty: new Set(), bucket: new Map(), sizes: new Map(), last: 0 };
+    const prefix = itemsPrefix(bookId);
+    const numbers = (await this.#records.names())
+      .filter((name) => name.startsWith(prefix) && /^\d{1,6}$/.test(name.slice(prefix.length)))
+      .map((name) => Number(name.slice(prefix.length)))
+      .sort((a, b) => a - b);
+    for (const n of numbers) {
+      state.last = Math.max(state.last, n);
       for (const [id, raw] of await this.#records.getMap(itemsRecord(bookId, n))) {
-        const entry = CONTACT_ID.test(id) ? this.#entry(raw) : null;
-        if (!entry || state.entries.size >= MAX_CONTACTS) continue;
+        const entry = CONTACT_ID.test(id) && !state.entries.has(id) ? this.#entry(raw) : null;
+        if (!entry || state.entries.size >= MAX_CONTACTS) {
+          state.dirty.add(n); // rewritten without what cannot be read
+          continue;
+        }
         state.entries.set(id, entry);
+        state.bucket.set(id, n);
+        state.sizes.set(n, (state.sizes.get(n) ?? 0) + 1);
         if (entry.s !== null) state.byServer.set(serverKey(entry.c, entry.s), id);
       }
     }
@@ -279,23 +301,37 @@ export class ContactStore {
     return state;
   }
 
+  /** The contact `id` changed, came or went: its record is to be written. A new contact goes to the record being filled. */
   #touch(state, id) {
-    state.dirty.add(bucketOf(id));
+    let n = state.bucket.get(id);
+    if (state.entries.has(id)) {
+      if (n === undefined) {
+        if ((state.sizes.get(state.last) ?? 0) >= BUCKET_SIZE) state.last++;
+        n = state.last;
+        state.bucket.set(id, n);
+        state.sizes.set(n, (state.sizes.get(n) ?? 0) + 1);
+      }
+    } else if (n !== undefined) {
+      state.bucket.delete(id);
+      state.sizes.set(n, Math.max(0, (state.sizes.get(n) ?? 1) - 1));
+    }
+    if (n !== undefined) state.dirty.add(n);
   }
 
   async #save(bookId, state) {
     if (!state.dirty.size) return;
     const buckets = new Map([...state.dirty].map((n) => [n, []]));
-    for (const [id, e] of state.entries) buckets.get(bucketOf(id))?.push([id, e]);
+    for (const [id, n] of state.bucket) buckets.get(n)?.push([id, state.entries.get(id)]);
     const writes = [];
     const removals = [];
     for (const [n, list] of buckets) {
       if (list.length) writes.push([itemsRecord(bookId, n), list]);
       else removals.push(itemsRecord(bookId, n));
     }
-    state.dirty.clear();
     if (writes.length) await this.#records.setMany(writes);
     if (removals.length) await this.#records.removeMany(removals);
+    // Only now: a write that failed is tried again at the next save.
+    for (const n of buckets.keys()) state.dirty.delete(n);
   }
 
   async #saveGone(bookId, state) {
@@ -314,16 +350,35 @@ export class ContactStore {
     if (this.#mine.size > 4 * MAX_BATCH) for (const [k, until] of this.#mine) if (until < this.#now()) this.#mine.delete(k);
   }
 
-  /** The card of a contact of `bookId`, or null when it is not there (or lies in another book). */
-  async #card(bookId, id) {
+  /**
+   * Where the contact `id` is: → { where: "absent" | "here" | "elsewhere", text }.
+   * "elsewhere": Thunderbird has a contact of that id in a book that is not
+   * `bookId` (the user moved or copied it): never ours to write or delete.
+   * `text`: its card when it is here and can be read, null otherwise.
+   */
+  async #locate(bookId, id) {
     let node;
     try {
       node = await this.#contacts.get(id);
     } catch {
-      return null;
+      return { where: "absent", text: null };
     }
-    const text = node?.properties?.vCard;
-    return node?.parentId === bookId && typeof text === "string" && text.length <= VCARD_MAX ? text : null;
+    if (!node) return { where: "absent", text: null };
+    if (node.parentId !== bookId) return { where: "elsewhere", text: null };
+    const text = node.properties?.vCard;
+    return { where: "here", text: typeof text === "string" && text.length <= VCARD_MAX && projectVCard(text) !== null ? text : null };
+  }
+
+  /** The card of a contact of `bookId`, or null when it is not there, lies in another book, or cannot be read. */
+  async #card(bookId, id) {
+    return (await this.#locate(bookId, id)).text;
+  }
+
+  /** Deletes the contact `id` only when it lies in `bookId`: a contact of the same id in another book is the user's. */
+  async #deleteHere(bookId, id) {
+    if ((await this.#locate(bookId, id)).where !== "here") return;
+    this.#wrote(id);
+    await this.#contacts.delete(id).catch(() => {}); // already gone is as good
   }
 
   /** Writes the card of `description` over the contact `id`, and reads back what Thunderbird made of it. → slim projection */
@@ -400,8 +455,7 @@ export class ContactStore {
       state.entries.delete(id);
       state.gone.delete(id);
       this.#touch(state, id);
-      this.#wrote(id);
-      await this.#contacts.delete(id).catch(() => {}); // already gone is as good
+      await this.#deleteHere(bookId, id);
       return { ok: true };
     }
     if (c.op === "detach") {
@@ -423,18 +477,34 @@ export class ContactStore {
     let item = checkContact(c.item, { fromServer: true });
     if (item.description === null) item = checkContact({ ...item, description: entry?.item?.description ?? "" }, { fromServer: true });
     if (entry) {
-      const existing = await this.#card(bookId, id);
-      const base = existing === null ? await this.#create(bookId, id, item) : await this.#rewrite(bookId, id, item, existing);
-      Object.assign(entry, { item: stored(item), base, p: null, locked: false, detached: false });
-      state.gone.delete(id); // the server sent it again: the deletion waiting here gives way
+      const at = await this.#locate(bookId, id);
+      if (at.where !== "elsewhere") {
+        // A card that is here and cannot be read is written over: nothing of it can be kept.
+        const base = at.where === "absent" ? await this.#create(bookId, id, item) : await this.#rewrite(bookId, id, item, at.text);
+        Object.assign(entry, { item: stored(item), base, p: null, locked: false, detached: false });
+        state.gone.delete(id); // the server sent it again: the deletion waiting here gives way
+        this.#touch(state, id);
+        return { ok: true };
+      }
+      // The user moved it to another book: that copy is theirs, and the server's contact gets a card of its own.
+      this.#unbind(state, entry);
+      state.entries.delete(id);
+      state.gone.delete(id);
       this.#touch(state, id);
-      return { ok: true };
     }
     if (state.entries.size >= MAX_CONTACTS) throw new ContactStoreError("LIMIT", "carnet plein");
-    // An id of ours, the same for the same item of the same mailbox: never the id of a contact of another book.
-    let fresh = `sync443-${hashOf([this.#mailboxId, bookId, c.collectionId, c.serverId].join("\n"))}`;
-    for (let k = 2; state.entries.has(fresh); k++) fresh = `sync443-${hashOf([this.#mailboxId, bookId, c.collectionId, c.serverId, String(k)].join("\n"))}`;
-    const base = await this.#create(bookId, fresh, item);
+    // An id of ours, the same for the same item of the same mailbox, and never one a contact of another book has.
+    let fresh = null;
+    let found = null;
+    for (let k = 1; k <= 20 && fresh === null; k++) {
+      const candidate = `sync443-${hashOf([this.#mailboxId, bookId, c.collectionId, c.serverId, ...(k > 1 ? [String(k)] : [])].join("\n"))}`;
+      if (state.entries.has(candidate)) continue;
+      found = await this.#locate(bookId, candidate);
+      if (found.where !== "elsewhere") fresh = candidate;
+    }
+    if (fresh === null) throw new ContactStoreError("INTERNAL", "aucun identifiant libre");
+    // A card of that id already here is one this module made and lost track of: it is taken back, not made twice.
+    const base = found.where === "here" ? await this.#rewrite(bookId, fresh, item, found.text) : await this.#create(bookId, fresh, item);
     state.entries.set(fresh, { s: c.serverId, c: c.collectionId, item: stored(item), base, p: null, rev: 0, detached: false, locked: false });
     state.byServer.set(key, fresh);
     this.#touch(state, fresh);
@@ -477,7 +547,7 @@ export class ContactStore {
       const changes = [];
       let rejected = 0;
       const change = (op, id, entry, item, problem = null) => ({
-        changeId: `${op[0]}:${id}:${entry.rev}`,
+        changeId: `${op[0]}:${encodeURIComponent(id)}:${entry.rev}`,
         op,
         kind: "contact",
         collectionId: entry.c,
@@ -524,12 +594,19 @@ export class ContactStore {
           let entry = state.entries.get(id);
           if (entry?.detached) continue;
           const text = node.properties?.vCard;
-          const now = typeof text === "string" && text.length <= VCARD_MAX && CONTACT_ID.test(id) ? projectVCard(text) : null;
-          if (now === null) {
-            if (!entry) rejected++;
+          if (!CONTACT_ID.test(id)) {
+            rejected++;
             continue;
           }
-          const said = slim(now);
+          // A card of an id of ours that is not known here was made from the server, and its record was lost:
+          // it is never sent as a new contact. The server's next version takes it back.
+          if (!entry && OURS.test(id)) continue;
+          const now = typeof text === "string" && text.length <= VCARD_MAX ? projectVCard(text) : null;
+          if (now === null && !entry) {
+            rejected++;
+            continue;
+          }
+          const said = now === null ? UNREADABLE : slim(now);
           if (entry && entry.s !== null && sameProjection(said, entry.base)) {
             if (entry.p !== null) {
               entry.p = null; // changed, then put back as it was
@@ -554,12 +631,16 @@ export class ContactStore {
             this.#touch(state, id);
           }
           const op = entry.s === null ? "add" : "modify";
+          if (now === null) {
+            changes.push(change(op, id, entry, null, "too-large")); // a card grown past what can be read
+            continue;
+          }
           if (entry.locked || entry.item?.readOnly) {
             changes.push(change(op, id, entry, null, "read-only"));
             continue;
           }
           try {
-            changes.push(change(op, id, entry, mergeLocal(entry.item, entry.base, now, id)));
+            changes.push(change(op, id, entry, mergeLocal(entry.item, entry.base, now, id, said)));
           } catch {
             changes.push(change(op, id, entry, null, "too-large"));
           }
@@ -575,7 +656,13 @@ export class ContactStore {
   #parse(changeId) {
     const m = typeof changeId === "string" ? CHANGE.exec(changeId) : null;
     if (!m) throw new ContactStoreError("CONFIG", "modification invalide");
-    return { op: m[1], id: m[2], rev: Number(m[3]) };
+    let id;
+    try {
+      id = decodeURIComponent(m[2]);
+    } catch {
+      throw new ContactStoreError("CONFIG", "modification invalide");
+    }
+    return { op: m[1], id, rev: Number(m[3]) };
   }
 
   /**
@@ -652,9 +739,17 @@ export class ContactStore {
       try {
         if (op === "d") {
           if (!state.gone.has(id) || entry.item === null) return false;
-          entry.base = (await this.#card(bookId, id)) === null ? await this.#create(bookId, id, entry.item) : await this.#readBack(bookId, id);
-          entry.p = null;
+          const at = await this.#locate(bookId, id);
           state.gone.delete(id);
+          if (at.where === "elsewhere") {
+            // Moved to another book, where it stays: here it is followed no more, and nothing is deleted.
+            this.#unbind(state, entry);
+            state.entries.delete(id);
+            this.#touch(state, id);
+            return true;
+          }
+          entry.base = at.where === "absent" ? await this.#create(bookId, id, entry.item) : at.text === null ? await this.#rewrite(bookId, id, entry.item, null) : await this.#readBack(bookId, id);
+          entry.p = null;
           this.#touch(state, id);
           return true;
         }
@@ -665,10 +760,11 @@ export class ContactStore {
           return true;
         }
         if (entry.s === null || entry.item === null) return false;
-        const existing = await this.#card(bookId, id);
-        if (existing === null) return false;
+        const at = await this.#locate(bookId, id);
+        if (at.where !== "here") return false;
+        const existing = at.text; // null: a card that cannot be read is written over
         // The picture the card holds stays when it is the one that was synchronized; the description kept has none.
-        const now = projectVCard(existing);
+        const now = existing === null ? null : projectVCard(existing);
         const picture = now !== null && now.picture !== null && slim(now).picture === entry.base?.picture ? now.picture : null;
         entry.base = await this.#rewrite(bookId, id, { ...entry.item, picture }, existing);
         entry.p = null;

@@ -190,7 +190,6 @@ const DEFAULT_CONTACTS_TYPE = 9;
 const USER_CONTACTS_TYPE = 14;
 const CONTACT_CLASS_OF_TYPE = new Map([[DEFAULT_CONTACTS_TYPE, CONTACTS], [USER_CONTACTS_TYPE, CONTACTS]]);
 const DEFAULT_TYPES = new Set([DEFAULT_CALENDAR_TYPE, DEFAULT_TASKS_TYPE, DEFAULT_CONTACTS_TYPE]);
-const CLASSES = new Set([CALENDAR, TASKS, CONTACTS]);
 const CLASS_OF_KIND = new Map([["event", CALENDAR], ["task", TASKS], ["contact", CONTACTS]]);
 /** Whether the mailbox synchronizes the items of a class. */
 const wanted = (sync, cls) => (cls === CALENDAR ? sync?.calendar === true : cls === TASKS ? sync?.tasks === true : sync?.contacts === true);
@@ -333,7 +332,7 @@ export function pimCollections(folders, sync, domain = "calendar") {
 // ── Stored state ──────────────────────────────────────────────────────────
 
 /** The state of one collection, from its record; anything damaged starts the collection again. */
-function collState(id, raw) {
+function collState(id, raw, domain = "calendar") {
   const syncKey = v.syncKey(raw?.syncKey) ?? "0";
   const ids = (list, max) => new Set((Array.isArray(list) ? list : []).filter((x) => v.itemId(x)).slice(-max));
   const w = raw?.window;
@@ -342,7 +341,8 @@ function collState(id, raw) {
     id,
     /** The server's CollectionId, today (another one after a folder list that started over). */
     serverId: v.itemId(raw?.serverId) ?? id,
-    cls: CLASSES.has(raw?.cls) ? raw.cls : CALENDAR,
+    // A class of this engine's own, whatever a damaged record says.
+    cls: domain === "contacts" ? CONTACTS : raw?.cls === TASKS ? TASKS : CALENDAR,
     slot: raw?.slot === MAIN ? MAIN : id,
     /** Where the folder was in the list last seen (placeOf), and its type: what it is matched by when the list starts over. */
     place: typeof raw?.place === "string" && raw.place.length <= 64 ? raw.place : null,
@@ -703,7 +703,7 @@ export class PimSync {
       let keptChanged = false;
       for (const [cid, entry] of [...deletes]) {
         if (!entry.retained) continue;
-        const coll = collState(cid, await this.#records.get(collRecord(cid), null));
+        const coll = collState(cid, await this.#records.get(collRecord(cid), null), this.#domain);
         const cal = cals.get(coll.slot);
         const ids = !cal ? [] : entry.folder ? await this.#store.serverIds(cal.calendarId, cid) : entry.ids;
         if (cal && ids.length) {
@@ -982,7 +982,7 @@ export class PimSync {
     const names = await records.names();
     run.names = names;
     const stored = new Map();
-    for (const id of storedCollections(names)) stored.set(id, collState(id, await records.get(collRecord(id), null)));
+    for (const id of storedCollections(names)) stored.set(id, collState(id, await records.get(collRecord(id), null), this.#domain));
     const kept = await records.getMap(KEPT);
     let keptChanged = false;
     const held = run.held;
@@ -1058,7 +1058,7 @@ export class PimSync {
       if (!coll) {
         let id = sid;
         for (let k = 2; !free(id); k++) id = derivedId("k", sid, String(k));
-        coll = collState(id, null);
+        coll = collState(id, null, this.#domain);
         coll.serverId = sid;
         coll.cls = w.cls;
         coll.slot = w.slot === MAIN ? MAIN : id;
@@ -2069,7 +2069,7 @@ export class PimSync {
         coll.quarantine.delete(change.serverId);
         run.counts.received++;
         if (!held || !held.has(change.serverId)) coll.count++;
-        ends.push([change.serverId, leaveMark(change.item)]);
+        if (coll.cls !== CONTACTS) ends.push([change.serverId, leaveMark(change.item)]); // a contact never leaves by itself
       } else {
         if (r.code === "INTERNAL") internal++;
         this.#quarantine(coll, change.serverId, r.code);
@@ -2191,7 +2191,7 @@ export class PimSync {
       coll.count = Math.max(0, coll.count - 1);
       coll.quarantine.delete(serverId);
       this.#rememberSequence(run, cid, serverId, 0);
-    } else if (serverId) {
+    } else if (serverId && coll.cls !== CONTACTS) {
       ends.push([serverId, leaveMark(item)]);
     }
     if (serverId) coll.guards.delete(serverId);

@@ -162,6 +162,15 @@ export class FakeAddressBooks {
     this.books.get(bookId).contacts.delete(id);
   }
 
+  /** The user moves a contact to another book: it keeps its id. */
+  userMove(bookId, id, otherId) {
+    const vCard = this.books.get(bookId).contacts.get(id);
+    this.books.get(bookId).contacts.delete(id);
+    this.books.get(otherId).contacts.set(id, vCard);
+    this.contacts.onDeleted.fire(bookId, id);
+    this.contacts.onCreated.fire(this.#node(otherId, id, vCard));
+  }
+
   userDeleteBook(bookId) {
     this.books.delete(bookId);
     this.addressBooks.onDeleted.fire(bookId);

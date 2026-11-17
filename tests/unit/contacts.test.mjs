@@ -190,6 +190,23 @@ test("contacts: unchecked, the books go and the records are forgotten; the calen
   eq(w.tb.books.size, 2);
 });
 
+test("audit: a damaged collection record of the contact engine is still a contacts collection", async () => {
+  const w = world();
+  w.server.addItem(AB, person("Ada", "Lovelace"));
+  await w.settle();
+  const main = [...(await w.books())].find(([, s]) => s === "main")[0];
+  const record = await w.records.get(`ctPim:${AB}`);
+  delete record.cls;
+  await w.records.set(`ctPim:${AB}`, record);
+  w.tb.userEdit(main, w.tb.ids(main)[0], (l) => [...l, "TITLE:Analyste"]);
+  await tick();
+  w.restart();
+  await w.settle();
+  eq(w.commands().filter((t) => t !== "Fetch"), ["Change"], "the local change is sent, the book is not refetched");
+  eq(w.notices, []);
+  assert(!(await w.records.names()).some((n) => n.startsWith("ctPimEnds")), "no end log for contacts");
+});
+
 test("contacts: the records of the contact engine have names of their own", async () => {
   const area = memoryArea();
   const records = new Store(area).mailbox(MB);

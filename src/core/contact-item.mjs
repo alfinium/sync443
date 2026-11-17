@@ -140,7 +140,9 @@ export function dayOfInstant(ms) {
   if (local.getHours() === 0 && local.getMinutes() === 0) {
     return formatDate(Date.UTC(local.getFullYear(), local.getMonth(), local.getDate()));
   }
-  return formatDate(ms + DAY / 2 - ((ms + DAY / 2) % DAY + DAY) % DAY);
+  // Noon exactly is the day it is in UTC: the half goes down.
+  const shifted = ms + DAY / 2 - 1;
+  return formatDate(shifted - ((shifted % DAY) + DAY) % DAY);
 }
 
 /** The instant written for a day that has none kept: midnight of that day on this computer. */

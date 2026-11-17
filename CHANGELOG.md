@@ -39,12 +39,16 @@ Contacts, and a simpler mailbox form. Verified on Thunderbird 140.17 ESR and Thu
   contact that is merely missing is never taken for a deletion.
 - A large number of deletions requested by the server at once is applied only after your
   confirmation, for contacts as for messages, events and tasks.
-- Address books that Sync443 did not create are never read or written.
+- Address books that Sync443 did not create are never read or written. A contact you move to
+  another address book is yours from then on: it is never deleted or rewritten there.
+- A text longer than a contact can hold is refused with a notification, never cut.
+- Independent audit of this stage: [docs/audits/stage-5.md](docs/audits/stage-5.md).
 
 ### Known limits
 
 - A picture removed in Thunderbird is not removed on the server.
-- The security audit of this stage has not been carried out yet.
+- An e-mail address the server holds with a display name is written back as the address alone
+  when the contact is edited in Thunderbird.
 
 ## 0.3.0
 

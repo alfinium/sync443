@@ -325,7 +325,145 @@ test("contact store: damaged records are read as far as they are valid", async (
   for (const name of await w.records.names()) if (name.startsWith("abItems:")) await w.records.set(name, [["x", { s: "9:9", c: null }], ["y", 3], "z"]);
   const again = w.make();
   eq(await again.serverIds(w.book, COLL), []);
-  eq((await again.readLocalChanges(w.book)).changes.length, 1, "the contact is there, and no longer known: it is the user's");
+  eq((await again.readLocalChanges(w.book)).changes.length, 0, "a card this module made is never sent as a new contact");
+});
+
+// ── Findings of the stage 5 audit ─────────────────────────────────────────
+
+test("audit: a contact the user moved to another book is never deleted or rewritten there", async () => {
+  const w = await world();
+  const personal = await w.tb.addressBooks.create({ name: "Personnel" });
+  await w.store.applyServerChanges(w.book, [w.put("9:1", { fields: { FirstName: "Ada" } }), w.put("9:2", { fields: { FirstName: "Grace" } }), w.put("9:3", { fields: { FirstName: "Alan" } })]);
+  await w.calm();
+  const [ada, grace, alan] = w.tb.ids(w.book);
+  for (const id of [ada, grace, alan]) w.tb.userMove(w.book, id, personal);
+  await settle();
+  // The server deletes the first, changes the second; the deletion of the third is refused and undone.
+  await w.store.applyServerChanges(w.book, [{ op: "remove", collectionId: COLL, serverId: "9:1" }, w.put("9:2", { fields: { FirstName: "Grace", JobTitle: "serveur" } })]);
+  const { changes } = await w.store.readLocalChanges(w.book);
+  eq(changes.map((c) => [c.op, c.serverId]), [["delete", "9:3"]]);
+  eq(await w.store.dropLocalChange(w.book, changes[0].changeId), true);
+  eq(w.tb.ids(personal).sort(), [ada, grace, alan].sort(), "the three copies of the user are all there");
+  eq(projectVCard(w.tb.card(personal, grace)).fields.JobTitle, undefined, "and none was rewritten");
+  // The server's contact that changed has a card of its own in our book, under another id.
+  eq(w.tb.ids(w.book).length, 1);
+  assert(w.tb.ids(w.book)[0] !== grace);
+  eq(await w.store.serverIds(w.book, COLL), ["9:2"]);
+});
+
+test("audit: contacts made from the server are never uploaded again after their records are lost", async () => {
+  const w = await world();
+  await w.store.applyServerChanges(w.book, [w.put("9:1", { fields: { FirstName: "Ada" } }), w.put("9:2", { fields: { FirstName: "Grace" } })]);
+  for (const name of await w.records.names()) if (name.startsWith("abItems:")) await w.records.remove(name);
+  const again = w.make();
+  eq(await again.readLocalChanges(w.book), { changes: [], rejected: 0 });
+  // The server's next version takes the card back: no second contact.
+  await again.applyServerChanges(w.book, [w.put("9:1", { fields: { FirstName: "Ada", JobTitle: "x" } })]);
+  eq(w.tb.ids(w.book).length, 2);
+  eq(await again.serverIds(w.book, COLL), ["9:1"]);
+});
+
+test("audit: a state write that failed is tried again", async () => {
+  const w = await world();
+  const setMany = w.records.setMany;
+  let fail = true;
+  w.records.setMany = (entries) => (fail ? Promise.reject(new Error("disque plein")) : setMany(entries));
+  await rejects(() => w.store.applyServerChanges(w.book, [w.put("9:1", { fields: { FirstName: "Ada" } })]));
+  fail = false;
+  await w.store.applyServerChanges(w.book, [w.put("9:2", { fields: { FirstName: "Grace" } })]);
+  eq((await w.make().serverIds(w.book, COLL)).sort(), ["9:1", "9:2"]);
+});
+
+test("audit: a batch of new contacts fills a few records, an edit rewrites one", async () => {
+  const w = await world();
+  const written = [];
+  const setMany = w.records.setMany;
+  w.records.setMany = (entries) => {
+    written.push(entries.reduce((n, [, list]) => n + list.length, 0));
+    return setMany(entries);
+  };
+  for (let batch = 0; batch < 10; batch++) {
+    await w.store.applyServerChanges(w.book, Array.from({ length: 100 }, (_, i) => w.put(`9:${batch * 100 + i}`, { fields: { FirstName: `C${batch}-${i}` } })));
+  }
+  assert(Math.max(...written) <= 100 + 64, `at most one batch and one record: ${Math.max(...written)}`);
+  await w.calm();
+  written.length = 0;
+  w.tb.userEdit(w.book, w.tb.ids(w.book)[500], (l) => [...l, "TITLE:x"]);
+  await w.store.readLocalChanges(w.book);
+  assert(written.length === 1 && written[0] <= 64, `one record: ${written}`);
+  eq((await w.make().serverIds(w.book, COLL)).length, 1000);
+});
+
+test("audit: the notes are kept once, and a change of them is still seen", async () => {
+  const w = await world();
+  const notes = "n".repeat(20_000);
+  await w.store.applyServerChanges(w.book, [w.put("9:1", { fields: { FirstName: "Ada" }, description: notes })]);
+  let size = 0;
+  for (const name of await w.records.names()) if (name.startsWith("abItems:")) size += JSON.stringify(await w.records.get(name)).length;
+  assert(size < 25_000, `notes stored once: ${size}`);
+  eq((await w.store.readLocalChanges(w.book)).changes, []);
+  await w.calm();
+  const [id] = w.tb.ids(w.book);
+  w.tb.userEdit(w.book, id, (l) => [...l, "TITLE:x"]);
+  let c = (await w.store.readLocalChanges(w.book)).changes[0];
+  eq(c.item.description, notes, "an edit elsewhere sends the notes as the server gave them");
+  await w.store.ackLocalChange(w.book, c.changeId, { item: c.item });
+  w.tb.userEdit(w.book, id, (l) => l.map((x) => (x.startsWith("NOTE") ? "NOTE:autre" : x)));
+  c = (await w.store.readLocalChanges(w.book)).changes[0];
+  eq(c.item.description, "autre");
+});
+
+test("audit: a card that cannot be read is told, and gives way to the server", async () => {
+  const w = await world();
+  await w.store.applyServerChanges(w.book, [w.put("9:1", { fields: { FirstName: "Ada" } })]);
+  await w.calm();
+  const [id] = w.tb.ids(w.book);
+  w.tb.userEdit(w.book, id, (l) => [...l, `X-GROS:${"A".repeat(1024 * 1024)}`]);
+  const { changes } = await w.store.readLocalChanges(w.book);
+  eq(changes.map((c) => [c.op, c.problem, c.item]), [["modify", "too-large", null]]);
+  eq(await w.store.dropLocalChange(w.book, changes[0].changeId), true);
+  assert(w.tb.card(w.book, id).length < 1000);
+  eq((await w.store.readLocalChanges(w.book)).changes, []);
+  // And a server version written over such a card.
+  w.tb.userEdit(w.book, id, (l) => [...l, `X-GROS:${"A".repeat(1024 * 1024)}`]);
+  eq(await w.store.applyServerChanges(w.book, [w.put("9:1", { fields: { FirstName: "Ada", JobTitle: "x" } })]), [{ serverId: "9:1", ok: true }]);
+  eq(projectVCard(w.tb.card(w.book, id)).fields.JobTitle, "x");
+});
+
+test("audit: a text of the user that is too long is refused, never cut", async () => {
+  const w = await world();
+  await w.store.applyServerChanges(w.book, [w.put("9:1", { fields: { FirstName: "Ada" } })]);
+  await w.calm();
+  const [id] = w.tb.ids(w.book);
+  w.tb.userEdit(w.book, id, (l) => [...l, `TITLE:${"t".repeat(400)}`]);
+  eq((await w.store.readLocalChanges(w.book)).changes.map((c) => c.problem), ["too-large"]);
+  w.tb.userEdit(w.book, id, (l) => l.filter((x) => !x.startsWith("TITLE")).concat(`NOTE:${"n".repeat(40_000)}`));
+  eq((await w.store.readLocalChanges(w.book)).changes.map((c) => c.problem), ["too-large"]);
+});
+
+test("audit: a list of books that cannot be read forgets nothing", async () => {
+  const w = await world();
+  await w.store.applyServerChanges(w.book, [w.put("9:1", { fields: { FirstName: "Ada" } })]);
+  const list = w.tb.addressBooks.list;
+  w.tb.addressBooks.list = async () => {
+    throw new Error("pas maintenant");
+  };
+  await rejects(() => w.store.listCalendars());
+  await rejects(() => w.store.ensureCalendar({ slot: "main", name: "Travail" }));
+  w.tb.addressBooks.list = list;
+  eq(await w.store.ensureCalendar({ slot: "main", name: "Travail" }), { calendarId: w.book, created: false });
+  eq(await w.store.serverIds(w.book, COLL), ["9:1"]);
+  eq(w.tb.books.size, 1);
+});
+
+test("audit: a contact whose id holds a colon is synchronized like any other", async () => {
+  const w = await world();
+  await w.calm();
+  const id = w.tb.userAdd(w.book, ["FN:Avec deux-points"], "urn:uuid:1234-5678");
+  const { changes, rejected } = await w.store.readLocalChanges(w.book);
+  eq([changes.length, rejected, changes[0].item.uid], [1, 0, id]);
+  eq(await w.store.ackLocalChange(w.book, changes[0].changeId, { serverId: "9:7", collectionId: COLL, item: changes[0].item }), true);
+  eq((await w.store.readLocalChanges(w.book)).changes, []);
 });
 
 test("contact store: invalid arguments are refused", async () => {
