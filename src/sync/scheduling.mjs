@@ -92,7 +92,7 @@ import { checkEvent } from "../core/calendar-item.mjs";
 import * as v from "../core/sanitize.mjs";
 import { toHex } from "../core/sha256.mjs";
 import { EasError, ERR } from "../transport/client.mjs";
-import { t, sentence, errorText, uiLanguage, meetingSubject, meetingText, calendarNotice, itemTitle, cleanLine } from "../i18n.mjs";
+import { t, sendFailureReason, uiLanguage, meetingSubject, meetingText, calendarNotice, itemTitle, cleanLine } from "../i18n.mjs";
 import { sendTimeout } from "../send.mjs";
 
 /** Most messages waiting for the user's answer or for their sending. */
@@ -411,11 +411,7 @@ const refusedReason = (status, reason = t("sendStatusOther")) => t("sendReasonRe
 /** The reason of a failure of the client, chosen by its code; never free text from an unknown error. */
 function failureReason(e) {
   const code = typeof e?.code === "string" && /^[A-Z_]{2,20}$/.test(e.code) ? e.code : "";
-  const text = code ? errorText({ code, message: e?.message, key: e?.key }, "sendReasonUnexpected") : "";
-  const reason = text ? sentence(text) : t("sendReasonUnexpected");
-  // After a colon: lower case where the language wants it (see send.mjs).
-  const lowered = t("sendReasonLowercase") === "yes" && /^\p{Lu}\p{Ll}*(?![\p{L}\d])/u.test(reason);
-  return lowered ? reason.charAt(0).toLowerCase() + reason.slice(1) : reason;
+  return sendFailureReason(code, e);
 }
 
 /**

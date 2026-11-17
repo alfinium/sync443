@@ -20,6 +20,22 @@ const BLANK_LOOKALIKES = new RegExp(`[${String.fromCodePoint(0x2800, 0x3164, 0xf
 const INVISIBLE = /[\u00ad\u180e\u200b-\u200d\u2060\ufeff]/g;
 
 /**
+ * Characters nobody sees, removed from what is shown to the user and from
+ * what is written for other people to read (a wider set than INVISIBLE,
+ * which serves the names kept from the server): bidirectional marks,
+ * overrides and isolates, zero-width characters and joiners, the soft
+ * hyphen, invisible operators, interlinear annotations, the two
+ * noncharacters of the basic plane and tags. Written by their numbers, so
+ * that none of them is ever in a source file. Used with replace() only.
+ */
+export const UNSEEN = (() => {
+  const one = (code) => String.fromCodePoint(code);
+  const span = (from, to) => `${one(from)}-${one(to)}`;
+  const set = [one(0xad), one(0x34f), one(0x61c), one(0x180e), span(0x200b, 0x200f), span(0x202a, 0x202e), span(0x2060, 0x206f), one(0xfeff), span(0xfff9, 0xfffb), span(0xfffe, 0xffff), span(0xe0000, 0xe007f)];
+  return new RegExp(`[${set.join("")}]`, "gu");
+})();
+
+/**
  * A character class from code points and [first, last] ranges, built when
  * the module loads: such characters are never typed in a source file.
  */

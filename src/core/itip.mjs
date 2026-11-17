@@ -77,19 +77,6 @@ const pad = (n, width = 2) => String(n).padStart(width, "0");
 // ── Text, parameters, lines ───────────────────────────────────────────────
 
 /**
- * Characters nobody sees: bidirectional marks, overrides and isolates,
- * zero-width characters and joiners, the soft hyphen, invisible operators,
- * interlinear annotations, the two noncharacters of the basic plane and
- * tags. Written by their numbers, so that none of them is ever in this file.
- */
-const UNSEEN = (() => {
-  const one = (code) => String.fromCodePoint(code);
-  const span = (from, to) => `${one(from)}-${one(to)}`;
-  const set = [one(0xad), one(0x34f), one(0x61c), one(0x180e), span(0x200b, 0x200f), span(0x202a, 0x202e), span(0x2060, 0x206f), one(0xfeff), span(0xfff9, 0xfffb), span(0xfffe, 0xffff), span(0xe0000, 0xe007f)];
-  return new RegExp(`[${set.join("")}]`, "gu");
-})();
-
-/**
  * A text as this module writes it, for other people to read: controls
  * removed, every kind of line break made one line feed (or a space with
  * `singleLine`), bidirectional and invisible characters removed, lone
@@ -103,7 +90,7 @@ const UNSEEN = (() => {
 export function strictText(value, { max = MAX_DESCRIPTION, singleLine = false } = {}) {
   if (typeof value !== "string") return "";
   // Lone surrogates are replaced first: what is searched next is text, in which no half character can hide another.
-  const clean = v.cleanText(value.toWellFormed(), { max: value.length, singleLine }).replace(UNSEEN, "");
+  const clean = v.cleanText(value.toWellFormed(), { max: value.length, singleLine }).replace(v.UNSEEN, "");
   return v.cut(clean, max);
 }
 

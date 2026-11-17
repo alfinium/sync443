@@ -96,8 +96,8 @@ export const DEFAULTS = Object.freeze({
  * @param {{open: Function, write: Function, read: Function, close: Function}} o.connector
  *        verified connections (browser.sync443Net, or a test double)
  * @param {string[]} [o.pins]    SHA-256 fingerprints (64 upper-case hex digits) trusted for this
- *        server's certificate or root (core/tls-policy.mjs). Only test builds set them for now;
- *        a setting will come later.
+ *        server's certificate or root (core/tls-policy.mjs): the fingerprint the user typed in
+ *        the settings of the mailbox, none by default.
  * @param {{set(f: Function, ms: number): any, clear(id: any): void}|null} [o.timers]
  *        bound the write phase (default: setTimeout and clearTimeout when the engine has them;
  *        without timers, writes rely on the connector's own stall limit)

@@ -20,22 +20,8 @@
  * as a detail (errorDetail).
  */
 
-import { cleanText, cut } from "./core/sanitize.mjs";
+import { cleanText, cut, UNSEEN } from "./core/sanitize.mjs";
 import { TLS_MESSAGE_MAX } from "./core/tls-policy.mjs";
-
-/**
- * Characters nobody sees, removed from everything shown here: bidirectional
- * marks, overrides and isolates, zero-width characters and joiners, the soft
- * hyphen, invisible operators, interlinear annotations, the two
- * noncharacters of the basic plane and tags. Written by their numbers, so
- * that none of them is ever in this file.
- */
-const UNSEEN = (() => {
-  const one = (code) => String.fromCodePoint(code);
-  const span = (from, to) => `${one(from)}-${one(to)}`;
-  const set = [one(0xad), one(0x34f), one(0x61c), one(0x180e), span(0x200b, 0x200f), span(0x202a, 0x202e), span(0x2060, 0x206f), one(0xfeff), span(0xfff9, 0xfffb), span(0xfffe, 0xffff), span(0xe0000, 0xe007f)];
-  return new RegExp(`[${set.join("")}]`, "gu");
-})();
 
 /**
  * A text from outside (a title, a place, a reason) as it is shown: one
@@ -125,6 +111,21 @@ export function errorText(error, fallbackKey = "unexpectedError") {
   if (key) return t(key);
   const code = typeof error?.code === "string" ? error.code : "";
   return t(ERROR_KEYS.get(code) ?? OTHER_ERROR, reasonOf(error)) || t(fallbackKey);
+}
+
+/**
+ * Why a sending failed, for a client failure of this `code` ("" when the
+ * code is not known): a sentence that ends with a full stop, never free
+ * text from an unknown error. It follows a colon ("Message not sent: …"),
+ * so it starts in lower case where the catalog says the language wants it:
+ * "Identifiant refusé…" reads "identifiant refusé…", "SendMail : …" stays
+ * as it is, and a German noun keeps its capital.
+ */
+export function sendFailureReason(code, error) {
+  const text = code ? errorText({ code, message: error?.message, key: error?.key }, "sendReasonUnexpected") : "";
+  const reason = text ? sentence(text) : t("sendReasonUnexpected");
+  const lower = t("sendReasonLowercase") === "yes" && /^\p{Lu}\p{Ll}*(?![\p{L}\d])/u.test(reason);
+  return lower ? reason.charAt(0).toLowerCase() + reason.slice(1) : reason;
 }
 
 /** The engine's French reason, as a detail, when `shownText` does not already contain it; "" otherwise. */

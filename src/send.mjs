@@ -52,7 +52,7 @@ import { cleanDraft } from "./core/mime.mjs";
 import { ERR } from "./transport/client.mjs";
 import { MAILBOX_ID, ACCOUNT_KEY } from "./core/ids.mjs";
 import { toHex } from "./core/sha256.mjs";
-import { t, errorText, sentence } from "./i18n.mjs";
+import { t, sendFailureReason } from "./i18n.mjs";
 
 export const MAX_MESSAGE_BYTES = 50 * 1024 * 1024;
 const MAX_HEADER_BYTES = 1024 * 1024;
@@ -412,12 +412,7 @@ function explain(e) {
   if (e?.sent === true && UNCERTAIN.has(code)) {
     return { code, uncertain: true, reason: t("sendReasonInterrupted") };
   }
-  const text = code === "UNKNOWN" ? "" : errorText({ code, message: e?.message, key: e?.key }, "sendReasonUnexpected");
-  const reason = text ? sentence(text) : t("sendReasonUnexpected");
-  // "Identifiant refusé…" reads "Message non envoyé : identifiant refusé…"; "SendMail : …" stays as it is.
-  // Only in languages whose catalog says so: a German noun, for one, keeps its capital.
-  const lower = t("sendReasonLowercase") === "yes" && /^\p{Lu}\p{Ll}*(?![\p{L}\d])/u.test(reason);
-  return { code, uncertain: false, reason: lower ? reason.charAt(0).toLowerCase() + reason.slice(1) : reason };
+  return { code, uncertain: false, reason: sendFailureReason(code === "UNKNOWN" ? "" : code, e) };
 }
 
 /** 32 hexadecimal digits from the CSPRNG: a fresh ClientId for every attempt. */

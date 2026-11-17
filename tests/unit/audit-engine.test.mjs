@@ -8,7 +8,7 @@
  */
 
 import { test, assert, eq, rejects } from "./harness.mjs";
-import { el, at, text, child } from "../../src/core/wbxml.mjs";
+import { el, at, text } from "../../src/core/wbxml.mjs";
 import { encodeUtf8, decodeUtf8 } from "../../src/core/utf8.mjs";
 import { messageIdOf, ensureMessageId, cleanDraft, ORIGINAL_ID_FIELD } from "../../src/core/mime.mjs";
 import { Store } from "../../src/sync/store.mjs";

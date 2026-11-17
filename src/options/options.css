@@ -225,16 +225,6 @@ legend {
   padding: 0 4px;
 }
 
-.row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-}
-
-.row .field {
-  flex: 1 1 200px;
-}
-
 input[type="text"],
 input[type="email"],
 input[type="password"],
