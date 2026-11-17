@@ -14,7 +14,9 @@
  *  - it runs out with nothing new (status 1): the network kept the idle
  *    connection, so the next one asks for longer, up to a ceiling;
  *  - the connection dies while waiting (a NAT or proxy dropping idle
- *    connections): the heartbeat is cut, and the ceiling lowered under the
+ *    connections, or a proxy that answers HTTP 504 in the server's place
+ *    because it waits less than the heartbeat): the heartbeat is cut, and
+ *    the ceiling lowered under the
  *    value that failed; after many quiet successes at the ceiling, the
  *    ceiling rises again (the network may have changed);
  *  - status 5: the server's own bound is taken.
@@ -39,6 +41,7 @@ export const PING_DEFAULTS = Object.freeze({
   raiseAfter: 10, // quiet expiries at the ceiling before the ceiling rises again
   minIntervalMs: 15_000, // between the starts of two Pings
   cutAfterMs: 60_000, // a connection lost after waiting this long was cut by the network
+  gatewayAfterMs: 20_000, // a gateway that gives up after this long (HTTP 504 or 408) did not wait for the heartbeat
   marginMs: 60_000, // the client waits this much longer than the heartbeat
   maxBytes: 256 * 1024,
 });
@@ -263,10 +266,20 @@ export class PushLoop {
           await onFatal(e);
           break;
         }
-        const cut = (e?.code === ERR.TIMEOUT || e?.code === ERR.NETWORK) && e?.sent && now() - lastStart >= settings.cutAfterMs;
+        const waited = now() - lastStart;
+        // A proxy in front of the server that stops waiting before the heartbeat ran out answers 504 (or 408)
+        // in the server's place. It is a connection cut while waiting, not a failure of the server: the same
+        // remedy, and no backing off. (A gateway that waits less than the shortest heartbeat answers so at
+        // every Ping: the mailbox is watched all the same, one Ping after the other.)
+        const gateway = e?.code === ERR.HTTP && (e.status === 504 || e.status === 408) && waited >= settings.gatewayAfterMs;
+        const cut = gateway || ((e?.code === ERR.TIMEOUT || e?.code === ERR.NETWORK) && e?.sent && waited >= settings.cutAfterMs);
         if (cut) {
+          const before = this.heartbeat.value;
           this.heartbeat.cut();
-          log?.info?.(`Ping : connexion coupée en attente, intervalle ramené à ${this.heartbeat.value} s.`);
+          const what = gateway ? `attente interrompue par un relais (HTTP ${e.status})` : "connexion coupée en attente";
+          // Told once per change of interval: at the shortest interval it would be a line per Ping.
+          if (this.heartbeat.value !== before) log?.info?.(`Ping : ${what}, intervalle ramené à ${this.heartbeat.value} s.`);
+          else log?.debug?.(`Ping : ${what}, intervalle déjà au plus court (${before} s).`);
           failures = 0;
           continue; // retried at once (after the minimal interval), shorter
         }

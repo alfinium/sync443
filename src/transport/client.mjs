@@ -331,7 +331,7 @@ export class EasClient {
         retryAfterMs: retryAfter(headerValue(resp.headers, "retry-after"), this.now()),
       });
     }
-    if ((s < 200 || s > 299) && s !== 449) throw new EasError(ERR.HTTP, `${what} : erreur HTTP ${s}.`);
+    if ((s < 200 || s > 299) && s !== 449) throw new EasError(ERR.HTTP, `${what} : erreur HTTP ${s}.`, { status: s });
   }
 
   // ── Version ─────────────────────────────────────────────────────────────

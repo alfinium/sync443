@@ -3,7 +3,7 @@
   "name": "__MSG_extensionName__",
   "description": "__MSG_extensionDescription__",
   "default_locale": "en",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "author": "alfinium",
   "homepage_url": "https://github.com/alfinium/sync443",
   "browser_specific_settings": {

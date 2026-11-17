@@ -163,6 +163,37 @@ test("ping : connexion coupée en attente → intervalle raccourci, nouvel essai
   assert(!h.sleeps.some((ms) => ms >= 30_000 && ms !== PING_DEFAULTS.minIntervalMs), "pas de recul d'erreur");
 });
 
+test("ping : un relais qui répond 504 après avoir attendu → intervalle raccourci, sans recul ; au plus court, un Ping après l'autre", async () => {
+  const h = harness();
+  const gateway = () => {
+    h.advance(60_000); // the proxy waited one minute, then gave up
+    throw new EasError(ERR.HTTP, "Ping : erreur HTTP 504.", { status: 504 });
+  };
+  script(h, Array.from({ length: 8 }, () => gateway));
+  await finish(h);
+  const hbs = h.server.sent("Ping").map((r) => Number(text(r, "HeartbeatInterval")));
+  eq(hbs.slice(0, 5), [480, 320, 200, 120, 120]);
+  assert(hbs.slice(3).every((hb) => hb === 120), "never under the shortest interval");
+  assert(hbs.length >= 9, "watching goes on, one Ping after the other");
+  assert(!h.sleeps.some((ms) => ms >= 30_000 && ms !== PING_DEFAULTS.minIntervalMs), "pas de recul d'erreur");
+});
+
+test("ping : un 504 immédiat, ou une autre erreur HTTP, reste une erreur → recul", async () => {
+  for (const [status, waitedMs] of [[504, 1000], [500, 60_000], [502, 60_000]]) {
+    const h = harness();
+    script(h, [
+      () => {
+        h.advance(waitedMs);
+        throw new EasError(ERR.HTTP, `Ping : erreur HTTP ${status}.`, { status });
+      },
+    ]);
+    await finish(h);
+    const hbs = h.server.sent("Ping").map((r) => Number(text(r, "HeartbeatInterval")));
+    eq(hbs[1], hbs[0], `HTTP ${status} après ${waitedMs} ms : intervalle inchangé`);
+    assert(h.sleeps.some((ms) => ms >= 30_000 && ms !== PING_DEFAULTS.minIntervalMs), "recul d'erreur");
+  }
+});
+
 test("ping : erreur rapide → recul croissant, intervalle inchangé", async () => {
   const h = harness();
   const fail = () => {

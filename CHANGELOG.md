@@ -7,6 +7,32 @@ One section per published version, most recent first. The section of a version s
 release notes of its `.xpi` file on the [Releases](https://github.com/alfinium/sync443/releases)
 page.
 
+## 0.4.1
+
+Availability of attendees. Verified on Thunderbird 140.17 ESR and Thunderbird 160.
+
+### New
+
+- **Availability of attendees:** in Thunderbird's attendee window, for a meeting of a Sync443
+  calendar, the busy times of each attendee are asked of the mailbox's server and shown
+  (ActiveSync 14.0 or 14.1). A server that does not provide them shows nothing, as before.
+
+### Fixed
+
+- **Immediate delivery behind a reverse proxy.** A proxy that stops waiting before the server
+  answers a Ping replies "HTTP 504" in its place. This was taken for a failure of the server:
+  the next attempts were spaced further and further apart, up to half an hour, and new mail
+  arrived late. It is now taken for what it is: the wait is shortened and watching goes on at
+  once.
+
+### Security
+
+- The lookup is a reading: no message is sent to anybody.
+- It is made only for the meetings of a Sync443 calendar, and only to the server of that
+  mailbox. For a meeting of any other calendar, nothing is asked: the addresses do not leave
+  Thunderbird.
+- This addition has not been through an independent audit.
+
 ## 0.4.0
 
 Contacts, and a simpler mailbox form. Verified on Thunderbird 140.17 ESR and Thunderbird 160.
