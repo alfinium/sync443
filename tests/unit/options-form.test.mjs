@@ -519,6 +519,8 @@ test("empreinte : acceptée quelle que soit sa présentation, rendue en 64 chiff
     const r = validateForm({ ...base, caFingerprint: bad });
     eq([r.ok, r.errors.map((e) => e.field)], [false, ["caFingerprint"]], bad);
   }
+  // (Audit) A ligature that upper-casing would turn into two letters is no hexadecimal digit.
+  eq(validateForm({ ...base, caFingerprint: String.fromCharCode(0xfb00).repeat(32) }).ok, false);
   eq(fingerprintShown([PIN]), PIN.match(/../g).join(":"));
   eq([fingerprintShown([]), fingerprintShown(null), fingerprintShown(["x"])], ["", "", ""]);
   eq(formValues({ email: "a@example.com", server: "mail.example.com", syncMinutes: 0, sync: {}, tlsPins: [PIN] }).caFingerprint, PIN.match(/../g).join(":"));

@@ -15,7 +15,7 @@ Unchecked mail leaves Thunderbird, and private certificate authorities. Verified
 ### New
 
 - **Unchecking mail removes its local copies.** After a confirmation, the copies of the server's
-  messages leave Thunderbird, and a folder left empty is removed. A message that exists only in
+  messages leave Thunderbird at the next synchronization, and a folder left empty is removed. A message that exists only in
   Thunderbird stays. The account stays too: meeting messages are sent with its identity. Mail
   checked again is synchronized from the start. Nothing is deleted on the server.
 - **Private certificate authority.** A server whose certificate comes from an authority of your
@@ -29,6 +29,14 @@ Unchecked mail leaves Thunderbird, and private certificate authorities. Verified
 - A fingerprint holds for one server only: when the server of a mailbox changes, it is asked
   again.
 - A certificate accepted only through a security exception is still refused.
+- The local copies of mail are removed only on your answer in the settings page. A mailbox whose
+  mail was unchecked under an earlier version keeps its copies: to remove them, check mail, save,
+  then uncheck it again.
+- Messages the server had deleted and that were held for your decision, and the messages of a
+  folder the server no longer has, are never removed this way.
+- Availability of attendees: after a failed lookup the server is not asked again for 15 minutes.
+- Independent audit of this stage, which also covers 0.4.1:
+  [docs/audits/stage-6.md](docs/audits/stage-6.md).
 
 ## 0.4.1
 

@@ -157,8 +157,10 @@ export function validateForm(values, existing = null) {
   if (!SYNC_KINDS.some((k) => sync[k])) error("sync", t("chooseKind"));
 
   // The fingerprint of a private authority: 64 hexadecimal digits, however they are grouped; empty for none.
-  const fingerprint = str(values.caFingerprint).replace(/[\s:]/g, "").toUpperCase();
-  if (fingerprint !== "" && !/^[0-9A-F]{64}$/.test(fingerprint)) error("caFingerprint", t("caFingerprintInvalid"));
+  // (Tested before the letters are made capitals: a ligature would become two letters.)
+  const typed = str(values.caFingerprint).replace(/[ \t:]/g, "");
+  if (typed !== "" && !/^[0-9a-fA-F]{64}$/.test(typed)) error("caFingerprint", t("caFingerprintInvalid"));
+  const fingerprint = typed.toUpperCase();
 
   if (errors.length) {
     errors.sort((a, b) => FIELD_ORDER.indexOf(a.field) - FIELD_ORDER.indexOf(b.field));

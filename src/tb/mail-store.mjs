@@ -362,17 +362,22 @@ export class MailStore {
     if (all.some((x) => x.path.startsWith(`${path}/`))) return false;
     const first = await this.#browser.messages.list(f.id);
     if ((first?.messages ?? []).length) return false;
+    // Thunderbird may move the folder to the trash instead of deleting it. A folder of that name already in
+    // the trash is the user's: only one that was not there before, and holds nothing, is deleted in turn.
+    const trash = await this.#trashPath();
+    const inTrash = trash ? `${trash}/${basename(path)}` : null;
+    const there = inTrash !== null && (inTrash === path || (await this.#find(inTrash)) !== null);
     try {
       await this.#withEcho([{ kind: "folderDelete", path }], () => this.#browser.folders.delete(f.id));
     } catch {
       return false;
     }
-    // Thunderbird may have moved it to the trash instead: an empty folder of that name there goes too.
-    const trash = await this.#trashPath();
-    const moved = trash ? await this.#find(`${trash}/${basename(path)}`) : null;
-    if (moved && !this.#special(moved)) {
-      const inside = await this.#browser.messages.list(moved.id);
-      if (!(inside?.messages ?? []).length) await this.#browser.folders.delete(moved.id).catch(() => {});
+    if (inTrash !== null && !there) {
+      const moved = await this.#find(inTrash);
+      if (moved && !this.#special(moved) && !(await this.listFolders()).some((x) => x.path.startsWith(`${inTrash}/`))) {
+        const inside = await this.#browser.messages.list(moved.id);
+        if (!(inside?.messages ?? []).length) await this.#browser.folders.delete(moved.id).catch(() => {});
+      }
     }
     return !(await this.folderExists(path));
   }

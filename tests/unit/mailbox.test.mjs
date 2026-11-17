@@ -814,18 +814,28 @@ test("mail unchecked: the copies of server messages leave Thunderbird, what is o
   eq((await w.sync.run({ reason: "timer" })).pendingDeletes, 60);
   const serverBefore = w.mail.items.get("1").size;
 
+  // Mail unchecked without the user's yes (a mailbox unchecked before the question existed, an upgrade):
+  // nothing is removed.
   w.make({ sync: { mail: false, calendar: true, contacts: false, tasks: true } });
+  const before = w.store.messages("/Inbox").length;
+  await w.sync.run({ reason: "timer" });
+  eq([w.store.messages("/Inbox").length, w.store.writes.filter((x) => x[0] === "purge").length], [before, 0], "no yes, no removal");
+  assert((await w.records.names()).some((n) => n.startsWith("coll:")), "the tables stay");
+
+  // With the yes of the settings page.
+  await w.records.set("mailRemoval", true);
   w.cal.addItem(CAL, event({ uid: "plus", summary: "Plus tard" }));
   const r = await w.sync.run({ reason: "timer" });
   eq([r.status, r.pendingDeletes, (await w.health()).blocked], ["ok", 0, null]);
   assert(w.titles().includes("Plus tard"), "the calendar goes on");
-  eq(w.store.mids("/Inbox"), [first.mid, "local@x"].sort(), "one copy too many and the user's own message stay");
+  const held = Array.from({ length: 60 }, (_, i) => `k${i}@x`);
+  eq(w.store.mids("/Inbox"), [...held, first.mid, "local@x"].sort(), "the messages whose deletion was held, one copy too many and the user's own message stay");
   eq(w.store.mids("/Perso"), ["perso@x"]);
   assert(!w.store.folders.has("/Inbox/Projets"), "a folder left empty is removed");
   assert(w.store.folders.has("/Inbox") && w.store.folders.has("/Sent"), "special folders stay");
   eq(w.mail.items.get("1").size, serverBefore, "nothing is touched on the server");
   const names = await w.records.names();
-  eq(names.filter((n) => n.startsWith("coll:") || n.startsWith("journal:") || ["layout", "pendingDeletes", "archives", "renaming", "foldersBefore"].includes(n)), []);
+  eq(names.filter((n) => n.startsWith("coll:") || n.startsWith("journal:") || ["layout", "pendingDeletes", "archives", "renaming", "foldersBefore", "mailRemoval", "mailRemovalAt"].includes(n)), []);
   // A second pass has nothing more to remove.
   const writes = w.store.writes.length;
   await w.sync.run({ reason: "timer" });
@@ -835,7 +845,7 @@ test("mail unchecked: the copies of server messages leave Thunderbird, what is o
   w.make();
   const again = await w.sync.run({ reason: "user" });
   eq([again.status, again.pendingDeletes], ["ok", 0]);
-  eq(w.store.messages("/Inbox").length, serverBefore + 2, "what the server holds, and the two messages that were the user's own");
+  eq(w.store.messages("/Inbox").length, serverBefore + 62, "what the server holds, and what had stayed");
   eq(w.store.mids("/Inbox/Projets"), ["p@x"]);
 });
 
@@ -1007,6 +1017,41 @@ test("calendar: calendar and tasks unchecked, one more pass removes their calend
   eq(c.order.length, n);
 });
 
+test("audit: a removal stopped in the middle does not count the same messages twice", async () => {
+  const w = calendarWorld();
+  for (let i = 0; i < 250; i++) w.mail.addMessage("1", mime(`m${String(i).padStart(3, "0")}@x`));
+  await w.sync.run({ reason: "user" });
+  // The user's own second copy of the first message.
+  const first = w.store.messages("/Inbox").find((m) => m.mid === "m000@x");
+  w.store.folders.get("/Inbox").msgs.set(9002, { ...first, id: undefined });
+  w.make({ sync: { mail: false, calendar: true, contacts: false, tasks: true } });
+  await w.records.set("mailRemoval", true);
+  const purge = w.store.purgeMessages.bind(w.store);
+  let calls = 0;
+  w.store.purgeMessages = async (ids) => {
+    if (++calls === 2) throw new Error("coupé");
+    return purge(ids);
+  };
+  await rejects(() => w.sync.run({ reason: "timer" }));
+  assert(w.store.messages("/Inbox").length < 251 && w.store.mids("/Inbox").includes("m000@x"), "stopped after the first batch");
+  assert((await w.records.names()).includes("mailRemoval"), "still asked for");
+  const again = await w.sync.run({ reason: "user" });
+  eq([again.status, w.store.mids("/Inbox")], ["ok", ["m000@x"]], "the copy that was the user's own is still there");
+});
+
+test("audit: a folder the server no longer lists keeps its messages when mail is unchecked", async () => {
+  const w = calendarWorld();
+  for (let i = 0; i < 80; i++) w.mail.addMessage("6", mime(`p${i}@x`));
+  w.mail.addMessage("1", mime("i@x"));
+  await w.sync.run({ reason: "user" });
+  eq(w.store.messages("/Inbox/Projets").length, 80);
+  w.mail.deleteFolder("6");
+  w.make({ sync: { mail: false, calendar: true, contacts: false, tasks: true } });
+  await w.records.set("mailRemoval", true);
+  eq((await w.sync.run({ reason: "timer" })).status, "ok");
+  eq([w.store.messages("/Inbox/Projets").length, w.store.mids("/Inbox")], [80, []], "gone from the server: left alone; still there: removed");
+});
+
 test("mail unchecked: the folder list starts over meanwhile; when mail comes back it is a first synchronization of the new list", async () => {
   const w = calendarWorld();
   w.mail.addMessage("6", mime("p@x"));
@@ -1016,6 +1061,7 @@ test("mail unchecked: the folder list starts over meanwhile; when mail comes bac
   // Mail unchecked. The server then renumbers its folders (a partnership reset): "6" now names another
   // folder, and "Projets" is "9".
   w.make({ sync: { mail: false, calendar: true, contacts: false, tasks: true } });
+  await w.records.set("mailRemoval", true);
   w.mail = new FakeServer({ folders: [...BOTH.map((f) => (f.id === "6" ? { id: "6", parentId: "0", name: "Autre", type: 12 } : f)), { id: "9", parentId: "1", name: "Projets", type: 12 }] });
   w.mail.addMessage("9", mime("p@x"));
   w.mail.addMessage("6", mime("autre@x"));

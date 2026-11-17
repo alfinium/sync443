@@ -304,9 +304,36 @@ test("arrière-plan : empreinte d'une autorité privée saisie par l'utilisateur
   w.granted.add(perm(OTHER));
   await rejects(x.saveMailbox(input({ id: mb.id, server: `https://${OTHER}`, tlsPins: [pin] }), "pw3"), (e) => e.field === "caFingerprint");
   eq([(await x.store.getMailbox(mb.id)).origin, (await x.store.getMailbox(mb.id)).tlsPins], [`https://${HOST}`, [pin]]);
-  await x.saveMailbox(input({ id: mb.id, tlsPins: [] }), null);
+  // (Audit) Typed again in the form for the new server (the same authority, another host): accepted.
+  w.granted.add(perm(OTHER));
+  await x.saveMailbox(input({ id: mb.id, server: `https://${OTHER}`, tlsPins: [pin], tlsPinsTyped: true }), "pw3");
   await settle(x);
-  eq((await x.store.getMailbox(mb.id)).tlsPins, []);
+  eq([(await x.store.getMailbox(mb.id)).origin, (await x.store.getMailbox(mb.id)).tlsPins], [`https://${OTHER}`, [pin]]);
+  // Back to the first server, without a fingerprint (the tests that follow start from there).
+  w.granted.add(perm(HOST));
+  await x.saveMailbox(input({ id: mb.id, tlsPins: [] }), "secret");
+  await settle(x);
+  eq([(await x.store.getMailbox(mb.id)).origin, (await x.store.getMailbox(mb.id)).tlsPins], [`https://${HOST}`, []]);
+});
+
+test("arrière-plan (audit) : les copies du courrier ne partent que sur le oui de la page de réglages", async () => {
+  const { x } = await load();
+  const [mb] = await x.store.listMailboxes();
+  const records = x.store.mailbox(mb.id);
+  const off = { mail: false, calendar: true, contacts: false, tasks: false };
+  // Mail unchecked without the answer (another caller, an older page): saved, and nothing asked of the engine.
+  await x.saveMailbox(input({ id: mb.id, sync: off }), null);
+  await settle(x);
+  eq([(await x.store.getMailbox(mb.id)).sync.mail, await records.get("mailRemoval", null)], [false, null]);
+  // Unchecked already: the answer given later changes nothing (there is no change from checked to unchecked).
+  await x.saveMailbox(input({ id: mb.id, sync: off, confirmMailRemoval: true }), null);
+  await settle(x);
+  eq(await records.get("mailRemoval", null), null);
+  // Checked again, then unchecked with the yes.
+  await x.saveMailbox(input({ id: mb.id }), null);
+  await settle(x);
+  await x.saveMailbox(input({ id: mb.id, sync: off, confirmMailRemoval: true }), null);
+  eq(await records.get("mailRemoval", null), true);
 });
 
 test("arrière-plan : changement de serveur, empreintes oubliées, ancien mot de passe et ancienne autorisation retirés (H1)", async () => {

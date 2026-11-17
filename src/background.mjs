@@ -34,7 +34,7 @@ import { userInformationRequest, parseUserInformation } from "./core/protocol.mj
 import { log, setDebugFor, getLog, clearLog, loadLog, errorCode } from "./log.mjs";
 import { installSendHandler } from "./send.mjs";
 import { initialHealth } from "./sync/health.mjs";
-import { MailboxSync } from "./sync/mailbox.mjs";
+import { MailboxSync, MAIL_REMOVAL } from "./sync/mailbox.mjs";
 import { MailStore } from "./tb/mail-store.mjs";
 import { LocalEvents } from "./tb/events.mjs";
 import { EchoRegistry } from "./sync/echo.mjs";
@@ -559,6 +559,10 @@ async function scheduleAlarms() {
 const freeBusyCache = new Map(); // "mailbox|address|start|end" → { at, intervals }
 const FREEBUSY_CACHE_MS = 120_000;
 const FREEBUSY_CACHE_MAX = 200;
+/** After a failure, how long a mailbox is not asked again: the password is not sent once per attendee and per scroll. */
+const FREEBUSY_QUIET_MS = 15 * 60_000;
+const freeBusyQuiet = new Map(); // mailbox id → until when nothing is asked
+const freeBusyInFlight = new Map(); // key → the lookup under way, shared by the requests that ask the same
 
 /**
  * Thunderbird's attendee window, open on a meeting of a Sync443 calendar,
@@ -580,9 +584,23 @@ async function answerFreeBusy(request) {
         intervals = cached.intervals;
       } else {
         const health = await store.mailbox(mailboxId).get("health", null);
-        // (After an authentication failure nothing is tried again by itself: rule kept here too.)
-        if (!health?.blocked) {
-          intervals = await lookupAvailability({ client: await clientFor(entry.mailbox), email, start, end });
+        // After an authentication failure nothing is tried again by itself, and a mailbox that is waiting
+        // before its next attempt is left alone: both rules are kept here too. A lookup that failed is not
+        // tried again for a while, whatever the reason.
+        const waiting = Number.isFinite(health?.nextAttemptAt) && health.nextAttemptAt > Date.now();
+        if (!health?.blocked && !waiting && (freeBusyQuiet.get(mailboxId) ?? 0) <= Date.now()) {
+          let lookup = freeBusyInFlight.get(key);
+          if (!lookup) {
+            lookup = (async () => lookupAvailability({ client: await clientFor(entry.mailbox), email, start, end }))();
+            freeBusyInFlight.set(key, lookup);
+            lookup.catch(() => {}).finally(() => freeBusyInFlight.delete(key));
+          }
+          try {
+            intervals = await lookup;
+          } catch (e) {
+            freeBusyQuiet.set(mailboxId, Date.now() + FREEBUSY_QUIET_MS);
+            throw e;
+          }
           freeBusyCache.set(key, { at: Date.now(), intervals });
           while (freeBusyCache.size > FREEBUSY_CACHE_MAX) freeBusyCache.delete(freeBusyCache.keys().next().value);
         }
@@ -644,12 +662,13 @@ function checkInput(input) {
   // The fingerprints trusted for this server (a private authority). Absent: the mailbox keeps its own.
   let tlsPins = null;
   if (input.tlsPins !== undefined && input.tlsPins !== null) {
-    if (!Array.isArray(input.tlsPins) || input.tlsPins.length > 4 || input.tlsPins.some((p) => typeof p !== "string" || !TLS_PIN.test(p))) {
+    // One at most: the settings page shows one, and a fingerprint nobody sees must not be trusted.
+    if (!Array.isArray(input.tlsPins) || input.tlsPins.length > 1 || input.tlsPins.some((p) => typeof p !== "string" || !TLS_PIN.test(p))) {
       throw new FieldError("caFingerprint", t("caFingerprintInvalid"));
     }
     tlsPins = [...new Set(input.tlsPins)];
   }
-  return { email, username, name, server, syncMinutes, filterType, sync, calendarPeriod, taskFilter, tlsPins };
+  return { email, username, name, server, syncMinutes, filterType, sync, calendarPeriod, taskFilter, tlsPins, tlsPinsTyped: input.tlsPinsTyped === true, confirmMailRemoval: input.confirmMailRemoval === true };
 }
 
 /** Errors of the connection check, pointed at the field the user can fix. */
@@ -716,7 +735,8 @@ async function saveMailboxChecked(input, password) {
   const ids = existing ? { mailboxId: existing.id, deviceId: existing.deviceId } : newIds();
   const originChanged = Boolean(existing) && existing.origin !== v.server.origin;
   // A fingerprint holds for one server only (rule 3): left as it was while the server changed, it is asked again.
-  if (originChanged && v.tlsPins?.length && existing.tlsPins.length && v.tlsPins.every((p) => existing.tlsPins.includes(p))) {
+  // Typed again in the form, it is the user's word for the new server (the same authority, another host).
+  if (originChanged && !v.tlsPinsTyped && v.tlsPins?.length && existing.tlsPins.length && v.tlsPins.every((p) => existing.tlsPins.includes(p))) {
     throw new FieldError("caFingerprint", t("caFingerprintServerChanged"));
   }
   const draft = checkMailbox({
@@ -798,6 +818,10 @@ async function saveMailboxChecked(input, password) {
   try {
     if (!existing || moved) await store.mailbox(draft.id).set("proto", proto);
     saved = await store.putMailbox({ ...draft, accountKey: account.accountKey });
+    // Mail unchecked with the user's yes to the removal of its local copies: only then does the engine remove
+    // them. Mail checked: nothing is asked for any more.
+    if (existing?.sync?.mail === true && !draft.sync.mail && v.confirmMailRemoval) await store.mailbox(saved.id).set(MAIL_REMOVAL, true);
+    else if (draft.sync.mail) await store.mailbox(saved.id).remove(MAIL_REMOVAL).catch(() => {});
   } catch (e) {
     if (!existing) {
       await store.mailbox(draft.id).clear().catch(() => {});

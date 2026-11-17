@@ -143,6 +143,7 @@ const labelOf = (mb) => shown(mb?.name) || shown(mb?.email) || t("unnamed");
 let mailboxes = []; // as last listed by the background
 let editing = null; // the mailbox in the form, null for a new one
 let saving = false;
+let fingerprintTyped = false; // the fingerprint field was typed in since the form was filled
 let listSeq = 0;
 let logSeq = 0;
 let debugTimer = null;
@@ -367,6 +368,7 @@ function buildForm() {
 }
 
 function fillForm(values) {
+  fingerprintTyped = false;
   for (const field of VALUE_FIELDS) $(field).value = values[field];
   for (const k of SYNC_KINDS) $(`kind-${k}`).checked = values.sync[k] === true;
 }
@@ -461,6 +463,10 @@ function onSubmit(event) {
   // Calendar or tasks unchecked: their local copies would go at the next sync. Nothing is sent without a yes.
   const question = existing ? uncheckConfirm(existing, result.request.mailbox.sync, labelOf(existing)) : "";
   if (question && !window.confirm(question)) return;
+  // The yes to "the copies of its messages will be removed": without it the background removes nothing.
+  if (existing?.sync?.mail === true && result.request.mailbox.sync.mail !== true) result.request.mailbox.confirmMailRemoval = true;
+  // The fingerprint was typed in this very form: it may then be the same one for another server.
+  result.request.mailbox.tlsPinsTyped = fingerprintTyped;
   // Another server or sign-in name: the calendars made from the old one leave Thunderbird, with what was not sent yet.
   const moving = existing ? moveConfirm(existing, result.server, result.request.mailbox, labelOf(existing)) : "";
   if (moving && !window.confirm(moving)) return;
@@ -564,6 +570,9 @@ function start() {
   buildForm();
   $("add").addEventListener("click", () => openEditor(null));
   $("form").addEventListener("submit", onSubmit);
+  $("caFingerprint").addEventListener("input", () => {
+    fingerprintTyped = true;
+  });
   $("cancel").addEventListener("click", () => {
     closeEditor();
     $("add").focus();

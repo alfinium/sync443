@@ -1043,7 +1043,8 @@ async function phase3() {
     const seqOff = await mock("last_seq");
     const savedAt = Date.now() / 1000;
     const templatesBefore = (await localMessages(A.accountKey, "/Templates").catch(() => [])).length;
-    const res = await ctx.saveMailbox(input(view, { sync: { mail: false, calendar: true, contacts: false, tasks: false } }), null);
+    // (With the yes of the settings page to the removal of the local copies: without it nothing is removed.)
+    const res = await ctx.saveMailbox(input(view, { sync: { mail: false, calendar: true, contacts: false, tasks: false }, confirmMailRemoval: true }), null);
     const A2 = await mailboxById(A.id);
     await check("A enregistrée sans le courrier (mot de passe gardé, non retapé)", res?.id === A.id && A2 && !A2.sync.mail && A2.sync.calendar, A2?.sync);
     await sleep(4000);

@@ -370,6 +370,41 @@ test("magasin : dossiers créés, renommés, déplacés sans écho résiduel ; d
   eq(echo.size, 0);
 });
 
+test("magasin : purge des copies de ce compte seulement, où qu'elles soient, sans intention résiduelle", async () => {
+  const { store, browser, intents, events } = account();
+  const a = browser.addMessage(A, "/Inbox", "a@x");
+  const b = browser.addMessage(A, "/Projets", "b@x");
+  const other = browser.addMessage(OTHER, "/Inbox", "c@x");
+  eq(await store.purgeMessages([a, b, other, 99999]), 2, "celui d'un autre compte et celui qui n'existe plus sont ignorés");
+  eq([browser.inFolder(A, "/Inbox"), browser.inFolder(A, "/Projets"), browser.inFolder(OTHER, "/Inbox").length], [[], [], 1]);
+  eq(browser.calls.filter((x) => x[0] === "messages.delete").at(-1)[2], { deletePermanently: true, isUserAction: false });
+  eq(await store.purgeMessages([]), 0);
+  await events.idle();
+  eq(intents, []);
+});
+
+test("magasin (audit) : un dossier n'est retiré que vide, sans sous-dossier ni rôle ; un dossier du même nom dans la corbeille n'est jamais touché", async () => {
+  const { store, browser } = account();
+  await store.createFolder("/", "Clients");
+  await store.createFolder("/Clients", "2026");
+  const m = browser.addMessage(A, "/Clients/2026", "a@x");
+  eq(await store.deleteEmptyFolder("/Clients"), false, "a un sous-dossier");
+  eq(await store.deleteEmptyFolder("/Clients/2026"), false, "contient un message");
+  eq(await store.deleteEmptyFolder("/Inbox"), false, "dossier spécial");
+  eq(await store.deleteEmptyFolder("/Nulle part"), false);
+  await store.purgeMessages([m]);
+  // The user already has a folder of that name in the trash, with a subfolder that holds messages.
+  await store.createFolder("/Trash", "2026");
+  await store.createFolder("/Trash/2026", "Archives");
+  browser.addMessage(A, "/Trash/2026/Archives", "vieux@x");
+  eq(await store.deleteEmptyFolder("/Clients/2026"), true);
+  eq(await store.deleteEmptyFolder("/Clients"), true);
+  assert(!(await store.folderExists("/Clients")));
+  assert((await store.folderExists("/Trash/2026")) && (await store.folderExists("/Trash/2026/Archives")), "le dossier de l'utilisateur dans la corbeille reste");
+  eq(browser.inFolder(A, "/Trash/2026/Archives").length, 1);
+  eq(browser.calls.filter((x) => x[0] === "folders.delete").length, 2, "deux suppressions, pas une de plus");
+});
+
 test("magasin : une écriture qui échoue retire son écho (l'action suivante de l'utilisateur passe)", async () => {
   const { store, browser, intents, events } = account();
   const id = browser.addMessage(A, "/Inbox", "e@x");

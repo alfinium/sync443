@@ -88,7 +88,7 @@ export function checkMailbox(mb) {
   if (!Number.isInteger(mb.syncMinutes) || mb.syncMinutes < 0 || mb.syncMinutes > 1440) fail("intervalle");
   if (!/^[0-5]$/.test(String(mb.filterType ?? ""))) fail("période"); // mail periods only (core/mail-codec.mjs MAIL_FILTER_TYPES)
   if (mb.accountKey !== null && (typeof mb.accountKey !== "string" || !ACCOUNT_KEY.test(mb.accountKey))) fail("compte");
-  if (!Array.isArray(mb.tlsPins) || mb.tlsPins.some((p) => typeof p !== "string" || !TLS_PIN.test(p))) fail("certificats");
+  if (!Array.isArray(mb.tlsPins) || mb.tlsPins.length > 4 || mb.tlsPins.some((p) => typeof p !== "string" || !TLS_PIN.test(p))) fail("certificats");
   const sync = mb.sync;
   if (!sync || typeof sync !== "object" || SYNC_KINDS.some((k) => typeof sync[k] !== "boolean")) fail("éléments à synchroniser");
   if (!SYNC_KINDS.some((k) => sync[k])) fail("au moins un élément à synchroniser");
