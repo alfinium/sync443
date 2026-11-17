@@ -457,6 +457,82 @@ export function parseMeetingResponse(doc) {
   return out;
 }
 
+// ── ResolveRecipients: free/busy ──────────────────────────────────────────
+
+/** Most addresses asked in one request, and the longest span asked (the server refuses a longer one with Status 5). */
+export const MAX_AVAILABILITY_RECIPIENTS = 20;
+export const MAX_AVAILABILITY_MS = 31 * 86_400_000;
+const HALF_HOUR = 1_800_000;
+/** One digit per half hour ([MS-ASCMD] 2.2.3.107): at most 32 KB of them. */
+const MERGED = /^[0-4]{1,32768}$/;
+
+const availabilityTime = (ms) => new Date(ms).toISOString();
+
+/**
+ * The free/busy data of e-mail addresses between two instants
+ * ([MS-ASCMD] 2.2.1.15 with Availability; protocol 14.0 and later).
+ * `addresses`: 1 to MAX_AVAILABILITY_RECIPIENTS e-mail addresses, each one
+ * once; `startMs`, `endMs`: instants in milliseconds, at least half an hour
+ * and at most MAX_AVAILABILITY_MS apart. No certificate and no picture is
+ * asked for, and an ambiguous name is not suggested: only what was asked.
+ */
+export function availabilityRequest(addresses, startMs, endMs) {
+  if (!Array.isArray(addresses) || addresses.length < 1 || addresses.length > MAX_AVAILABILITY_RECIPIENTS) {
+    throw new ProtocolError("nombre d'adresses invalide");
+  }
+  const seen = new Set();
+  const to = addresses.map((address) => {
+    const clean = need(address, v.emailAddress, "adresse");
+    if (seen.has(clean.toLowerCase())) throw new ProtocolError("adresse en double");
+    seen.add(clean.toLowerCase());
+    return el("To", clean);
+  });
+  if (!Number.isSafeInteger(startMs) || !Number.isSafeInteger(endMs) || startMs < 0 || endMs > 8_000_000_000_000) throw new ProtocolError("période invalide");
+  if (endMs - startMs < HALF_HOUR || endMs - startMs > MAX_AVAILABILITY_MS) throw new ProtocolError("période invalide");
+  return el("ResolveRecipients:ResolveRecipients", [
+    ...to,
+    el("Options", [
+      el("MaxAmbiguousRecipients", "0"),
+      el("Availability", [el("StartTime", availabilityTime(startMs)), el("EndTime", availabilityTime(endMs))]),
+    ]),
+  ]);
+}
+
+/**
+ * The answer to availabilityRequest: Map<address asked, lower case →
+ * { status, merged }>. `status` is that of the Availability element ("1":
+ * data; "160" to "163": none for this recipient), or null when the
+ * recipient was not resolved to exactly one entry, or carries no
+ * Availability. `merged` is the MergedFreeBusy string (digits 0 to 4, one
+ * per half hour from the start asked), or null.
+ * Throws ProtocolError when the command itself failed.
+ */
+export function parseAvailability(doc) {
+  expectRoot(doc, "ResolveRecipients", "ResolveRecipients");
+  const top = topStatus(doc);
+  if (top !== "1") throw new ProtocolError(`ResolveRecipients refusé (Status ${top})`);
+  const out = new Map();
+  const responses = doc.children.filter((c) => c.tag === "Response");
+  if (responses.length > MAX_AVAILABILITY_RECIPIENTS) throw new ProtocolError(`réponse anormale : ${responses.length} réponses`);
+  for (const r of responses) {
+    const asked = v.emailAddress(text(r, "To"));
+    if (!asked || out.has(asked.toLowerCase())) continue;
+    const recipients = r.children.filter((c) => c.tag === "Recipient");
+    const entry = { status: null, merged: null };
+    // Data only for the one entry the address resolved to; a list of suggestions is nobody's availability.
+    if (v.status(text(r, "Status")) === "1" && recipients.length === 1) {
+      const availability = child(recipients[0], "Availability");
+      if (availability) {
+        entry.status = v.status(text(availability, "Status"));
+        const merged = text(availability, "MergedFreeBusy");
+        if (entry.status === "1" && typeof merged === "string" && MERGED.test(merged)) entry.merged = merged;
+      }
+    }
+    out.set(asked.toLowerCase(), entry);
+  }
+  return out;
+}
+
 // ── Provision ─────────────────────────────────────────────────────────────
 
 /**

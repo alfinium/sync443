@@ -28,7 +28,8 @@ relies only on Microsoft's public specifications ([MS-ASCAL], [MS-ASTASK], [MS-A
 - **Out of scope:**
   - proposing a new time (ActiveSync 12.1–14.1 has no command for it);
   - forwarding an invitation;
-  - free/busy lookup, attachments, the global address list.
+  - attachments, the global address list (the availability of attendees is looked up: see
+    "Availability of attendees").
 - **Shown read-only:** non-Gregorian calendars, and tasks that regenerate after completion.
 
 ## Thunderbird side
@@ -449,6 +450,31 @@ New unprivileged modules in `src/core/`:
   `{ kind: "invite" | "update" | "cancel", from, summary, start, allDay, recipients: [email] }`.
 - It answers `{ type: "meetingConfirm", token, send: boolean }`.
 - The token is usable once, and expires after 10 minutes.
+
+### Availability of attendees
+
+Thunderbird's attendee window shows when each attendee is busy, from whatever its free/busy
+providers answer. The privileged module registers one, and the mailbox's server is asked
+(`ResolveRecipients` with `Availability`, [MS-ASCMD] 2.2.1.15; ActiveSync 14.0 and 14.1).
+
+- **For which meetings.** Thunderbird does not say for which calendar it asks. Its attendee
+  window, the only place it asks from, knows its calendar: the provider answers only while such a
+  window is open on a calendar of ours, and names the mailbox of that calendar. With no such
+  window, with the window of another calendar, or with windows of several mailboxes, nothing is
+  asked and Thunderbird is answered at once with nothing. The addresses of a meeting of another
+  calendar never leave Thunderbird.
+- **What leaves.** The address of the attendee and the span of time, to the server of the mailbox:
+  what an invitation to that attendee would give it. Nothing is sent to the attendee or to
+  anybody else. No certificate, no picture and no suggestion of other names is asked for.
+- **What comes back** is checked twice: the digits of `MergedFreeBusy` (one per half hour: free,
+  tentative, busy, out of office, no data) by `core/protocol.mjs`, then each interval by the
+  privileged module before Thunderbird is given it. A request is answered once; one that is not
+  answered within 30 seconds counts as answered with nothing.
+- **When nothing is asked of the server:** the mailbox does not synchronize its calendar, is
+  blocked (after an authentication failure nothing is tried again by itself), or speaks a
+  protocol before 14.0. An answer is kept two minutes, since the window asks again at every
+  scroll.
+- The log names no address.
 
 ## Settings and texts
 

@@ -60,6 +60,7 @@ import "./contact-item.test.mjs";
 import "./vcard.test.mjs";
 import "./contact-store.test.mjs";
 import "./contacts.test.mjs";
+import "./availability.test.mjs";
 import "./meeting-request.test.mjs";
 import "./itip.test.mjs";
 import "./confirm.test.mjs";

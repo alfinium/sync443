@@ -101,9 +101,25 @@
           { "name": "calendarId", "type": "string" },
           { "name": "changeId", "type": "string" }
         ]
+      },
+      {
+        "name": "answerFreeBusy",
+        "type": "function",
+        "async": true,
+        "description": "The answer to a request of onFreeBusyRequest: intervals [{start, end, type}] in milliseconds, type busy, tentative, oof or unknown. -> true when the request was still waiting.",
+        "parameters": [
+          { "name": "requestId", "type": "string" },
+          { "name": "intervals", "type": "array", "items": { "type": "object", "additionalProperties": { "type": "any" } } }
+        ]
       }
     ],
     "events": [
+      {
+        "name": "onFreeBusyRequest",
+        "type": "function",
+        "description": "onFreeBusyRequest({requestId, mailboxId, email, start, end}): Thunderbird's attendee window, open on a calendar of this mailbox, asks for the free/busy data of an attendee between two instants (milliseconds). Answer with answerFreeBusy; no answer within 30 seconds counts as none.",
+        "parameters": [{ "name": "request", "type": "object", "additionalProperties": { "type": "any" } }]
+      },
       {
         "name": "onLocalChange",
         "type": "function",

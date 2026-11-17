@@ -67,7 +67,8 @@ time zones, reminders, categories, free/busy status and privacy.
 | Meetings you organize | Invitations, updates and cancellations are sent to the attendees you chose, each one after you confirm it in a Sync443 window that lists every recipient. A meeting has at most 100 attendees. |
 | Sending | Every meeting message goes through ActiveSync. Thunderbird never sends one by SMTP for a Sync443 calendar. |
 | Shown read-only | Items that ActiveSync stores in a form Thunderbird cannot edit without loss: recurrences of non-Gregorian calendars, tasks that regenerate after completion, and a few rare recurrence patterns. |
-| Not supported | Proposing a new time, forwarding an invitation, attachments of events, free/busy lookup. |
+| Availability of attendees | In Thunderbird's attendee window, for a meeting of a Sync443 calendar, the busy times of each attendee are asked of the mailbox's server and shown (ActiveSync 14.0 or 14.1; a server that does not provide them shows nothing). For a meeting of any other calendar, nothing is asked: the addresses do not leave Thunderbird. |
+| Not supported | Proposing a new time and attachments of events (both need ActiveSync 16, which Sync443 does not speak), forwarding an invitation. |
 
 Design and limits: [docs/CALENDAR-DESIGN.md](docs/CALENDAR-DESIGN.md).
 

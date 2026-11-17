@@ -2385,6 +2385,78 @@ async function leaveForRestart(user) {
   await emit("INFO", { kept: { ours: [C1, C2, C3], foreign: [FORGED_STORAGE, FORGED_OWNER, FORGED_BARE], user } });
 }
 
+/**
+ * Free/busy data of attendees: asked of the extension only for the
+ * attendee window of one of our calendars, answered once, checked.
+ */
+async function freeBusy(user) {
+  const T0 = Date.UTC(2027, 0, 11, 8, 0, 0);
+  const HALF = 1_800_000;
+  const asked = [];
+  let reply = (r) => api.answerFreeBusy(r.requestId, [{ start: r.start, end: r.start + HALF, type: "busy" }]);
+  // (Thunderbird's attendee window asks by itself for the organizer, as soon as it opens: only our question counts.)
+  const own = [];
+  const listener = (r) => {
+    if (r.email !== "anne@example.org") {
+      own.push(r);
+      api.answerFreeBusy(r.requestId, []);
+      return;
+    }
+    asked.push(r);
+    reply(r);
+  };
+  api.onFreeBusyRequest.addListener(listener);
+  const ask = (waitMs) => H("freeBusyAsk", { email: "anne@example.org", from: T0, to: T0 + 4 * HALF, waitMs });
+  const types = await H("freeBusyTypes");
+
+  let got = await ask();
+  await check("free/busy: without an attendee window nothing is asked of the extension, and Thunderbird gets an answer at once", got.done && got.results.length === 0 && asked.length === 0, [got, asked]);
+
+  await H("openAttendees", { calendarId: user });
+  got = await ask();
+  await check("free/busy: for a meeting of a calendar that is not ours, the address never leaves", got.done && got.results.length === 0 && asked.length === 0, [got, asked]);
+  await H("closeAttendees");
+
+  const type = await H("openAttendees", { calendarId: C1 });
+  got = await ask();
+  await check("free/busy: for a meeting of our calendar, the mailbox of that calendar is asked", type === "Calendar:EventDialog:Attendees" && asked.length === 1 &&
+    asked[0].mailboxId === M1 && asked[0].email === "anne@example.org" && asked[0].start === T0 && asked[0].end === T0 + 4 * HALF, [type, asked]);
+  await check("free/busy: the window itself asked for the organizer of that calendar, through the same mailbox", own.length >= 1 && own.every((r) => r.mailboxId === M1 && r.email === OWN), own);
+  await check("free/busy: the answer reaches Thunderbird as a busy interval", got.done && same(got.results, [{ type: types.busy, start: T0, end: T0 + HALF }]), got);
+
+  reply = (r) => api.answerFreeBusy(r.requestId, [
+    { start: r.start, end: r.start + HALF, type: "tentative" }, { start: r.start + HALF, end: r.start + 2 * HALF, type: "oof" },
+    { start: r.start + 2 * HALF, end: r.start + 3 * HALF, type: "unknown" },
+    { start: r.start + HALF, end: r.start, type: "busy" }, { start: "x", end: 3, type: "busy" }, { start: r.start, end: r.start + HALF, type: "free" }, {},
+  ]);
+  got = await ask();
+  await check("free/busy: each kind of interval is given as Thunderbird's own, and what is not an interval is left out",
+    got.done && same(got.results.map((x) => x.type), [types.tentative, types.oof, types.unknown]), got);
+
+  let second = null;
+  reply = async (r) => {
+    await api.answerFreeBusy(r.requestId, []);
+    second = await api.answerFreeBusy(r.requestId, [{ start: r.start, end: r.start + HALF, type: "busy" }]);
+  };
+  got = await ask();
+  await sleep(200);
+  await check("free/busy: a request is answered once", got.done && got.results.length === 0 && second === false, [got, second]);
+  await check("free/busy: an answer to a request that was never made is refused or ignored",
+    (await api.answerFreeBusy("fb-999999", []).catch(() => "refused")) === false && (await api.answerFreeBusy("autre", []).then(() => "ok", () => "refused")) === "refused");
+
+  await H("openAttendees", { calendarId: C3 });
+  const before = asked.length;
+  got = await ask();
+  await check("free/busy: attendee windows of two mailboxes: nobody can tell which one asked, nothing is asked", got.done && got.results.length === 0 && asked.length === before, [got, asked.length - before]);
+  await H("closeAttendees");
+
+  api.onFreeBusyRequest.removeListener(listener);
+  await H("openAttendees", { calendarId: C1 });
+  got = await ask();
+  await check("free/busy: with nobody listening Thunderbird is answered at once", got.done && got.results.length === 0, got);
+  await H("closeAttendees");
+}
+
 async function phase1() {
   await emit("INFO", { probe: await H("probe") });
   Ci_CAL_IS_READONLY = (await H("probe")).readOnly;
@@ -2412,6 +2484,7 @@ async function phase1() {
   await lifeCycle(user);
   await full();
   await scheduling(user);
+  await freeBusy(user);
   await viewTest();
   await limit();
   const rows = await H("storeRows", { calendarId: C1 });

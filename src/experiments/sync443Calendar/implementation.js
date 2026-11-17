@@ -455,6 +455,20 @@ var sync443Calendar = (() => {
 
   const fail = (code, reason) => new ExtensionError(`${code}: ${reason}`);
 
+  // Free/busy data of attendees.
+  const ATTENDEES_WINDOW = "Calendar:EventDialog:Attendees";
+  const FREEBUSY_ADDRESS = /^[A-Za-z0-9!#$%&'*+/=?^_`{|}~.-]{1,64}@[A-Za-z0-9.-]{1,189}$/;
+  const FREEBUSY_MAX_MS = 62 * 86_400_000;
+  const FREEBUSY_MAX_PENDING = 200;
+  const FREEBUSY_MAX_INTERVALS = 3000;
+  const FREEBUSY_TIMEOUT_MS = 30_000;
+  const FREEBUSY_TYPES = new Map([
+    ["busy", Ci.calIFreeBusyInterval.BUSY],
+    ["tentative", Ci.calIFreeBusyInterval.BUSY_TENTATIVE],
+    ["oof", Ci.calIFreeBusyInterval.BUSY_UNAVAILABLE],
+    ["unknown", Ci.calIFreeBusyInterval.UNKNOWN],
+  ]);
+
   /** Name of an XPCOM error ("NS_ERROR_FAILURE") or of a JS error class, never free text. */
   function errorName(error) {
     const status = error?.result;
@@ -3521,6 +3535,96 @@ var sync443Calendar = (() => {
     listeners = new Set();
     announced = new Set();
     timers = new Map(); // calendar id → the timer that tells again once a change held back can be read
+    freeBusyListeners = new Set(); // the background page, asked for the free/busy data of an attendee
+    freeBusyPending = new Map(); // request id → { calId, listener, timer }
+    freeBusyCount = 0;
+    freeBusyProvider = null;
+
+    /**
+     * The mailbox whose server may be asked for free/busy data right now:
+     * that of the calendar of the attendee window that is open, when it is
+     * one of ours. Thunderbird does not say for which calendar it asks;
+     * its attendee window does (the only place Thunderbird asks from).
+     * → the mailboxId, or null: no such window, a calendar that is not
+     * ours, or windows of several mailboxes (nobody can tell which one
+     * asked). The addresses of a meeting of another calendar never leave.
+     */
+    freeBusyMailbox() {
+      const Provider = this.Provider;
+      if (!Provider) return null;
+      const found = new Set();
+      try {
+        for (const win of Services.wm.getEnumerator(ATTENDEES_WINDOW)) {
+          const mine = ours(win.arguments?.[0]?.calendar, this.extension.id, Provider);
+          found.add(mine ? mine.mailboxId : "");
+        }
+      } catch {
+        return null;
+      }
+      const only = found.size === 1 ? [...found][0] : "";
+      return only || null;
+    }
+
+    /** calIFreeBusyProvider.getFreeBusyIntervals: answered later through the listener, with [] for anything refused. */
+    freeBusyAsked(calId, rangeStart, rangeEnd, listener) {
+      const none = () => {
+        try {
+          listener.onResult(null, []);
+        } catch {
+          // a window that went away
+        }
+      };
+      try {
+        const mailboxId = this.shared?.closed ? null : this.freeBusyMailbox();
+        const m = typeof calId === "string" ? /^mailto:(.{3,254})$/i.exec(calId) : null;
+        const email = m && FREEBUSY_ADDRESS.test(m[1]) ? m[1] : null;
+        // (Not nativeTime: that is the time of day in the zone of the value, not an instant.)
+        const start = cal.dtz.dateTimeToJsDate(rangeStart).getTime();
+        const end = cal.dtz.dateTimeToJsDate(rangeEnd).getTime();
+        const sane = Number.isSafeInteger(start) && Number.isSafeInteger(end) && end > start && end - start <= FREEBUSY_MAX_MS;
+        if (!mailboxId || !email || !sane || !this.freeBusyListeners.size || this.freeBusyPending.size >= FREEBUSY_MAX_PENDING) return none();
+        const requestId = `fb-${++this.freeBusyCount}`;
+        const timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
+        timer.initWithCallback(() => this.freeBusyAnswer(requestId, []), FREEBUSY_TIMEOUT_MS, Ci.nsITimer.TYPE_ONE_SHOT);
+        this.freeBusyPending.set(requestId, { calId, listener, timer });
+        for (const tell of [...this.freeBusyListeners]) {
+          try {
+            tell({ requestId, mailboxId, email, start, end });
+          } catch {
+            // a context that went away
+          }
+        }
+      } catch {
+        none();
+      }
+    }
+
+    /** The answer to a request, once: intervals checked one by one, then given to Thunderbird. */
+    freeBusyAnswer(requestId, intervals) {
+      const pending = this.freeBusyPending.get(requestId);
+      if (!pending) return false;
+      this.freeBusyPending.delete(requestId);
+      pending.timer.cancel();
+      const out = [];
+      try {
+        for (const raw of Array.isArray(intervals) ? intervals.slice(0, FREEBUSY_MAX_INTERVALS) : []) {
+          const type = FREEBUSY_TYPES.get(raw?.type);
+          if (type === undefined || !Number.isSafeInteger(raw.start) || !Number.isSafeInteger(raw.end) || raw.end <= raw.start) continue;
+          if (raw.start < 0 || raw.end > 8_000_000_000_000) continue;
+          // An instant in UTC. (Given a zone, Thunderbird's helper would take the local time of day instead.)
+          const at = (ms) => cal.dtz.jsDateToDateTime(new Date(ms));
+          out.push(new cal.provider.FreeBusyInterval(pending.calId, type, at(raw.start), at(raw.end)));
+        }
+      } catch {
+        out.length = 0;
+      }
+      try {
+        pending.listener.onResult(null, out);
+      } catch {
+        // a window that went away
+      }
+      return true;
+    }
 
     /** A user change was recorded: told once per calendar and per turn of the event loop. */
     changed(calendarId) {
@@ -3583,6 +3687,20 @@ var sync443Calendar = (() => {
         cal.manager.registerCalendarProvider(TYPE, Provider);
         this.Provider = Provider;
         this.shared = shared;
+        // Free/busy data of attendees, for the meetings of our calendars only (see freeBusyMailbox).
+        try {
+          const api = this;
+          this.freeBusyProvider = {
+            QueryInterface: ChromeUtils.generateQI(["calIFreeBusyProvider"]),
+            getFreeBusyIntervals(calId, rangeStart, rangeEnd, busyTypes, listener) {
+              api.freeBusyAsked(calId, rangeStart, rangeEnd, listener);
+              return null;
+            },
+          };
+          cal.freeBusyService.addProvider(this.freeBusyProvider);
+        } catch {
+          this.freeBusyProvider = null; // no free/busy data: everything else works
+        }
       } catch {
         this.Provider = null; // every call answers UNSUPPORTED
       }
@@ -3590,6 +3708,16 @@ var sync443Calendar = (() => {
 
     onShutdown(isAppShutdown) {
       this.listeners.clear();
+      this.freeBusyListeners.clear();
+      for (const requestId of [...this.freeBusyPending.keys()]) this.freeBusyAnswer(requestId, []);
+      if (this.freeBusyProvider && !isAppShutdown) {
+        try {
+          cal.freeBusyService.removeProvider(this.freeBusyProvider);
+        } catch {
+          // already gone
+        }
+      }
+      this.freeBusyProvider = null;
       for (const timer of this.timers.values()) timer.cancel();
       this.timers.clear();
       // Thunderbird is quitting: nothing to undo, and nothing to write in the preferences.
@@ -3659,6 +3787,24 @@ var sync443Calendar = (() => {
           async dropLocalChange(calendarId, id) {
             return on("annulation", calendarId, (calendar) => dropLocalChange(calendar, id));
           },
+
+          async answerFreeBusy(requestId, intervals) {
+            checkContext(context);
+            if (typeof requestId !== "string" || !/^fb-\d{1,12}$/.test(requestId)) throw fail("CONFIG", "demande invalide");
+            return api.freeBusyAnswer(requestId, intervals);
+          },
+
+          onFreeBusyRequest: new ExtensionCommon.EventManager({
+            context,
+            name: "sync443Calendar.onFreeBusyRequest",
+            register: (fire) => {
+              // Only the background page is asked.
+              if (context.viewType !== "background") return () => {};
+              const listener = (request) => fire.async(request);
+              api.freeBusyListeners.add(listener);
+              return () => api.freeBusyListeners.delete(listener);
+            },
+          }).api(),
 
           onLocalChange: new ExtensionCommon.EventManager({
             context,

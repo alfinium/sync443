@@ -474,6 +474,54 @@ var sync443CalendarTest = (() => {
       },
 
       /** A calendar of the user: Thunderbird's own storage type, with one event. */
+      /**
+       * Asks Thunderbird's free/busy service, as its attendee window does:
+       * → { done, results: [{ type, start, end }] } (milliseconds), `done`
+       * false when nobody answered within `waitMs`.
+       */
+      async freeBusyAsk({ email, from, to, waitMs }) {
+        const at = (ms) => cal.dtz.jsDateToDateTime(new Date(ms));
+        const { setTimeout, clearTimeout } = ChromeUtils.importESModule("resource://gre/modules/Timer.sys.mjs");
+        return new Promise((resolve) => {
+          const results = [];
+          const timer = setTimeout(() => resolve({ done: false, results }), waitMs ?? 5000);
+          cal.freeBusyService.getFreeBusyIntervals(`mailto:${email}`, at(from), at(to), Ci.calIFreeBusyInterval.BUSY_ALL, {
+            onResult(operation, list) {
+              for (const r of list ?? []) results.push({ type: Number(r.freeBusyType), start: cal.dtz.dateTimeToJsDate(r.interval.start).getTime(), end: cal.dtz.dateTimeToJsDate(r.interval.end).getTime() });
+              if (!operation || !operation.isPending) {
+                clearTimeout(timer);
+                resolve({ done: true, results });
+              }
+            },
+          });
+        });
+      },
+
+      /** Opens Thunderbird's attendee window on a calendar, as the event dialog does. → its window type */
+      async openAttendees({ calendarId }) {
+        const win = Services.wm.getMostRecentWindow("mail:3pane");
+        const calendar = cal.manager.getCalendarById(calendarId);
+        const start = cal.dtz.now();
+        const end = start.clone();
+        end.hour += 1;
+        const opened = win.openDialog("chrome://calendar/content/calendar-event-dialog-attendees.xhtml", "_blank", "chrome,titlebar,resizable", {
+          startTime: start, endTime: end, displayTimezone: true, attendees: [], organizer: null, calendar, item: null, onOk() {},
+        });
+        await new Promise((resolve) => opened.addEventListener("load", resolve, { once: true }));
+        return opened.document.documentElement.getAttribute("windowtype");
+      },
+
+      async closeAttendees() {
+        let n = 0;
+        for (const win of Services.wm.getEnumerator("Calendar:EventDialog:Attendees")) {
+          win.close();
+          n++;
+        }
+        return n;
+      },
+
+      freeBusyTypes: async () => ({ busy: Ci.calIFreeBusyInterval.BUSY, tentative: Ci.calIFreeBusyInterval.BUSY_TENTATIVE, oof: Ci.calIFreeBusyInterval.BUSY_UNAVAILABLE, unknown: Ci.calIFreeBusyInterval.UNKNOWN }),
+
       async createUserCalendar({ name }) {
         const c = cal.manager.createCalendar("storage", Services.io.newURI("moz-storage-calendar://"));
         c.name = name;

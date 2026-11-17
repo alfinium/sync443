@@ -44,6 +44,7 @@ import { Scheduler, EXPIRED } from "./sync/scheduling.mjs";
 import { PimSync } from "./sync/pim.mjs";
 import { ContactStore } from "./tb/contact-store.mjs";
 import { contactSync } from "./sync/contacts.mjs";
+import { lookupAvailability } from "./sync/availability.mjs";
 import { MAX_MEETING_RECIPIENTS } from "./core/itip.mjs";
 import { toHex } from "./core/sha256.mjs";
 import { t, uiLanguage, errorText, errorDetail, serverErrorText, calendarNotice, cleanLine } from "./i18n.mjs";
@@ -550,6 +551,51 @@ async function scheduleAlarms() {
     if (!current || current.periodInMinutes !== minutes) api.alarms.create(name, { delayInMinutes: minutes, periodInMinutes: minutes });
   }
 }
+
+// ── Free/busy data of attendees ───────────────────────────────────────────
+
+/** Answers kept for a short while: the attendee window asks again at every scroll. */
+const freeBusyCache = new Map(); // "mailbox|address|start|end" → { at, intervals }
+const FREEBUSY_CACHE_MS = 120_000;
+const FREEBUSY_CACHE_MAX = 200;
+
+/**
+ * Thunderbird's attendee window, open on a meeting of a Sync443 calendar,
+ * asks whether an attendee is free (sync443Calendar.onFreeBusyRequest: the
+ * privileged module names the mailbox of that calendar). The mailbox's own
+ * server is asked, when the mailbox synchronizes its calendar and is not
+ * blocked; anything else is answered with nothing. A reading only: no
+ * message goes to anybody. The log names no address.
+ */
+async function answerFreeBusy(request) {
+  let intervals = [];
+  try {
+    const { mailboxId, email, start, end } = request ?? {};
+    const entry = entries.get(mailboxId);
+    if (entry && !entry.closing && entry.mailbox.sync?.calendar === true) {
+      const key = `${mailboxId}|${String(email).toLowerCase()}|${start}|${end}`;
+      const cached = freeBusyCache.get(key);
+      if (cached && Date.now() - cached.at < FREEBUSY_CACHE_MS) {
+        intervals = cached.intervals;
+      } else {
+        const health = await store.mailbox(mailboxId).get("health", null);
+        // (After an authentication failure nothing is tried again by itself: rule kept here too.)
+        if (!health?.blocked) {
+          intervals = await lookupAvailability({ client: await clientFor(entry.mailbox), email, start, end });
+          freeBusyCache.set(key, { at: Date.now(), intervals });
+          while (freeBusyCache.size > FREEBUSY_CACHE_MAX) freeBusyCache.delete(freeBusyCache.keys().next().value);
+        }
+      }
+    }
+  } catch (e) {
+    log.debug(`Disponibilités d'un participant non obtenues : ${errorCode(e)}.`);
+  }
+  await api.sync443Calendar.answerFreeBusy(String(request?.requestId ?? ""), intervals).catch(() => {});
+}
+
+api.sync443Calendar?.onFreeBusyRequest?.addListener((request) => {
+  answerFreeBusy(request);
+});
 
 api.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name.startsWith(ALARM)) runSync(alarm.name.slice(ALARM.length), { reason: "auto" });

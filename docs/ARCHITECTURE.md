@@ -63,6 +63,7 @@ src/
     pim.mjs               calendar and task collections: receiving, sending changes, rebuilding, deletion guard
     invitations.mjs       which invitation mail an answer names, never chosen by a sender's UID alone
     scheduling.mjs        what a local change means for other people; the queue of meeting messages
+    availability.mjs      free/busy data of attendees, asked of the mailbox's server; a reading only
     contacts.mjs          contacts collections: the engine of pim.mjs with records of its own, no message ever
   tb/
     mail-store.mjs        writes to the mailbox's Thunderbird account, and to it only
