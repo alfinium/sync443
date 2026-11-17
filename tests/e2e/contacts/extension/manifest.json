@@ -1,0 +1,27 @@
+{
+  "manifest_version": 2,
+  "name": "Sync443 address book end-to-end test",
+  "description": "Throw-away test extension: never shipped.",
+  "version": "1.0",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "sync443-contacts-e2e@sync443.test",
+      "strict_min_version": "140.0"
+    }
+  },
+  "permissions": ["storage", "addressBooks"],
+  "background": {
+    "scripts": ["background.mjs"],
+    "type": "module"
+  },
+  "experiment_apis": {
+    "sync443CalendarTest": {
+      "schema": "experiments/sync443CalendarTest/schema.json",
+      "parent": {
+        "scopes": ["addon_parent"],
+        "paths": [["sync443CalendarTest"]],
+        "script": "experiments/sync443CalendarTest/implementation.js"
+      }
+    }
+  }
+}

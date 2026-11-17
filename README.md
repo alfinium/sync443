@@ -6,9 +6,9 @@ Sync443 is a Thunderbird extension that provides native support for the **Exchan
 (EAS) protocol. Each ActiveSync mailbox becomes a regular Thunderbird account, with no gateway
 and no IMAP or SMTP configuration: all traffic goes over a single HTTPS connection to the server.
 
-**Current version: 0.3.0.** It supports mail (folders, messages and sending), calendars, tasks
-and meeting invitations, with an interface in ten languages. Contacts are planned for a later
-version ([roadmap](docs/ARCHITECTURE.md)).
+**Current version: 0.4.0.** It supports mail (folders, messages and sending), calendars, tasks,
+meeting invitations and contacts, with an interface in ten languages
+([roadmap](docs/ARCHITECTURE.md)).
 
 ## Features
 
@@ -17,12 +17,12 @@ version ([roadmap](docs/ARCHITECTURE.md)).
 | Mail: folders, messages, read and flag status, moves and deletions, in both directions | 0.1.0 |
 | Immediate delivery (push) or periodic synchronization | 0.1.0 |
 | Sending through ActiveSync, with a copy in the server's Sent Items | 0.1.0 |
-| Multiple mailboxes; per-mailbox choice of the items to synchronize | 0.1.0 (mail), 0.3.0 (calendar, tasks) |
+| Multiple mailboxes; per-mailbox choice of the items to synchronize | 0.1.0 (mail), 0.3.0 (calendar, tasks), 0.4.0 (contacts) |
 | Settings page, manual synchronization, diagnostic log | 0.1.0 |
 | Interface in ten languages ([Languages](#languages)) | 0.2.0 |
 | Calendar and tasks, in both directions, in Thunderbird's own calendar ([details](#calendar-tasks-and-meetings)) | 0.3.0 |
 | Meeting invitations: answering those received, sending those of the meetings you organize | 0.3.0 |
-| Contacts | planned |
+| Contacts, in both directions, in Thunderbird's own address book ([details](#contacts)) | 0.4.0 |
 
 ## Compatibility
 
@@ -71,6 +71,20 @@ time zones, reminders, categories, free/busy status and privacy.
 
 Design and limits: [docs/CALENDAR-DESIGN.md](docs/CALENDAR-DESIGN.md).
 
+## Contacts
+
+Each contacts folder of a mailbox becomes an address book in Thunderbird. Contacts are
+synchronized in both directions: names, e-mail addresses, telephone numbers, postal addresses,
+company and job title, birthday and anniversary, web page, notes, categories and picture.
+
+| | |
+|---|---|
+| Properties Thunderbird does not show | Kept. What the server holds and a Thunderbird card cannot say (an assistant's name, the names of children, a radio telephone) is sent back unchanged when you edit a contact. |
+| Properties ActiveSync cannot hold | Kept in Thunderbird. A fourth e-mail address, a telephone number of another type or the properties of other programs stay in the card, and are not sent. |
+| Deletions | A contact is deleted on the server only when you delete it in Thunderbird while Sync443 is running. A contact that is simply no longer there (a restored profile, a book emptied while the extension was disabled) stays on the server. |
+| Other address books | Never read or written: Sync443 only touches the address books it created. |
+| Limits | A picture removed in Thunderbird is not removed on the server; it can only be replaced. The name shown in Thunderbird is the one the server files the contact under. |
+
 ## Installation
 
 1. Download `sync443-<version>.xpi` from the
@@ -90,12 +104,15 @@ Each published file is built by GitHub Actions, reproducibly. It can be verified
 ## Configuration
 
 **Tools → Sync443 settings… → Add a mailbox**, then enter:
-- the email address, the password and, if different from the address, the login name;
-- the account name shown in Thunderbird;
+- the email address and the password;
 - the server, as `mail.example.com`;
 - the items to synchronize: mail, calendar, contacts, tasks;
-- the synchronization frequency, the period of mail and of calendar to keep, and whether completed
-  tasks are synchronized.
+- the period to synchronize, one choice for everything: 2 weeks, 1 month, 3 months, 6 months or
+  all. Mail keeps at most 1 month unless "All" is chosen, since ActiveSync offers nothing in
+  between; future events are always synchronized, and contacts and tasks have no period.
+
+"More settings" holds what has a default value: the account name shown in Thunderbird, the login
+name when it differs from the address, and the synchronization frequency.
 
 The connection (server, certificate, credentials) is verified before anything is saved. Where the
 server allows it, an application password dedicated to ActiveSync is recommended.
@@ -117,8 +134,8 @@ connection is refused before anything is sent.
 - After an authentication failure, no further automatic attempt is made.
 - No meeting message is sent without your own action, and none is sent because of a change coming
   from the server.
-- A large number of deletions requested by the server at once (messages, events or tasks) is
-  applied only after your confirmation.
+- A large number of deletions requested by the server at once (messages, events, tasks or
+  contacts) is applied only after your confirmation.
 
 ActiveSync usually relies on "Basic" authentication, in which the password accompanies every
 request. This risk is reduced by the measures above and by the use of an application password.
@@ -130,8 +147,8 @@ Reporting a vulnerability: [SECURITY.md](SECURITY.md).
 
 No telemetry. Only the configured ActiveSync server is contacted, and only the selected items
 are downloaded. Passwords are stored in Thunderbird's password manager. The diagnostic log
-contains no message content, subject or address, and no title, place, attendee or description of
-an event or a task.
+contains no message content, subject or address, no title, place, attendee or description of
+an event or a task, and no name, address or number of a contact.
 
 ## Development
 
@@ -147,6 +164,7 @@ with `py -3`.
 | `python3 -I tests/e2e/mail/run_mail_test.py` | end-to-end tests: mail, against a simulated ActiveSync server |
 | `python3 -I tests/e2e/calendar/run_calendar_test.py` | end-to-end tests: the calendar module, in Thunderbird |
 | `python3 -I tests/e2e/mail/run_calendar_sync_test.py` | end-to-end tests: calendar, tasks and meetings, against the simulated server |
+| `python3 -I tests/e2e/contacts/run_contacts_test.py` | end-to-end tests: address books, in Thunderbird |
 | `python3 -I tools/build_xpi.py` | reproducible build of `dist/sync443-<version>.xpi` |
 | `python3 -I tools/check_source_chars.py` | rejects invisible or bidirectional characters |
 | `python3 -I tools/provenance_check.py --ref <directory>` | checks that no code was taken from another project |
@@ -156,8 +174,8 @@ The end-to-end tests use a throw-away profile. The Thunderbird executable can be
 `fr`).
 
 The code is written from the public specifications (Microsoft MS-ASCMD, MS-ASWBXML, MS-ASPROV,
-MS-ASHTTP, MS-ASDTYPE, MS-ASEMAIL, MS-ASCAL and MS-ASTASK; IETF RFC 9110, 9112, 5322, 5545, 5546
-and 6047), without code from other projects. Architecture and method: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+MS-ASHTTP, MS-ASDTYPE, MS-ASEMAIL, MS-ASCAL, MS-ASTASK and MS-ASCNTC; IETF RFC 9110, 9112, 5322,
+5545, 5546, 6047, 6350 and 2426), without code from other projects. Architecture and method: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## License
 

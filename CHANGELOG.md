@@ -7,6 +7,45 @@ One section per published version, most recent first. The section of a version s
 release notes of its `.xpi` file on the [Releases](https://github.com/alfinium/sync443/releases)
 page.
 
+## 0.4.0
+
+Contacts, and a simpler mailbox form. Verified on Thunderbird 140.17 ESR and Thunderbird 160.
+
+### New
+
+- **Contacts,** synchronized in both directions. Each contacts folder of a mailbox becomes an
+  address book in Thunderbird: names, e-mail addresses, telephone numbers, postal addresses,
+  company and job title, birthday and anniversary, web page, notes, categories and picture.
+- What the server holds and Thunderbird does not show is sent back unchanged when a contact is
+  edited; what Thunderbird holds and ActiveSync cannot store stays in the card.
+- **A simpler mailbox form:** address, password, server, the items to synchronize and one period
+  for everything. The account name, the login name and the frequency are under "More settings".
+- Immediate delivery (push) also covers contacts folders.
+- Unchecking contacts, or removing a mailbox, removes its address books from Thunderbird after
+  confirmation. Nothing is deleted on the server.
+
+### Changed
+
+- One period replaces the separate periods of mail and calendar. With 3 or 6 months, mail keeps
+  1 month: ActiveSync offers nothing between 1 month and all.
+- The choice between all tasks and incomplete tasks is no longer asked: all tasks are
+  synchronized. A mailbox that had chosen otherwise keeps its setting.
+- New permission: access to address books, used only for the books Sync443 creates
+  ([details](docs/PERMISSIONS.md)).
+
+### Security
+
+- A contact is deleted on the server only when Thunderbird reported that you deleted it. A
+  contact that is merely missing is never taken for a deletion.
+- A large number of deletions requested by the server at once is applied only after your
+  confirmation, for contacts as for messages, events and tasks.
+- Address books that Sync443 did not create are never read or written.
+
+### Known limits
+
+- A picture removed in Thunderbird is not removed on the server.
+- The security audit of this stage has not been carried out yet.
+
 ## 0.3.0
 
 Calendars, tasks and meeting invitations. Verified on Thunderbird 140.17 ESR and Thunderbird 160.

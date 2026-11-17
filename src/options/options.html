@@ -53,17 +53,33 @@
         </div>
 
         <div class="field">
-          <label for="name" data-i18n="fieldName"></label>
-          <input id="name" name="name" type="text" autocomplete="off" maxlength="256" aria-describedby="name-hint name-error">
-          <p id="name-hint" class="hint" data-i18n="nameHint"></p>
-          <p id="name-error" class="field-error" hidden></p>
-        </div>
-
-        <div class="field">
           <label for="server" data-i18n="fieldServer"></label>
           <input id="server" name="server" type="text" inputmode="url" autocomplete="off" spellcheck="false" maxlength="300" required aria-describedby="server-hint server-error">
           <p id="server-hint" class="hint" data-i18n="serverHint"></p>
           <p id="server-error" class="field-error" hidden></p>
+        </div>
+
+        <fieldset id="sync" class="field" aria-describedby="sync-error">
+          <legend data-i18n="fieldKinds"></legend>
+          <div id="kinds" class="kinds"></div>
+          <p id="sync-error" class="field-error" hidden></p>
+        </fieldset>
+
+        <div class="field">
+          <label for="period" data-i18n="fieldPeriod"></label>
+          <select id="period" name="period" aria-describedby="period-hint period-error"></select>
+          <p id="period-hint" class="hint" data-i18n="periodHint"></p>
+          <p id="period-error" class="field-error" hidden></p>
+        </div>
+
+        <details id="more" class="more">
+          <summary data-i18n="moreSettings"></summary>
+
+        <div class="field">
+          <label for="name" data-i18n="fieldName"></label>
+          <input id="name" name="name" type="text" autocomplete="off" maxlength="256" aria-describedby="name-hint name-error">
+          <p id="name-hint" class="hint" data-i18n="nameHint"></p>
+          <p id="name-error" class="field-error" hidden></p>
         </div>
 
         <div class="field">
@@ -73,40 +89,12 @@
           <p id="username-error" class="field-error" hidden></p>
         </div>
 
-        <div class="row">
-          <div class="field">
-            <label for="syncMinutes" data-i18n="fieldFrequency"></label>
-            <select id="syncMinutes" name="syncMinutes" aria-describedby="syncMinutes-error"></select>
-            <p id="syncMinutes-error" class="field-error" hidden></p>
-          </div>
-          <div class="field">
-            <label for="filterType" data-i18n="fieldPeriod"></label>
-            <select id="filterType" name="filterType" aria-describedby="filterType-error"></select>
-            <p id="filterType-error" class="field-error" hidden></p>
-          </div>
+        <div class="field">
+          <label for="syncMinutes" data-i18n="fieldFrequency"></label>
+          <select id="syncMinutes" name="syncMinutes" aria-describedby="syncMinutes-error"></select>
+          <p id="syncMinutes-error" class="field-error" hidden></p>
         </div>
-
-        <fieldset id="sync" class="field" aria-describedby="sync-hint sync-error">
-          <legend data-i18n="fieldKinds"></legend>
-          <div id="kinds" class="kinds"></div>
-          <p id="sync-hint" class="hint" data-i18n="kindsHint"></p>
-          <p id="sync-error" class="field-error" hidden></p>
-        </fieldset>
-
-        <!-- Each one is shown only while its item is checked above (options.mjs); hidden, it keeps its value. -->
-        <div class="row">
-          <div id="calendarPeriod-field" class="field" hidden>
-            <label for="calendarPeriod" data-i18n="fieldCalendarPeriod"></label>
-            <select id="calendarPeriod" name="calendarPeriod" aria-describedby="calendarPeriod-hint calendarPeriod-error"></select>
-            <p id="calendarPeriod-hint" class="hint" data-i18n="calendarPeriodHint"></p>
-            <p id="calendarPeriod-error" class="field-error" hidden></p>
-          </div>
-          <div id="taskFilter-field" class="field" hidden>
-            <label for="taskFilter" data-i18n="fieldTaskFilter"></label>
-            <select id="taskFilter" name="taskFilter" aria-describedby="taskFilter-error"></select>
-            <p id="taskFilter-error" class="field-error" hidden></p>
-          </div>
-        </div>
+        </details>
 
         <div class="actions">
           <button type="submit" id="save" class="primary" data-i18n="save"></button>

@@ -278,3 +278,15 @@ export function calendarNotice(name, summary, detail = "") {
   const shown = title.length > NOTICE_TITLE_MAX ? `${cut(title, NOTICE_TITLE_MAX - 1).trimEnd()}…` : title;
   return t(key, shown, cleanLine(String(detail ?? ""), NOTICE_DETAIL_MAX));
 }
+
+/**
+ * Text of a notification about a contact: the notices of calendarNotice,
+ * which name the item and nothing else, and one of its own for the
+ * changes that were not sent (contactNotice("changesDropped", "", 3)).
+ */
+export function contactNotice(name, summary, detail = "") {
+  if (name !== "changesDropped") return calendarNotice(name, summary, detail);
+  const count = noticeCount(detail);
+  if (count === null) return "";
+  return count === 1 ? t("contactsChangesDroppedOne") : t("contactsChangesDroppedMany", count);
+}

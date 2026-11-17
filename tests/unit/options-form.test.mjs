@@ -22,10 +22,8 @@ import {
   periodLabel,
   FREQUENCIES,
   PERIODS,
-  CALENDAR_PERIODS,
-  TASK_FILTERS,
+  periodOf,
   KINDS,
-  KIND_FIELDS,
   DEFAULTS,
   discardConfirm,
   uncheckConfirm,
@@ -44,9 +42,7 @@ const values = (over = {}) => ({
   name: "Travail",
   server: "mail.example.com",
   syncMinutes: "0",
-  filterType: "5",
-  calendarPeriod: "7",
-  taskFilter: "0",
+  period: "6m",
   sync: { mail: true, calendar: false, contacts: false, tasks: false },
   ...over,
 });
@@ -173,8 +169,11 @@ test("formulaire : fréquence et période parmi les choix proposés", () => {
   for (const syncMinutes of ["", "2", "abc", "-1", "1.5", null, undefined]) {
     eq(fields(validateForm(values({ syncMinutes }))), ["syncMinutes"], String(syncMinutes));
   }
-  for (const [f] of PERIODS) eq(validateForm(values({ filterType: f })).request.mailbox.filterType, f);
-  for (const filterType of ["6", "7", "8", "", 5, "05"]) eq(fields(validateForm(values({ filterType }))), ["filterType"], String(filterType));
+  for (const period of ["5", "7", "0", "", "6M", " 6m", "__proto__", "constructor", 5, null, undefined, ["6m"]]) {
+    const r = validateForm(values({ period }));
+    eq(fields(r), ["period"], String(period));
+    eq(r.errors[0].message, "Choisissez la période à synchroniser.");
+  }
 });
 
 test("formulaire : au moins un élément à synchroniser, booléens seulement", () => {
@@ -186,8 +185,8 @@ test("formulaire : au moins un élément à synchroniser, booléens seulement", 
 });
 
 test("formulaire : toutes les erreurs à la fois, dans l'ordre du formulaire", () => {
-  const r = validateForm({ email: "x", password: "", server: "http://a.b", syncMinutes: "9", filterType: "9", sync: {} });
-  eq(fields(r), ["email", "password", "server", "syncMinutes", "filterType", "sync"]);
+  const r = validateForm({ email: "x", password: "", server: "http://a.b", syncMinutes: "9", period: "9", sync: {} });
+  eq(fields(r), ["email", "password", "server", "sync", "period", "syncMinutes"]);
 });
 
 test("formValues : valeurs par défaut, puis celles d'une boîte", () => {
@@ -198,9 +197,7 @@ test("formValues : valeurs par défaut, puis celles d'une boîte", () => {
     name: "",
     server: "",
     syncMinutes: "0",
-    filterType: DEFAULTS.filterType,
-    calendarPeriod: "7",
-    taskFilter: "0",
+    period: "6m",
     sync: { mail: true, calendar: true, contacts: true, tasks: true },
   });
   // existing(): a mailbox saved before calendar and tasks were synchronised, without the two fields.
@@ -211,29 +208,25 @@ test("formValues : valeurs par défaut, puis celles d'une boîte", () => {
     name: "Travail",
     server: "mail.example.com",
     syncMinutes: "15",
-    filterType: "3",
-    calendarPeriod: "7",
-    taskFilter: "0",
+    period: "2w",
     sync: { mail: true, calendar: true, contacts: false, tasks: false },
   });
   eq(formValues(existing({ syncMinutes: 7 })).syncMinutes, "0");
-  eq(formValues(existing({ filterType: "8" })).filterType, "5");
   // The defaults are a valid mailbox once filled in.
   eq(validateForm({ ...formValues(), email: "a@example.com", password: "p", server: "mail.example.com" }).ok, true);
 });
 
-test("choix : libellés, « bientôt » pour les contacts seulement", () => {
+test("choix : libellés des quatre éléments", () => {
   eq(KINDS.map((k) => k.key), [...SYNC_KINDS]);
-  eq(KINDS.filter((k) => k.soon).map((k) => k.key), ["contacts"]);
   eq(kindsLabel({ mail: true, calendar: true, contacts: false, tasks: true }), "Courrier, Agenda, Tâches");
-  eq(kindsLabel({ mail: true, calendar: true, contacts: true, tasks: true }), "Courrier, Agenda, Contacts (bientôt), Tâches");
+  eq(kindsLabel({ mail: true, calendar: true, contacts: true, tasks: true }), "Courrier, Agenda, Contacts, Tâches");
   eq(kindsLabel({}), "Rien");
   eq(frequencyLabel(0), "Dès réception");
   eq(frequencyLabel(60), "Toutes les heures");
   eq(frequencyLabel(7), "Toutes les 7 minutes");
-  eq(periodLabel("0"), "Tout");
-  eq(periodLabel("2"), "3 jours");
-  eq(periodLabel("x"), "Inconnue");
+  eq(periodLabel({ filterType: "0", calendarPeriod: "0" }), "Tout");
+  eq(periodLabel({ filterType: "5", calendarPeriod: "7" }), "6 mois");
+  eq(periodLabel({}), "2 semaines");
 });
 
 test("formatTime : heure aujourd'hui, date cette année, année sinon", () => {
@@ -445,69 +438,48 @@ test("events and tasks that cannot be imported: counted apart from messages (whi
 });
 
 test("page : ordre des champs et texte affiché partagés avec options.mjs", () => {
-  eq([...FIELD_ORDER], ["email", "password", "name", "server", "username", "syncMinutes", "filterType", "sync", "calendarPeriod", "taskFilter"]);
+  eq([...FIELD_ORDER], ["email", "password", "server", "sync", "period", "name", "username", "syncMinutes"]);
   eq(shown("a\u202eb\nc"), "ab c");
   eq(shown(42), "");
   eq(shown("x".repeat(400)).length, 300);
 });
 
-// ── Calendar period and task filter (stage 4) ─────────────────────────────
+// ── One period for everything ─────────────────────────────────────────────
 
-test("form: calendar period and task filter among the choices offered, always sent in the request", () => {
-  eq(CALENDAR_PERIODS.map(([f]) => f), ["4", "5", "6", "7", "0"]);
-  eq(TASK_FILTERS.map(([f]) => f), ["0", "8"]);
-  eq([DEFAULTS.calendarPeriod, DEFAULTS.taskFilter], ["7", "0"]);
-  eq(CALENDAR_PERIODS.map(([, label]) => label()), ["2 semaines", "1 mois", "3 mois", "6 mois", "Tout"]);
-  eq(TASK_FILTERS.map(([, label]) => label()), ["Toutes les tâches", "Tâches non terminées seulement"]);
-  const all = { mail: true, calendar: true, contacts: false, tasks: true };
-  for (const [f] of CALENDAR_PERIODS) eq(validateForm(values({ sync: all, calendarPeriod: f })).request.mailbox.calendarPeriod, f);
-  for (const [f] of TASK_FILTERS) eq(validateForm(values({ sync: all, taskFilter: f })).request.mailbox.taskFilter, f);
-  // The request of an edited mailbox carries them too.
-  const r = validateForm(values({ password: "", sync: all, calendarPeriod: "4", taskFilter: "8" }), existing());
-  eq([r.ok, r.request.mailbox.calendarPeriod, r.request.mailbox.taskFilter], [true, "4", "8"]);
+test("form: one period, and the FilterType it means for mail and for the calendar", () => {
+  eq(PERIODS.map(([value]) => value), ["2w", "1m", "3m", "6m", "all"]);
+  eq(PERIODS.map(([, label]) => label()), ["2 semaines", "1 mois", "3 mois", "6 mois", "Tout"]);
+  eq(DEFAULTS.period, "6m");
+  // Mail has nothing between one month and everything: the longer periods keep one month of mail.
+  const sent = (period) => {
+    const { filterType, calendarPeriod } = validateForm(values({ period })).request.mailbox;
+    return [filterType, calendarPeriod];
+  };
+  eq(sent("2w"), ["4", "4"]);
+  eq(sent("1m"), ["5", "5"]);
+  eq(sent("3m"), ["5", "6"]);
+  eq(sent("6m"), ["5", "7"]);
+  eq(sent("all"), ["0", "0"]);
 });
 
-test("form: calendar period and task filter refused outside the choices, when their item is checked", () => {
-  const all = { mail: true, calendar: true, contacts: false, tasks: true };
-  // "1", "2", "3" are mail periods only; "8" is a task filter only; numbers are not strings.
-  for (const calendarPeriod of ["1", "2", "3", "8", "9", "", "07", " 7", "7 ", "all", "__proto__", 7, null, undefined, ["7"]]) {
-    const r = validateForm(values({ sync: all, calendarPeriod }));
-    eq(fields(r), ["calendarPeriod"], String(calendarPeriod));
-    eq(r.errors[0].message, "Choisissez la période d'agenda à synchroniser.");
-    eq(r.request, null);
-  }
-  for (const taskFilter of ["1", "4", "7", "9", "", "08", "constructor", 0, 8, null, undefined]) {
-    const r = validateForm(values({ sync: all, taskFilter }));
-    eq(fields(r), ["taskFilter"], String(taskFilter));
-    eq(r.errors[0].message, "Choisissez les tâches à synchroniser.");
-  }
-  // After the other fields, in the order of the page.
-  const r = validateForm({ email: "x", password: "", server: "http://a.b", syncMinutes: "9", filterType: "9", calendarPeriod: "9", taskFilter: "9", sync: { calendar: true, tasks: true } });
-  eq(fields(r), ["email", "password", "server", "syncMinutes", "filterType", "calendarPeriod", "taskFilter"]);
+test("form: the task filter is not asked; a mailbox keeps the one it has, a new one gets all tasks", () => {
+  eq(validateForm(values()).request.mailbox.taskFilter, "0");
+  eq(validateForm(values({ password: "" }), existing({ taskFilter: "8" })).request.mailbox.taskFilter, "8");
+  for (const bad of ["4", "", 8, null, undefined, "__proto__"]) eq(validateForm(values({ password: "" }), existing({ taskFilter: bad })).request.mailbox.taskFilter, "0", String(bad));
+  // Nothing typed in the page can set it.
+  eq(validateForm(values({ taskFilter: "8" })).request.mailbox.taskFilter, "0");
 });
 
-test("form: a hidden field keeps its value; an unusable one becomes the default instead of an unseen error", () => {
-  eq(KIND_FIELDS.map((pair) => [...pair]), [["calendar", "calendarPeriod"], ["tasks", "taskFilter"]]);
-  for (const [, field] of KIND_FIELDS) assert(FIELD_ORDER.includes(field), field);
-  const mailOnly = { mail: true, calendar: false, contacts: false, tasks: false };
-  // Unchecked: the value chosen earlier is still sent, to be there when the item is checked again.
-  const kept = validateForm(values({ sync: mailOnly, calendarPeriod: "4", taskFilter: "8" }));
-  eq([kept.ok, kept.request.mailbox.calendarPeriod, kept.request.mailbox.taskFilter], [true, "4", "8"]);
-  // Unchecked and unusable: nobody could see the error, the default is sent.
-  for (const bad of ["9", "", undefined, null, 7]) {
-    const r = validateForm(values({ sync: mailOnly, calendarPeriod: bad, taskFilter: bad }));
-    eq([r.ok, r.request.mailbox.calendarPeriod, r.request.mailbox.taskFilter], [true, "7", "0"], String(bad));
-  }
-  // Each field follows its own item.
-  eq(fields(validateForm(values({ sync: { mail: true, calendar: true }, calendarPeriod: "9", taskFilter: "9" }))), ["calendarPeriod"]);
-  eq(fields(validateForm(values({ sync: { mail: true, tasks: true }, calendarPeriod: "9", taskFilter: "9" }))), ["taskFilter"]);
-});
-
-test("formValues: calendar period and task filter of a mailbox, the defaults when absent or invalid", () => {
-  eq([formValues(existing({ calendarPeriod: "5", taskFilter: "8" })).calendarPeriod, formValues(existing({ calendarPeriod: "5", taskFilter: "8" })).taskFilter], ["5", "8"]);
-  eq(formValues(existing({ calendarPeriod: "0" })).calendarPeriod, "0");
-  for (const bad of ["1", "8", "", 7, null, undefined, {}, "__proto__"]) eq(formValues(existing({ calendarPeriod: bad })).calendarPeriod, "7", String(bad));
-  for (const bad of ["4", "7", "", 8, 0, null, undefined, [], "toString"]) eq(formValues(existing({ taskFilter: bad })).taskFilter, "0", String(bad));
+test("periodOf: what a saved mailbox shows, the closest choice for a pair no choice gives", () => {
+  // Every choice comes back as itself.
+  for (const [value, , filterType, calendarPeriod] of PERIODS) eq(periodOf({ filterType, calendarPeriod }), value);
+  // Saved by an earlier version: a shorter period of mail, or periods chosen apart.
+  for (const filterType of ["1", "2", "3", "4"]) eq(periodOf({ filterType, calendarPeriod: "7" }), "2w", filterType);
+  eq(periodOf({ filterType: "0", calendarPeriod: "7" }), "all");
+  eq(periodOf({ filterType: "5", calendarPeriod: "4" }), "1m");
+  eq(periodOf({ filterType: "5", calendarPeriod: "0" }), "6m");
+  eq(periodOf({ filterType: "5" }), "6m");
+  for (const bad of [null, undefined, {}, { filterType: 5 }, { filterType: "__proto__" }]) assert(PERIODS.some(([value]) => value === periodOf(bad)), String(bad));
   // What the form shows for an old mailbox is a request the form accepts.
   const old = formValues(existing());
   eq(validateForm({ ...old, password: "" }, existing()).request.mailbox, {
@@ -517,8 +489,8 @@ test("formValues: calendar period and task filter of a mailbox, the defaults whe
     name: "Travail",
     server: "mail.example.com",
     syncMinutes: 15,
-    filterType: "3",
-    calendarPeriod: "7",
+    filterType: "4",
+    calendarPeriod: "4",
     taskFilter: "0",
     sync: { mail: true, calendar: true, contacts: false, tasks: false },
   });

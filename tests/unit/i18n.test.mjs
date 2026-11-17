@@ -37,7 +37,7 @@ import {
   meetingText,
   calendarNotice,
 } from "../../src/i18n.mjs";
-import { statusView, formatTime, frequencyLabel, periodLabel, kindsLabel, logText, validateForm, debugText, uncheckConfirm, moveConfirm, CALENDAR_PERIODS, TASK_FILTERS } from "../../src/options/form.mjs";
+import { statusView, formatTime, frequencyLabel, periodLabel, kindsLabel, logText, validateForm, debugText, uncheckConfirm, moveConfirm, PERIODS } from "../../src/options/form.mjs";
 import { questionText, recipientsText, whenText } from "../../src/confirm/confirm.mjs";
 import { parseServer } from "../../src/core/server.mjs";
 import { recordFailure } from "../../src/sync/health.mjs";
@@ -339,8 +339,8 @@ test("traductions : page de réglages en anglais (choix, état, journal, erreurs
   const now = new Date(2026, 10, 15, 16, 30).getTime();
   await withLanguage("en", () => {
     eq([frequencyLabel(0), frequencyLabel(15), frequencyLabel(60), frequencyLabel(7)], ["As soon as mail arrives", "Every 15 minutes", "Every hour", "Every 7 minutes"]);
-    eq([periodLabel("5"), periodLabel("0"), periodLabel("x")], ["1 month", "All", "Unknown"]);
-    eq(kindsLabel({ mail: true, calendar: true, contacts: true, tasks: true }), "Mail, Calendar, Contacts (coming soon), Tasks");
+    eq([periodLabel({ filterType: "5", calendarPeriod: "5" }), periodLabel({ filterType: "0" }), periodLabel({})], ["1 month", "All", "2 weeks"]);
+    eq(kindsLabel({ mail: true, calendar: true, contacts: true, tasks: true }), "Mail, Calendar, Contacts, Tasks");
     eq(statusView({}, now).text, "Not synchronized yet.");
     eq(statusView({ running: true }, now).text, "Synchronizing…");
     eq(statusView({ blocked: { code: "MASS_DELETE" }, pendingDeletes: 120 }, now).text.startsWith("Synchronization paused: the server deleted 120 items at once (messages, events or tasks)."), true);
@@ -352,14 +352,14 @@ test("traductions : page de réglages en anglais (choix, état, journal, erreurs
     eq(statusView({ lastSuccessAt: new Date(2026, 9, 1, 8, 0).getTime() }, now).text.startsWith("Synchronized on "), true);
     assert(logText([{ t: now, level: "warn", msg: "Serveur injoignable." }]).includes("  warning   Serveur injoignable."), "niveau traduit, entrée en français");
     eq(logText([]), "The log is empty.");
-    const form = validateForm({ email: "", password: "", server: "", syncMinutes: "", filterType: "", sync: {} });
+    const form = validateForm({ email: "", password: "", server: "", syncMinutes: "", period: "", sync: {} });
     eq(form.errors.map((x) => x.message), [
       "Enter the email address.",
       "Enter the password.",
       "Enter the server, for example mail.example.com.",
-      "Choose a synchronization frequency.",
-      "Choose the period of mail to synchronize.",
       "Choose at least one item to synchronize.",
+      "Choose the period to synchronize.",
+      "Choose a synchronization frequency.",
     ]);
   });
   // Back in French: no detail, the reason is in the text.
@@ -375,7 +375,7 @@ test("traductions : chaque langue compose la page sans paramètre oublié ni pon
         frequencyLabel(0),
         frequencyLabel(15),
         frequencyLabel(7),
-        periodLabel("5"),
+        periodLabel({ filterType: "5", calendarPeriod: "7" }),
         kindsLabel({ mail: true, calendar: true, contacts: true, tasks: true }),
         statusView({}, now).text,
         statusView({ running: true, failedItems: 1 }, now).text,
@@ -390,7 +390,7 @@ test("traductions : chaque langue compose la page sans paramètre oublié ni pon
         logText([{ t: now, level: "debug", msg: "x" }]),
         logText([]),
         debugText(now + 3_600_000, now),
-        ...validateForm({ email: "a", password: "", server: "http://x", username: "a:b", syncMinutes: "2", filterType: "9", sync: {} }).errors.map((e) => e.message),
+        ...validateForm({ email: "a", password: "", server: "http://x", username: "a:b", syncMinutes: "2", period: "9", sync: {} }).errors.map((e) => e.message),
         t("removeQuestion", "Work"),
         uncheckConfirm({ sync: { calendar: true, tasks: true } }, { calendar: false, tasks: true }, "Work"),
         uncheckConfirm({ sync: { calendar: true, tasks: true } }, { calendar: true, tasks: false }, "Work"),
@@ -398,10 +398,10 @@ test("traductions : chaque langue compose la page sans paramètre oublié ni pon
         moveConfirm({ origin: "https://old.example.com", email: "a@example.com", sync: { calendar: true } }, { origin: "https://new.example.com" }, { email: "a@example.com", sync: { calendar: true } }, "Work"),
         t("sendReasonRefused", t("sendStatus116"), "116"),
         t("sendFailedDraft", t("sendReasonTooLarge", 50)),
-        // Calendar and tasks in the form.
-        ...CALENDAR_PERIODS.map(([, label]) => label()),
-        ...TASK_FILTERS.map(([, label]) => label()),
-        ...validateForm({ email: "a@example.com", password: "p", server: "mail.example.com", syncMinutes: "0", filterType: "5", calendarPeriod: "", taskFilter: "", sync: { calendar: true, tasks: true } }).errors.map((e) => e.message),
+        // The one period of the form.
+        ...PERIODS.map(([, label]) => label()),
+        t("periodHint"),
+        t("moreSettings"),
         // The confirmation window.
         ...["invite", "update", "cancel"].map(questionText),
         recipientsText(1),
@@ -729,14 +729,12 @@ test("translations: every language shows the title, the reason and the limit of 
   }
 });
 
-test("translations: settings form in English, calendar period and task filter", async () => {
+test("translations: settings form in English, one period for everything", async () => {
   await withLanguage("en", () => {
-    eq(CALENDAR_PERIODS.map(([, label]) => label()), ["2 weeks", "1 month", "3 months", "6 months", "All"]);
-    eq(TASK_FILTERS.map(([, label]) => label()), ["All tasks", "Incomplete tasks only"]);
-    eq([t("fieldCalendarPeriod"), t("fieldTaskFilter")], ["Calendar period", "Tasks to synchronize"]);
-    const form = validateForm({ email: "a@example.com", password: "p", server: "mail.example.com", syncMinutes: "0", filterType: "5", calendarPeriod: "1", taskFilter: "4", sync: { calendar: true, tasks: true } });
-    eq(form.errors.map((x) => x.message), ["Choose the calendar period to synchronize.", "Choose which tasks to synchronize."]);
-    eq(t("kindsHint"), "In this version, contacts are not synchronized yet. This choice is saved for later.");
+    eq(PERIODS.map(([, label]) => label()), ["2 weeks", "1 month", "3 months", "6 months", "All"]);
+    eq([t("fieldPeriod"), t("moreSettings")], ["Period to synchronize", "More settings"]);
+    const form = validateForm({ email: "a@example.com", password: "p", server: "mail.example.com", syncMinutes: "0", period: "7", sync: { calendar: true, tasks: true } });
+    eq(form.errors.map((x) => x.message), ["Choose the period to synchronize."]);
   });
 });
 

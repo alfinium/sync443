@@ -3,7 +3,7 @@
     "message": "Sync443 – EAS Client for Thunderbird"
   },
   "extensionDescription": {
-    "message": "Natives Exchange ActiveSync in Thunderbird: E-Mail, Ordner und Versand, mit jedem kompatiblen Server."
+    "message": "Natives Exchange ActiveSync in Thunderbird: E-Mail, Kalender, Kontakte und Aufgaben, mit jedem kompatiblen Server."
   },
   "languageTag": {
     "message": "de"
@@ -60,14 +60,6 @@
   "unnamed": {
     "message": "unbenannt"
   },
-  "metaMailPeriod": {
-    "message": "E-Mails: $PERIOD$",
-    "placeholders": {
-      "period": {
-        "content": "$1"
-      }
-    }
-  },
   "confirmDeletes": {
     "message": "Löschungen bestätigen"
   },
@@ -100,6 +92,9 @@
   "discardConfirm": {
     "message": "Die auf dem Server vorgenommenen Löschungen werden nicht übernommen: Die betroffenen Nachrichten, Termine und Aufgaben bleiben in Thunderbird. Die betroffenen E-Mail-Ordner werden erneut mit dem Server synchronisiert; die behaltenen Termine und Aufgaben sind nicht mehr mit dem Server verknüpft. Ein auf dem Server gelöschter Ordner bleibt hier erhalten, jedoch ohne Synchronisation."
   },
+  "discardContactsNote": {
+    "message": "Die betroffenen Kontakte bleiben ebenfalls in Thunderbird und sind nicht mehr mit dem Server verknüpft."
+  },
   "uncheckCalendarConfirm": {
     "message": "Den Kalender von „$NAME$“ nicht mehr synchronisieren? Seine Termine werden aus Thunderbird entfernt. Auf dem Server wird nichts gelöscht. Noch nicht an den Server gesendete Änderungen gehen verloren.",
     "placeholders": {
@@ -116,6 +111,14 @@
       }
     }
   },
+  "uncheckContactsConfirm": {
+    "message": "Die Kontakte von „$NAME$“ nicht mehr synchronisieren? Seine Adressbücher werden aus Thunderbird entfernt. Auf dem Server wird nichts gelöscht. Noch nicht an den Server gesendete Änderungen gehen verloren.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
   "uncheckBothConfirm": {
     "message": "Kalender und Aufgaben von „$NAME$“ nicht mehr synchronisieren? Seine Kalender werden mit ihren Terminen und Aufgaben aus Thunderbird entfernt. Auf dem Server wird nichts gelöscht. Noch nicht an den Server gesendete Änderungen gehen verloren.",
     "placeholders": {
@@ -126,6 +129,14 @@
   },
   "moveConfirm": {
     "message": "Server oder Benutzername von „$NAME$“ ändern? Seine Kalender und Aufgaben werden aus Thunderbird entfernt und anschließend erneut vom Server synchronisiert. Noch nicht an den Server gesendete Änderungen gehen verloren.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "moveContactsConfirm": {
+    "message": "Server oder Benutzername von „$NAME$“ ändern? Seine Adressbücher werden aus Thunderbird entfernt und anschließend erneut vom Server synchronisiert. Noch nicht an den Server gesendete Änderungen gehen verloren.",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -243,25 +254,16 @@
     "message": "Häufigkeit"
   },
   "fieldPeriod": {
-    "message": "Zeitraum für E-Mails"
+    "message": "Zu synchronisierender Zeitraum"
   },
-  "fieldCalendarPeriod": {
-    "message": "Zeitraum für den Kalender"
+  "periodHint": {
+    "message": "Gilt für E-Mails und Kalender. E-Mails werden höchstens 1 Monat zurück synchronisiert, außer Sie wählen Alle: ActiveSync bietet nichts dazwischen. Künftige Termine werden immer synchronisiert."
   },
-  "calendarPeriodHint": {
-    "message": "Termine, die älter als dieser Zeitraum sind, werden nicht synchronisiert. Künftige Termine werden immer synchronisiert."
-  },
-  "fieldTaskFilter": {
-    "message": "Zu synchronisierende Aufgaben"
+  "moreSettings": {
+    "message": "Weitere Einstellungen"
   },
   "fieldKinds": {
     "message": "Zu synchronisierende Elemente"
-  },
-  "kindsHint": {
-    "message": "In dieser Version werden Kontakte noch nicht synchronisiert. Diese Auswahl wird für später gespeichert."
-  },
-  "soon": {
-    "message": "demnächst"
   },
   "save": {
     "message": "Speichern"
@@ -294,15 +296,6 @@
   "freqEveryHour": {
     "message": "Jede Stunde"
   },
-  "period1Day": {
-    "message": "1 Tag"
-  },
-  "period3Days": {
-    "message": "3 Tage"
-  },
-  "period1Week": {
-    "message": "1 Woche"
-  },
   "period2Weeks": {
     "message": "2 Wochen"
   },
@@ -318,15 +311,6 @@
   "periodAll": {
     "message": "Alle"
   },
-  "periodUnknown": {
-    "message": "Unbekannt"
-  },
-  "taskFilterAll": {
-    "message": "Alle Aufgaben"
-  },
-  "taskFilterIncomplete": {
-    "message": "Nur unerledigte Aufgaben"
-  },
   "kindMail": {
     "message": "E-Mail"
   },
@@ -338,14 +322,6 @@
   },
   "kindTasks": {
     "message": "Aufgaben"
-  },
-  "kindSoon": {
-    "message": "$KIND$ (demnächst)",
-    "placeholders": {
-      "kind": {
-        "content": "$1"
-      }
-    }
   },
   "kindsNone": {
     "message": "Nichts"
@@ -387,7 +363,7 @@
     "message": "Wählen Sie eine Häufigkeit für die Synchronisation."
   },
   "choosePeriod": {
-    "message": "Wählen Sie den Zeitraum der zu synchronisierenden E-Mails."
+    "message": "Wählen Sie den zu synchronisierenden Zeitraum."
   },
   "chooseCalendarPeriod": {
     "message": "Wählen Sie den Zeitraum der zu synchronisierenden Termine."
@@ -1208,6 +1184,17 @@
   },
   "calendarChangesDroppedMany": {
     "message": "$COUNT$ in Thunderbird vorgenommene Änderungen wurden nicht gesendet: Der zugehörige Kalender wird nicht mehr mit dem Server synchronisiert. Neue Elemente bleiben in Thunderbird als lokale Kopien erhalten.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "contactsChangesDroppedOne": {
+    "message": "Eine in Thunderbird vorgenommene Änderung an einem Kontakt wurde nicht gesendet: Sein Adressbuch wird nicht mehr mit dem Server synchronisiert. Ein neuer Kontakt bleibt als lokale Kopie in Thunderbird."
+  },
+  "contactsChangesDroppedMany": {
+    "message": "$COUNT$ in Thunderbird vorgenommene Änderungen an Kontakten wurden nicht gesendet: Ihr Adressbuch wird nicht mehr mit dem Server synchronisiert. Neue Kontakte bleiben als lokale Kopien in Thunderbird.",
     "placeholders": {
       "count": {
         "content": "$1"

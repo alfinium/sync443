@@ -48,7 +48,8 @@ src/
     eas-timezone.mjs      the ActiveSync time zone structure, read and written
     meeting-request.mjs   the meeting request carried by an invitation mail, read into a validated object
     itip.mjs              meeting messages written by the extension (RFC 5546, RFC 6047)
-    vcard.mjs             (stage 5)
+    contact-item.mjs      ActiveSync contacts ↔ validated contact descriptions [MS-ASCNTC]
+    vcard.mjs             Thunderbird's vCards ↔ contact descriptions; what either side cannot say is kept
   transport/
     client.mjs            ActiveSync over a verified connection: certificate assessed before any write, typed errors
   sync/
@@ -62,11 +63,12 @@ src/
     pim.mjs               calendar and task collections: receiving, sending changes, rebuilding, deletion guard
     invitations.mjs       which invitation mail an answer names, never chosen by a sender's UID alone
     scheduling.mjs        what a local change means for other people; the queue of meeting messages
-    contacts.mjs          (stage 5)
+    contacts.mjs          contacts collections: the engine of pim.mjs with records of its own, no message ever
   tb/
     mail-store.mjs        writes to the mailbox's Thunderbird account, and to it only
     events.mjs            user actions in Thunderbird → intents for the journal
     calendar-store.mjs    the calendars of one mailbox, through sync443Calendar, and those only
+    contact-store.mjs     the address books of one mailbox, through Thunderbird's own APIs, and those only
   experiments/
     sync443Net/           verified connection: direct TCP or through the proxy, TLS, certificate information,
                           then only writing and reading bytes
@@ -78,8 +80,8 @@ src/
   confirm/                the window that asks before a meeting message is sent
 tests/unit/               unit and randomized tests (JavaScriptCore or Node)
 tests/e2e/                end to end in a real Thunderbird: net (connection), account (accounts), calendar
-                          (the calendar module), mail (mail, then calendar, tasks and meetings, against a
-                          simulated ActiveSync server)
+                          (the calendar module), contacts (the address books), mail (mail, then calendar,
+                          tasks and meetings, against a simulated ActiveSync server)
 tools/                    test runner (any system), source code and provenance checks, .xpi build
 ```
 
@@ -93,13 +95,17 @@ tasks**. One, several or all four; at least one is required.
 | Default | all four |
 | What is not chosen | never requested from the server, nor stored in Thunderbird; the corresponding folders are ignored in the folder list, and left out of "As soon as mail arrives" monitoring (Ping) |
 | Adding an item | creation of what is needed in Thunderbird, then a first synchronization of that item |
-| Removing an item | the synchronization of that item stops at once, and local actions on its copies are no longer recorded. Calendar and tasks: after confirmation, the mailbox's calendars are removed from Thunderbird, with the changes not yet sent. Mail: the local copies stay in place (their removal is planned for stage 6). Nothing is ever touched on the server |
+| Removing an item | the synchronization of that item stops at once, and local actions on its copies are no longer recorded. Calendar and tasks: after confirmation, the mailbox's calendars are removed from Thunderbird, with the changes not yet sent. Contacts: after confirmation, the mailbox's address books are removed in the same way. Mail: the local copies stay in place (their removal is planned for stage 6). Nothing is ever touched on the server |
 | Calendar without mail | supported. The mailbox keeps its Thunderbird account, with no synchronized folder, and meeting messages go through ActiveSync as always. One limit: with ActiveSync 12.1 and 14.0 an answer to an invitation names the invitation mail, so answering needs mail to be synchronized; the user is told when it is not |
 
 The model has been in place since stage 1 (`sync` in `src/sync/store.mjs`, validated and tested for
 all 15 combinations). The settings page has presented it as check boxes since
 0.1.0, and every synchronization stage respects it: mail since 0.1.0, calendar and tasks since
-0.3.0. Contacts are not synchronized yet.
+0.3.0, contacts since 0.4.0.
+
+One period is chosen for the whole mailbox. It gives the FilterType of mail (at most 1 month, or
+all: ActiveSync has no value in between) and that of the calendar; tasks are all synchronized, and
+contacts have no period.
 
 ## Stages
 
@@ -109,7 +115,7 @@ all 15 combinations). The settings page has presented it as check boxes since
 | **2. Privileged code** | marked accounts, protected "Local Folders", neutral outgoing server, passwords, identity | **done** (calendar API postponed to stage 4): 335 end-to-end checks in Thunderbird |
 | **3. Mail** | message identity by Message-ID and fingerprint, deletions with a safety net, mass-deletion threshold, per-mailbox lock, local change journal, closed sending, archives; folder names valid on Windows, macOS and Linux | **done**: 722 unit tests, 158 end-to-end mail checks in Thunderbird, [audit](audits/stages-2-3.md) carried out and addressed; published in 0.1.0 |
 | **4. Calendar, tasks and meetings** | Sync443's own calendar type, items built from validated descriptions, bounded recurrence, time zones, meeting messages through ActiveSync after confirmation | **done**: 1337 unit tests, 693 end-to-end checks of the calendar module and 303 of the calendar scenario in Thunderbird, [audit](audits/stage-4.md) carried out and addressed; version 0.3.0 |
-| **5. Contacts** | vCard written by the extension, marked address books | to do |
+| **5. Contacts** | contacts in both directions through the engine of stage 4, vCards written by the extension, address books of the extension's own; the mailbox form reduced to one period | **written**: 1402 unit tests, 36 end-to-end checks of the address books in Thunderbird; audit to be carried out; version 0.4.0 |
 | **6. Finishing** | wizard, advanced settings (including pinning a private certificate authority), deletion of the local copies of an unchecked item, validation on real servers | to do (settings page, check boxes and log delivered as early as 0.1.0) |
 
 ## Method, at each stage

@@ -109,10 +109,7 @@
 import {
   FREQUENCIES,
   PERIODS,
-  CALENDAR_PERIODS,
-  TASK_FILTERS,
   KINDS,
-  KIND_FIELDS,
   FIELD_ORDER,
   discardConfirm,
   uncheckConfirm,
@@ -134,7 +131,9 @@ import { t, localizePage } from "../i18n.mjs";
 const api = globalThis.messenger ?? globalThis.browser;
 const FIELDS = new Set(FIELD_ORDER);
 // Fields read and filled through their value (the check boxes of the items are apart).
-const VALUE_FIELDS = ["email", "password", "name", "server", "username", "syncMinutes", "filterType", "calendarPeriod", "taskFilter"];
+const VALUE_FIELDS = ["email", "password", "name", "server", "username", "syncMinutes", "period"];
+/** The fields inside "More settings" (a details element, closed for a new mailbox). */
+const MORE_FIELDS = new Set(["name", "username", "syncMinutes"]);
 const WATCHED = /^mb\/[a-f0-9]{12}\/(?:health|pendingDeletes|status)$/;
 
 const $ = (id) => document.getElementById(id);
@@ -256,7 +255,7 @@ function updateItem(item, mb) {
   item.name.textContent = label;
   item.email.textContent = email !== label ? email : "";
   const server = shown(mb.server);
-  item.meta.textContent = [server, frequencyLabel(mb.syncMinutes), t("metaMailPeriod", periodLabel(mb.filterType)), kindsLabel(mb.sync)].join(" · ");
+  item.meta.textContent = [server, frequencyLabel(mb.syncMinutes), periodLabel(mb), kindsLabel(mb.sync)].join(" · ");
   const view = statusView(mb.status);
   item.status.textContent = view.text;
   item.status.title = view.detail ?? "";
@@ -307,7 +306,7 @@ async function syncNow(id, confirmDeletes) {
 }
 
 async function keepLocalCopies(id) {
-  if (busy.has(id) || !window.confirm(discardConfirm())) return;
+  if (busy.has(id) || !window.confirm(discardConfirm(mailboxes.find((m) => m.id === id)))) return;
   busy.add(id);
   renderMailboxes();
   const res = await call("discardDeletes", { id });
@@ -352,12 +351,8 @@ async function remove(id) {
 function buildForm() {
   const minutes = $("syncMinutes");
   for (const [value, label] of FREQUENCIES) minutes.append(new Option(label(), String(value)));
-  const period = $("filterType");
+  const period = $("period");
   for (const [value, label] of PERIODS) period.append(new Option(label(), value));
-  const calendarPeriod = $("calendarPeriod");
-  for (const [value, label] of CALENDAR_PERIODS) calendarPeriod.append(new Option(label(), value));
-  const taskFilter = $("taskFilter");
-  for (const [value, label] of TASK_FILTERS) taskFilter.append(new Option(label(), value));
   const kinds = $("kinds");
   for (const kind of KINDS) {
     const wrap = element("div");
@@ -366,26 +361,14 @@ function buildForm() {
     box.id = `kind-${kind.key}`;
     const label = element("label", "", kind.label);
     label.htmlFor = box.id;
-    if (kind.soon) label.append(" ", element("span", "soon", t("soon")));
     wrap.append(box, " ", label);
     kinds.append(wrap);
   }
-  for (const [kind, field] of KIND_FIELDS) {
-    const box = $(`kind-${kind}`);
-    box.setAttribute("aria-controls", `${field}-field`);
-    box.addEventListener("change", showKindFields);
-  }
-}
-
-/** The calendar period shows while calendar is checked, the task filter while tasks is; hidden, each keeps its value. */
-function showKindFields() {
-  for (const [kind, field] of KIND_FIELDS) $(`${field}-field`).hidden = !$(`kind-${kind}`).checked;
 }
 
 function fillForm(values) {
   for (const field of VALUE_FIELDS) $(field).value = values[field];
   for (const k of SYNC_KINDS) $(`kind-${k}`).checked = values.sync[k] === true;
-  showKindFields();
 }
 
 function readForm() {
@@ -414,8 +397,8 @@ function showErrors(errors) {
   const general = [];
   const details = [];
   for (const { field, message, detail } of errors) {
-    // An error on a field that is not shown (its item is unchecked) goes above the form, where it can be read.
-    if (!FIELDS.has(field) || $(`${field}-field`)?.hidden === true) {
+    // An error on something the form does not ask goes above the form, where it can be read.
+    if (!FIELDS.has(field)) {
       general.push(message);
       if (detail) details.push(detail);
       continue;
@@ -425,6 +408,7 @@ function showErrors(errors) {
     p.title = detail ?? "";
     p.hidden = false;
     $(field).setAttribute("aria-invalid", "true");
+    if (MORE_FIELDS.has(field)) $("more").open = true;
     first ??= field;
   }
   if (general.length) {
@@ -442,6 +426,8 @@ function openEditor(id = null) {
   editing = mb;
   clearErrors();
   fillForm(formValues(mb));
+  // Closed for a new mailbox: the address, the password and the server are enough.
+  $("more").open = Boolean(mb);
   $("editor-title").textContent = mb ? t("editMailbox", labelOf(mb)) : t("newMailbox");
   $("password-hint").textContent = mb ? t("passwordHintEdit") : t("passwordHintNew");
   $("editor").hidden = false;

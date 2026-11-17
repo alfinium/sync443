@@ -3,7 +3,7 @@
     "message": "Sync443 – EAS Client for Thunderbird"
   },
   "extensionDescription": {
-    "message": "Nativní Exchange ActiveSync v Thunderbirdu: pošta, složky a odesílání, s jakýmkoli kompatibilním serverem."
+    "message": "Nativní Exchange ActiveSync v Thunderbirdu: pošta, kalendář, kontakty a úkoly, s jakýmkoli kompatibilním serverem."
   },
   "languageTag": {
     "message": "cs"
@@ -60,14 +60,6 @@
   "unnamed": {
     "message": "bez názvu"
   },
-  "metaMailPeriod": {
-    "message": "pošta: $PERIOD$",
-    "placeholders": {
-      "period": {
-        "content": "$1"
-      }
-    }
-  },
   "confirmDeletes": {
     "message": "Potvrdit smazání"
   },
@@ -100,6 +92,9 @@
   "discardConfirm": {
     "message": "Smazání provedená na serveru nebudou uplatněna: dotčené zprávy, události a úkoly zůstanou v Thunderbirdu. Dotčené složky pošty se znovu synchronizují se serverem; ponechané události a úkoly už nebudou se serverem propojeny. Složka smazaná na serveru zde zůstane, ale nebude se synchronizovat."
   },
+  "discardContactsNote": {
+    "message": "Dotčené kontakty také zůstávají v Thunderbirdu a již nejsou propojeny se serverem."
+  },
   "uncheckCalendarConfirm": {
     "message": "Přestat synchronizovat kalendář schránky „$NAME$“? Její události budou z Thunderbirdu odebrány. Na serveru se nic nesmaže. Změny, které ještě nebyly odeslány na server, budou ztraceny.",
     "placeholders": {
@@ -116,6 +111,14 @@
       }
     }
   },
+  "uncheckContactsConfirm": {
+    "message": "Přestat synchronizovat kontakty schránky „$NAME$“? Její adresáře budou z Thunderbirdu odebrány. Na serveru se nic nesmaže. Změny, které ještě nebyly odeslány na server, budou ztraceny.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
   "uncheckBothConfirm": {
     "message": "Přestat synchronizovat kalendář a úkoly schránky „$NAME$“? Její kalendáře budou z Thunderbirdu odebrány včetně událostí a úkolů. Na serveru se nic nesmaže. Změny, které ještě nebyly odeslány na server, budou ztraceny.",
     "placeholders": {
@@ -126,6 +129,14 @@
   },
   "moveConfirm": {
     "message": "Změnit server nebo přihlašovací jméno schránky „$NAME$“? Její kalendáře a úkoly budou z Thunderbirdu odebrány a poté znovu synchronizovány ze serveru. Změny, které ještě nebyly odeslány na server, budou ztraceny.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "moveContactsConfirm": {
+    "message": "Změnit server nebo přihlašovací jméno schránky „$NAME$“? Její adresáře budou z Thunderbirdu odebrány a poté znovu synchronizovány ze serveru. Změny, které ještě nebyly odeslány na server, budou ztraceny.",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -243,25 +254,16 @@
     "message": "Frekvence"
   },
   "fieldPeriod": {
-    "message": "Období pošty"
+    "message": "Synchronizované období"
   },
-  "fieldCalendarPeriod": {
-    "message": "Období kalendáře"
+  "periodHint": {
+    "message": "Platí pro poštu i kalendář. Pošta se uchovává nejvýše 1 měsíc, pokud nezvolíte Vše: ActiveSync nic mezi tím nenabízí. Budoucí události se synchronizují vždy."
   },
-  "calendarPeriodHint": {
-    "message": "Události starší než toto období se nesynchronizují. Budoucí události se synchronizují vždy."
-  },
-  "fieldTaskFilter": {
-    "message": "Úkoly k synchronizaci"
+  "moreSettings": {
+    "message": "Další nastavení"
   },
   "fieldKinds": {
     "message": "Položky k synchronizaci"
-  },
-  "kindsHint": {
-    "message": "V této verzi se kontakty zatím nesynchronizují. Tato volba se uloží pro pozdější použití."
-  },
-  "soon": {
-    "message": "již brzy"
   },
   "save": {
     "message": "Uložit"
@@ -294,15 +296,6 @@
   "freqEveryHour": {
     "message": "Každou hodinu"
   },
-  "period1Day": {
-    "message": "1 den"
-  },
-  "period3Days": {
-    "message": "3 dny"
-  },
-  "period1Week": {
-    "message": "1 týden"
-  },
   "period2Weeks": {
     "message": "2 týdny"
   },
@@ -318,15 +311,6 @@
   "periodAll": {
     "message": "Vše"
   },
-  "periodUnknown": {
-    "message": "Neznámé"
-  },
-  "taskFilterAll": {
-    "message": "Všechny úkoly"
-  },
-  "taskFilterIncomplete": {
-    "message": "Pouze nedokončené úkoly"
-  },
   "kindMail": {
     "message": "Pošta"
   },
@@ -338,14 +322,6 @@
   },
   "kindTasks": {
     "message": "Úkoly"
-  },
-  "kindSoon": {
-    "message": "$KIND$ (již brzy)",
-    "placeholders": {
-      "kind": {
-        "content": "$1"
-      }
-    }
   },
   "kindsNone": {
     "message": "Nic"
@@ -387,7 +363,7 @@
     "message": "Zvolte frekvenci synchronizace."
   },
   "choosePeriod": {
-    "message": "Zvolte období pošty k synchronizaci."
+    "message": "Zvolte synchronizované období."
   },
   "chooseCalendarPeriod": {
     "message": "Zvolte období kalendáře k synchronizaci."
@@ -1208,6 +1184,17 @@
   },
   "calendarChangesDroppedMany": {
     "message": "Změny provedené v Thunderbirdu nebyly odeslány (počet změn: $COUNT$): jejich kalendář se už se serverem nesynchronizuje. Nové položky zůstávají v Thunderbirdu jako místní kopie.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "contactsChangesDroppedOne": {
+    "message": "Změna kontaktu provedená v Thunderbirdu nebyla odeslána: jeho adresář se již se serverem nesynchronizuje. Nový kontakt zůstává v Thunderbirdu jako místní kopie."
+  },
+  "contactsChangesDroppedMany": {
+    "message": "Změny kontaktů provedené v Thunderbirdu nebyly odeslány (počet: $COUNT$): jejich adresář se již se serverem nesynchronizuje. Nové kontakty zůstávají v Thunderbirdu jako místní kopie.",
     "placeholders": {
       "count": {
         "content": "$1"

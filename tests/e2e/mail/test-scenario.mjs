@@ -482,12 +482,12 @@ async function phase1() {
   const leaked = paths.filter((p) => forbidden.includes(p.slice(p.lastIndexOf("/") + 1)));
   await check("aucun dossier d'agenda, de contacts, de tâches (ni la boîte d'envoi) créé, bien que cochés pour A", !leaked.length, leaked);
   const asked = await rpc("collections_requested", { login: E.alice.login, device_id: A.deviceId });
-  // Calendar and tasks, checked for A, are synchronised since stage 4 (their own scenario checks them): only
-  // the folders of the other classes (contacts, notes, journal) must never be named.
+  // Calendar and tasks, checked for A, are synchronised since stage 4, contacts since stage 5 (their own tests
+  // check them): only the folders of the other classes (notes, journal, the recipient cache) must never be named.
   const pim = E.pimFolders.alice;
-  const CALENDAR_AND_TASKS = [7, 8, 13, 15];
-  const never = (await serverFolders(E.alice.login)).filter((f) => pim.includes(f.server_id) && !CALENDAR_AND_TASKS.includes(f.type)).map((f) => f.server_id);
-  await check("A ne demande jamais au serveur un dossier de contacts, de notes ou de journal (Sync, Ping…)", never.length > 0 && !asked.some((id) => never.includes(id)), { asked, never });
+  const SYNCHRONISED = [7, 8, 13, 15, 9, 14];
+  const never = (await serverFolders(E.alice.login)).filter((f) => pim.includes(f.server_id) && !SYNCHRONISED.includes(f.type)).map((f) => f.server_id);
+  await check("A ne demande jamais au serveur un dossier de notes ou de journal (Sync, Ping…)", never.length > 0 && !asked.some((id) => never.includes(id)), { asked, never });
 
   const inbox = await localMessages(A.accountKey, "/Inbox");
   const one = (subject) => withSubject(inbox, subject)[0] ?? null;

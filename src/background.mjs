@@ -42,6 +42,8 @@ import { InvitationTable } from "./sync/invitations.mjs";
 import { CalendarStore } from "./tb/calendar-store.mjs";
 import { Scheduler, EXPIRED } from "./sync/scheduling.mjs";
 import { PimSync } from "./sync/pim.mjs";
+import { ContactStore } from "./tb/contact-store.mjs";
+import { contactSync } from "./sync/contacts.mjs";
 import { MAX_MEETING_RECIPIENTS } from "./core/itip.mjs";
 import { toHex } from "./core/sha256.mjs";
 import { t, uiLanguage, errorText, errorDetail, serverErrorText, calendarNotice, cleanLine } from "./i18n.mjs";
@@ -310,6 +312,23 @@ async function senderNameOf(mb) {
  * synchronises the calendar or the tasks. → null when Thunderbird's
  * calendars cannot be reached: the mailbox then synchronises mail only.
  */
+/**
+ * The contact objects of a mailbox: its address books (tb/contact-store.mjs)
+ * and the contact engine. Building them touches no address book: those are
+ * made by the first pass that synchronises contacts. → null when
+ * Thunderbird's address books cannot be reached.
+ */
+function contactParts(mb) {
+  try {
+    const records = store.mailbox(mb.id);
+    const contactStore = new ContactStore({ mailboxId: mb.id, records, api });
+    return { contactStore, contacts: contactSync({ mailbox: mb, records, contactStore, notify, log }) };
+  } catch (e) {
+    log.warn(`Contacts indisponibles (${label(mb)}) : ${errorCode(e)}.`);
+    return null;
+  }
+}
+
 function calendarParts(mb, senderName = "") {
   try {
     const records = store.mailbox(mb.id);
@@ -356,6 +375,8 @@ async function retire(entry) {
   // The user's calendar changes are no longer listened to; the next engine reads those made meanwhile.
   entry.stopCalendar?.();
   entry.stopCalendar = null;
+  entry.stopContacts?.();
+  entry.stopContacts = null;
   if (!entry.sync) return;
   const closed = entry.sync.close().catch((e) => log.warn(`Arrêt du moteur (${label(entry.mailbox)}) : ${errorCode(e)}.`));
   // Its delivery of meeting messages has stopped: the question it was asking, if any, is withdrawn (its message stays queued).
@@ -375,10 +396,11 @@ async function attach(mb) {
   const old = entries.get(mb.id);
   if (old) await retire(old);
   if (old?.mailbox.accountKey && old.mailbox.accountKey !== mb.accountKey) marked.delete(old.mailbox.accountKey);
-  const entry = { mailbox: mb, inFlight: null, again: false, timer: null, sync: null, calendar: null, stopCalendar: null, closing: false, buffer: old?.buffer ?? [], handover: true };
+  const entry = { mailbox: mb, inFlight: null, again: false, timer: null, sync: null, calendar: null, stopCalendar: null, contacts: null, stopContacts: null, closing: false, buffer: old?.buffer ?? [], handover: true };
   if (mb.accountKey) {
     marked.add(mb.accountKey);
     entry.calendar = calendarParts(mb, senderName);
+    entry.contacts = contactParts(mb);
     entry.sync = new MailboxSync({
       mailbox: mb,
       store,
@@ -387,7 +409,12 @@ async function attach(mb) {
       log,
       now: () => Date.now(),
       ...(entry.calendar ? { invitations: entry.calendar.invitations, scheduler: entry.calendar.scheduler, pim: entry.calendar.pim } : {}),
+      ...(entry.contacts ? { contacts: entry.contacts.contacts } : {}),
     });
+    // The address books are listened to from now on: a deletion counts only when Thunderbird said the user made it.
+    entry.stopContacts = entry.contacts?.contactStore.onLocalChange(() => {
+      if (entries.get(mb.id) === entry && !entry.closing) scheduleLocal(entry);
+    }) ?? null;
     // A change the user makes in one of the mailbox's calendars is sent shortly after, like a local mail action.
     entry.stopCalendar = entry.calendar?.calendarStore.onLocalChange(() => {
       if (entries.get(mb.id) === entry && !entry.closing) scheduleLocal(entry);
@@ -700,8 +727,10 @@ async function saveMailboxChecked(input, password) {
   //    among its own. Nothing is touched on either server.
   if (moved) {
     const calendar = entries.get(existing.id)?.calendar ?? calendarParts(existing);
+    const contacts = entries.get(existing.id)?.contacts ?? contactParts(existing);
     await detach(existing.id);
     await calendar?.pim.removeLocal().catch((e) => log.warn(`Agendas non retirés de Thunderbird (${label(existing)}) : ${errorCode(e)}.`));
+    await contacts?.contacts.removeLocal().catch((e) => log.warn(`Carnets d'adresses non retirés de Thunderbird (${label(existing)}) : ${errorCode(e)}.`));
     await store.mailbox(existing.id).clear();
   }
 
@@ -747,9 +776,11 @@ async function removeMailboxChecked(id, { accountGone = false } = {}) {
 
 async function removeMailboxNow(mb, accountGone) {
   const calendar = entries.get(mb.id)?.calendar ?? calendarParts(mb);
+  const contacts = entries.get(mb.id)?.contacts ?? contactParts(mb);
   await detach(mb.id);
   // The mailbox's calendars leave Thunderbird with it, and so does everything the calendar engine recorded.
   await calendar?.pim.removeLocal().catch((e) => log.warn(`Agendas non retirés de Thunderbird (${label(mb)}) : ${errorCode(e)}.`));
+  await contacts?.contacts.removeLocal().catch((e) => log.warn(`Carnets d'adresses non retirés de Thunderbird (${label(mb)}) : ${errorCode(e)}.`));
   if (mb.accountKey && !accountGone) {
     await api.sync443Account.removeAccount(mb.accountKey).catch((e) =>
       // FILES: the account is gone, but its folder was not where Thunderbird keeps mail, so its files were left alone.

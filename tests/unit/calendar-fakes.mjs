@@ -27,6 +27,7 @@ import { decodeUtf8 } from "../../src/core/utf8.mjs";
 import { EasError, ERR } from "../../src/transport/client.mjs";
 import { checkEvent, readEvent, writeEvent } from "../../src/core/calendar-item.mjs";
 import { checkTask, readTask, writeTask } from "../../src/core/task-item.mjs";
+import { readContact, writeContact } from "../../src/core/contact-item.mjs";
 
 export const OWN = "moi@example.com";
 
@@ -435,7 +436,7 @@ export const PIM_FOLDERS = [
 ];
 
 const roundTrip = (node) => (node === null || node === undefined ? null : decode(encode(node)));
-const CLASS_OF_TYPE = new Map([[8, "Calendar"], [13, "Calendar"], [7, "Tasks"], [15, "Tasks"]]);
+const CLASS_OF_TYPE = new Map([[8, "Calendar"], [13, "Calendar"], [7, "Tasks"], [15, "Tasks"], [9, "Contacts"], [14, "Contacts"]]);
 const RESPONSE_TYPES = new Map([["tentative", "2"], ["accepted", "3"], ["declined", "4"], ["not-responded", "5"]]);
 
 export class FakePimServer {
@@ -556,6 +557,7 @@ export class FakePimServer {
   #data(cid, item) {
     if (item.raw) return item.raw;
     if (item.kind === "task") return writeTask(item, { version: this.version });
+    if (item.kind === "contact") return writeContact(item, { version: this.version });
     // The user's own answer is the server's to say (ResponseType, from 14.0 on): a client never writes it.
     const response = RESPONSE_TYPES.get(item.meeting.response);
     return [...writeEvent(item, { version: this.version }), this.version !== "12.1" && response ? el("Calendar:ResponseType", response) : null].filter(Boolean);
@@ -563,6 +565,7 @@ export class FakePimServer {
 
   #read(cid, data) {
     const node = roundTrip(el("AirSync:ApplicationData", data.children));
+    if (this.classOf(cid) === "Contacts") return copy(readContact(node, { version: this.version, fallbackUid: "serveur" }));
     return copy(this.classOf(cid) === "Tasks" ? readTask(node, { version: this.version, fallbackUid: "serveur" }) : readEvent(node, { version: this.version, ownEmail: this.ownEmail, fallbackUid: "serveur" }));
   }
 

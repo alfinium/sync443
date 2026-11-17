@@ -99,7 +99,7 @@ export const MASS_DELETE = SYNC_ERR.MASS_DELETE;
 const MASS_FOLDER_COUNT = 3;
 /** …and at least this share of the mailbox's folders is a mass deletion too. */
 const MASS_FOLDER_RATIO = 0.5;
-/** Kinds that get local mail folders: mail only (calendar and task folders go to sync/pim.mjs, contacts folders nowhere). */
+/** Kinds that get local mail folders: mail only (calendar and task folders go to sync/pim.mjs, contacts folders to sync/contacts.mjs). */
 const KINDS = Object.freeze({ mail: true, calendar: false, contacts: false, tasks: false });
 const { TRASH: TRASH_TYPE, INBOX: INBOX_TYPE, OUTBOX: OUTBOX_TYPE, USER_MAIL: USER_MAIL_TYPE } = FOLDER_TYPE;
 const ARCHIVES_NAME = "Archives";
@@ -107,6 +107,8 @@ const ARCHIVES_NAME = "Archives";
 const FOLDER_TRANSIENT = new Set(["6", "8", "9", "11"]);
 /** Record: the calendar part has run for this mailbox (its calendars may exist in Thunderbird). */
 const PIM_ACTIVE = "pimActive";
+/** The contact part made address books: once contacts are unchecked, it runs once more to remove them. */
+const CONTACTS_ACTIVE = "contactsActive";
 /** Record: the folder list the mail tables were last matched against, kept while mail is not synchronised. */
 const LIST_BEFORE = "foldersBefore";
 
@@ -166,6 +168,7 @@ export class MailboxSync {
   #invitations;
   #scheduler;
   #pim;
+  #contacts;
   #deliveryCtrl = new AbortController(); // aborted by close(): the delivery of meeting messages stops
   #delivering = null; // the delivery in progress, outside the lock
   #deliverAgain = false; // a pass ended while a delivery was going on
@@ -185,8 +188,9 @@ export class MailboxSync {
    * @param {object} [o.invitations]    sync/invitations.mjs InvitationTable of the mailbox: told of the invitation mails
    * @param {object} [o.scheduler]      sync/scheduling.mjs Scheduler of the mailbox: its messages are delivered after a pass
    * @param {object} [o.pim]            sync/pim.mjs PimSync of the mailbox: the calendar part. Without it, mail only.
+   * @param {object} [o.contacts]       sync/contacts.mjs contactSync of the mailbox: the contact part. Without it, no contacts.
    */
-  constructor({ mailbox, store, clientFactory, mailStore, log = null, now = () => Date.now(), sleep, random = Math.random, push = {}, invitations = null, scheduler = null, pim = null }) {
+  constructor({ mailbox, store, clientFactory, mailStore, log = null, now = () => Date.now(), sleep, random = Math.random, push = {}, invitations = null, scheduler = null, pim = null, contacts = null }) {
     if (!mailbox?.id) throw new TypeError("MailboxSync : boîte manquante");
     this.#mailbox = mailbox;
     this.#records = store.mailbox(mailbox.id);
@@ -200,6 +204,7 @@ export class MailboxSync {
     this.#invitations = invitations;
     this.#scheduler = scheduler;
     this.#pim = pim;
+    this.#contacts = contacts;
     this.#journal = new Journal({ records: this.#records, log, now });
   }
 
@@ -207,6 +212,11 @@ export class MailboxSync {
   #wantsPim() {
     const sync = this.#mailbox.sync;
     return Boolean(this.#pim) && (sync?.calendar === true || sync?.tasks === true);
+  }
+
+  /** The contact part runs: its engine was given, and contacts are chosen. */
+  #wantsContacts() {
+    return Boolean(this.#contacts) && this.#mailbox.sync?.contacts === true;
   }
 
   /** Meeting messages are being asked for or sent (tests). */
@@ -351,7 +361,8 @@ export class MailboxSync {
     const map = await loadPendingDeletes(this.#records);
     const mail = this.#mailbox.sync?.mail === true ? countPending(map) : 0;
     const pim = this.#wantsPim() ? await this.#pim.pendingDeletes() : 0;
-    return { map, mail, pim, count: mail + pim };
+    const contacts = this.#wantsContacts() ? await this.#contacts.pendingDeletes() : 0;
+    return { map, mail, pim, contacts, count: mail + pim + contacts };
   }
 
   /**
@@ -368,7 +379,9 @@ export class MailboxSync {
         .filter(([, e]) => e.retained)
         .map(([collectionId, e]) => ({ collectionId, count: e.folder ? Math.max(1, e.messages) : e.items.length, at: e.at, ...(e.folder ? { folder: true } : {}) })),
     };
-    return this.#pim ? { ...out, calendar: held.pim } : out;
+    if (this.#pim) out.calendar = held.pim;
+    if (this.#contacts) out.contacts = held.contacts;
+    return out;
   }
 
   /**
@@ -399,6 +412,7 @@ export class MailboxSync {
       await savePendingDeletes(records, new Map());
       // (Should the calendar refuse, the mailbox stays blocked: the user can ask again.)
       if (this.#wantsPim()) await this.#pim.discardPendingDeletes();
+      if (this.#wantsContacts()) await this.#contacts.discardPendingDeletes();
       const health = await this.#health();
       if (health.blocked?.code === MASS_DELETE) await records.set("health", { ...health, blocked: null });
       this.#log?.info?.(`Suppressions retenues abandonnées ; ${map.size - folders} dossier(s) entièrement resynchronisé(s) au prochain passage, ${folders} dossier(s) gardé(s) localement.`);
@@ -442,6 +456,7 @@ export class MailboxSync {
     if (user) health = clearForUser(health);
     const wantMail = this.#mailbox.sync?.mail === true;
     const wantPim = this.#wantsPim();
+    const wantContacts = this.#wantsContacts();
 
     // Retained mass deletions (messages, folders, events, tasks): nothing runs until the user decides.
     const held = await this.#held();
@@ -461,7 +476,8 @@ export class MailboxSync {
     await records.set("health", health);
     // Calendar and tasks both unchecked since the calendar part last ran: it runs once more, to remove what it left.
     const tidyPim = !wantPim && Boolean(this.#pim) && (await records.get(PIM_ACTIVE, null)) === true;
-    if (!wantMail && !wantPim && !tidyPim) return result; // nothing chosen that this version synchronises
+    const tidyContacts = !wantContacts && Boolean(this.#contacts) && (await records.get(CONTACTS_ACTIVE, null)) === true;
+    if (!wantMail && !wantPim && !tidyPim && !wantContacts && !tidyContacts) return result; // nothing chosen
     if (opts.newRun || !this.#run) this.#run++;
 
     try {
@@ -472,6 +488,7 @@ export class MailboxSync {
       // The whole list came again (folders perhaps renumbered): the calendar part is told before the new list is
       // saved, and matches its collections again before it trusts a ServerId, as mail does (rules 18 and 19).
       if (state.previous && this.#pim) await this.#pim.listRestarted();
+      if (state.previous && this.#contacts) await this.#contacts.listRestarted();
 
       // Each part runs whatever became of the other: only a cancellation or a FATAL failure stops the pass at once.
       let failure = null;
@@ -490,6 +507,12 @@ export class MailboxSync {
         if (signal.aborted) throw new EasError(ERR.CANCELLED, "Synchronisation annulée.");
         await part(async () => {
           failedCalendarItems = await this.#calendarPart(client, signal, state, opts, { confirm: Boolean(opts.confirmDeletes && held.pim), tidy: tidyPim }, result); // 5
+        });
+      }
+      if (wantContacts || tidyContacts) {
+        if (signal.aborted) throw new EasError(ERR.CANCELLED, "Synchronisation annulée.");
+        await part(async () => {
+          failedCalendarItems += await this.#contactPart(client, signal, state, opts, { confirm: Boolean(opts.confirmDeletes && held.contacts), tidy: tidyContacts }, result); // 6
         });
       }
       if (failure) throw failure;
@@ -624,6 +647,23 @@ export class MailboxSync {
     this.#deliverAfter = true;
     if (tidy) await records.remove(PIM_ACTIVE);
     result.calendar = { received: r.received, sent: r.sent, failed: r.failed };
+    result.failed += r.failed;
+    result.moreAvailable ||= r.moreAvailable;
+    return r.failed;
+  }
+
+  /**
+   * Step 6: the contacts collections (sync/contacts.mjs), with the folder
+   * list of this pass. `tidy`: contacts are no longer chosen, the pass only
+   * removes the address books it made.
+   * → the number of contacts the part could not read or write
+   */
+  async #contactPart(client, signal, state, opts, { confirm, tidy }, result) {
+    const records = this.#records;
+    if (!tidy && (await records.get(CONTACTS_ACTIVE, null)) !== true) await records.set(CONTACTS_ACTIVE, true);
+    const r = await this.#contacts.pass({ client, version: client.proto?.asVersion ?? null, folders: state.folders, signal, confirmDeletes: confirm, only: opts.folders, deliver: false });
+    if (tidy) await records.remove(CONTACTS_ACTIVE);
+    result.contacts = { received: r.received, sent: r.sent, failed: r.failed };
     result.failed += r.failed;
     result.moreAvailable ||= r.moreAvailable;
     return r.failed;
@@ -1654,7 +1694,8 @@ export class MailboxSync {
   async #pingFolders() {
     const wantMail = Boolean(this.#mailbox.sync?.mail);
     const wantPim = this.#wantsPim();
-    if (!wantMail && !wantPim) return [];
+    const wantContacts = this.#wantsContacts();
+    if (!wantMail && !wantPim && !wantContacts) return [];
     const folders = checkFolders(await this.#records.getMap("folders"));
     if (!folders) return [];
     const out = [];
@@ -1667,6 +1708,7 @@ export class MailboxSync {
       }
     }
     if (wantPim) for (const f of this.#pim.pingFolders(folders)) out.push({ id: f.id, cls: f.class });
+    if (wantContacts) for (const f of this.#contacts.pingFolders(folders)) out.push({ id: f.id, cls: f.class });
     return out;
   }
 }

@@ -3,7 +3,7 @@
     "message": "Sync443 – EAS Client for Thunderbird"
   },
   "extensionDescription": {
-    "message": "Thunderbird でネイティブに動作する Exchange ActiveSync。メール、フォルダー、送信に対応し、互換性のあるあらゆるサーバーで利用できます。"
+    "message": "Thunderbird でネイティブに動作する Exchange ActiveSync。メール、カレンダー、連絡先、タスクに対応し、互換性のあるあらゆるサーバーで利用できます。"
   },
   "languageTag": {
     "message": "ja"
@@ -60,14 +60,6 @@
   "unnamed": {
     "message": "名前なし"
   },
-  "metaMailPeriod": {
-    "message": "メール: $PERIOD$",
-    "placeholders": {
-      "period": {
-        "content": "$1"
-      }
-    }
-  },
   "confirmDeletes": {
     "message": "削除を確定"
   },
@@ -100,6 +92,9 @@
   "discardConfirm": {
     "message": "サーバー上で行われた削除は適用されません。該当するメッセージ、予定、タスクは Thunderbird に残ります。該当するメールフォルダーはサーバーと再同期され、保持された予定とタスクはサーバーとのリンクがなくなります。サーバー上で削除されたフォルダーは、同期されないままここに残ります。"
   },
+  "discardContactsNote": {
+    "message": "対象の連絡先も Thunderbird に残り、サーバーとのリンクは解除されます。"
+  },
   "uncheckCalendarConfirm": {
     "message": "「$NAME$」のカレンダーの同期を停止しますか？このメールボックスの予定が Thunderbird から削除されます。サーバー上では何も削除されません。サーバーにまだ送信されていない変更は失われます。",
     "placeholders": {
@@ -116,6 +111,14 @@
       }
     }
   },
+  "uncheckContactsConfirm": {
+    "message": "「$NAME$」の連絡先の同期を停止しますか？このメールボックスのアドレス帳が Thunderbird から削除されます。サーバー上では何も削除されません。サーバーにまだ送信されていない変更は失われます。",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
   "uncheckBothConfirm": {
     "message": "「$NAME$」のカレンダーとタスクの同期を停止しますか？このメールボックスのカレンダーが、その予定とタスクとともに Thunderbird から削除されます。サーバー上では何も削除されません。サーバーにまだ送信されていない変更は失われます。",
     "placeholders": {
@@ -126,6 +129,14 @@
   },
   "moveConfirm": {
     "message": "「$NAME$」のサーバーまたはユーザー名を変更しますか？このメールボックスのカレンダーとタスクは Thunderbird から削除され、サーバーから再度同期されます。サーバーにまだ送信されていない変更は失われます。",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "moveContactsConfirm": {
+    "message": "「$NAME$」のサーバーまたはユーザー名を変更しますか？このメールボックスのアドレス帳は Thunderbird から削除され、サーバーから再度同期されます。サーバーにまだ送信されていない変更は失われます。",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -243,25 +254,16 @@
     "message": "同期の頻度"
   },
   "fieldPeriod": {
-    "message": "メールの同期期間"
+    "message": "同期する期間"
   },
-  "fieldCalendarPeriod": {
-    "message": "カレンダーの同期期間"
+  "periodHint": {
+    "message": "メールとカレンダーに適用されます。「すべて」を選ばない限り、メールは最長 1 か月分です（ActiveSync にはその中間がありません）。今後の予定は常に同期されます。"
   },
-  "calendarPeriodHint": {
-    "message": "この期間より前の予定は同期されません。今後の予定は常に同期されます。"
-  },
-  "fieldTaskFilter": {
-    "message": "同期するタスク"
+  "moreSettings": {
+    "message": "その他の設定"
   },
   "fieldKinds": {
     "message": "同期する項目"
-  },
-  "kindsHint": {
-    "message": "このバージョンでは、連絡先はまだ同期されません。この選択は今後のために保存されます。"
-  },
-  "soon": {
-    "message": "近日対応"
   },
   "save": {
     "message": "保存"
@@ -294,15 +296,6 @@
   "freqEveryHour": {
     "message": "1 時間ごと"
   },
-  "period1Day": {
-    "message": "1 日"
-  },
-  "period3Days": {
-    "message": "3 日"
-  },
-  "period1Week": {
-    "message": "1 週間"
-  },
   "period2Weeks": {
     "message": "2 週間"
   },
@@ -318,15 +311,6 @@
   "periodAll": {
     "message": "すべて"
   },
-  "periodUnknown": {
-    "message": "不明"
-  },
-  "taskFilterAll": {
-    "message": "すべてのタスク"
-  },
-  "taskFilterIncomplete": {
-    "message": "未完了のタスクのみ"
-  },
   "kindMail": {
     "message": "メール"
   },
@@ -338,14 +322,6 @@
   },
   "kindTasks": {
     "message": "タスク"
-  },
-  "kindSoon": {
-    "message": "$KIND$ (近日対応)",
-    "placeholders": {
-      "kind": {
-        "content": "$1"
-      }
-    }
   },
   "kindsNone": {
     "message": "なし"
@@ -387,7 +363,7 @@
     "message": "同期の頻度を選択してください。"
   },
   "choosePeriod": {
-    "message": "メールの同期期間を選択してください。"
+    "message": "同期する期間を選択してください。"
   },
   "chooseCalendarPeriod": {
     "message": "カレンダーの同期期間を選択してください。"
@@ -1208,6 +1184,17 @@
   },
   "calendarChangesDroppedMany": {
     "message": "Thunderbird で行われた変更 $COUNT$ 件は送信されませんでした: 対象のカレンダーはサーバーと同期されなくなりました。新しい項目はローカルのコピーとして Thunderbird に残ります。",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "contactsChangesDroppedOne": {
+    "message": "Thunderbird で行った連絡先の変更 1 件は送信されませんでした。そのアドレス帳はサーバーと同期されなくなっています。新しい連絡先はローカルコピーとして Thunderbird に残ります。"
+  },
+  "contactsChangesDroppedMany": {
+    "message": "Thunderbird で行った連絡先の変更 $COUNT$ 件は送信されませんでした。そのアドレス帳はサーバーと同期されなくなっています。新しい連絡先はローカルコピーとして Thunderbird に残ります。",
     "placeholders": {
       "count": {
         "content": "$1"

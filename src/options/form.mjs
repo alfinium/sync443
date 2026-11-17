@@ -11,7 +11,7 @@
 
 import { parseServer } from "../core/server.mjs";
 import { cleanText } from "../core/sanitize.mjs";
-import { SYNC_KINDS } from "../sync/store.mjs";
+import { SYNC_KINDS, TASK_FILTERS } from "../sync/store.mjs";
 import { t, uiLanguage, errorText, errorDetail, serverErrorText, sentence } from "../i18n.mjs";
 
 /** Sync frequency, in minutes (0 = as soon as a message arrives: Ping), and its label. */
@@ -24,55 +24,49 @@ export const FREQUENCIES = Object.freeze([
   [60, () => t("freqEveryHour")],
 ]);
 
-/** Period of mail kept in sync: ActiveSync FilterType ([MS-ASCMD] 2.2.3.68), and its label. */
+/**
+ * How far back a mailbox is kept in sync: one choice for everything, and
+ * the ActiveSync FilterType it means for each kind ([MS-ASCMD] 2.2.3.68).
+ * Mail has no FilterType between one month and everything, so the longer
+ * periods keep one month of mail; the page says so (periodHint). The
+ * period limits past events only: the server always sends future ones.
+ * [value, label, FilterType of mail, FilterType of the calendar]
+ */
 export const PERIODS = Object.freeze([
-  ["1", () => t("period1Day")],
-  ["2", () => t("period3Days")],
-  ["3", () => t("period1Week")],
-  ["4", () => t("period2Weeks")],
-  ["5", () => t("period1Month")],
-  ["0", () => t("periodAll")],
+  ["2w", () => t("period2Weeks"), "4", "4"],
+  ["1m", () => t("period1Month"), "5", "5"],
+  ["3m", () => t("period3Months"), "5", "6"],
+  ["6m", () => t("period6Months"), "5", "7"],
+  ["all", () => t("periodAll"), "0", "0"],
 ]);
 
 /**
- * Period of calendar kept in sync: ActiveSync FilterType ([MS-ASCMD] 2.2.3.68), and its label.
- * It limits past events only: the server always keeps future ones in sync.
+ * The choice of PERIODS a saved mailbox shows. A mailbox saved by an
+ * earlier version may hold a pair no choice gives (a shorter period of
+ * mail, or a calendar period of its own): the closest choice is shown, and
+ * saving the form then applies it.
  */
-export const CALENDAR_PERIODS = Object.freeze([
-  ["4", () => t("period2Weeks")],
-  ["5", () => t("period1Month")],
-  ["6", () => t("period3Months")],
-  ["7", () => t("period6Months")],
-  ["0", () => t("periodAll")],
-]);
+export function periodOf(mailbox) {
+  const mail = mailbox?.filterType;
+  const calendar = mailbox?.calendarPeriod;
+  if (mail === "0") return "all";
+  if (mail !== "5") return "2w";
+  if (calendar === "6") return "3m";
+  if (calendar === "5" || calendar === "4") return "1m";
+  return "6m";
+}
 
-/** Tasks kept in sync: ActiveSync FilterType 0 (all) or 8 (incomplete tasks only), and its label. */
-export const TASK_FILTERS = Object.freeze([
-  ["0", () => t("taskFilterAll")],
-  ["8", () => t("taskFilterIncomplete")],
-]);
-
-/** What a mailbox synchronises; `soon`: saved, not synchronised yet in this version. */
+/** What a mailbox synchronises. */
 export const KINDS = Object.freeze([
-  Object.freeze({ key: "mail", get label() { return t("kindMail"); }, soon: false }),
-  Object.freeze({ key: "calendar", get label() { return t("kindCalendar"); }, soon: false }),
-  Object.freeze({ key: "contacts", get label() { return t("kindContacts"); }, soon: true }),
-  Object.freeze({ key: "tasks", get label() { return t("kindTasks"); }, soon: false }),
-]);
-
-/**
- * Fields the page shows only while their item is checked: [item, field].
- * Hidden, a field keeps its value, and that value is still sent.
- */
-export const KIND_FIELDS = Object.freeze([
-  Object.freeze(["calendar", "calendarPeriod"]),
-  Object.freeze(["tasks", "taskFilter"]),
+  Object.freeze({ key: "mail", get label() { return t("kindMail"); } }),
+  Object.freeze({ key: "calendar", get label() { return t("kindCalendar"); } }),
+  Object.freeze({ key: "contacts", get label() { return t("kindContacts"); } }),
+  Object.freeze({ key: "tasks", get label() { return t("kindTasks"); } }),
 ]);
 
 export const DEFAULTS = Object.freeze({
   syncMinutes: 0,
-  filterType: "5",
-  calendarPeriod: "7",
+  period: "6m",
   taskFilter: "0",
   sync: Object.freeze({ mail: true, calendar: true, contacts: true, tasks: true }),
 });
@@ -82,7 +76,7 @@ const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
 const HIDDEN = /[\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2028\u2029\u2060-\u2069\ufeff]/;
 
 /** The fields in the order of the page: errors are listed (and the first one focused) in that order. */
-export const FIELD_ORDER = Object.freeze(["email", "password", "name", "server", "username", "syncMinutes", "filterType", "sync", "calendarPeriod", "taskFilter"]);
+export const FIELD_ORDER = Object.freeze(["email", "password", "server", "sync", "period", "name", "username", "syncMinutes"]);
 
 /** Host permission covering one server (match patterns have no port). */
 export const permissionPattern = (host) => `https://${host}/*`;
@@ -100,7 +94,7 @@ export function emailError(email) {
 /**
  * Check the form, as the user filled it.
  *
- * @param {object} values  { email, username, password, name, server, syncMinutes, filterType, calendarPeriod, taskFilter, sync }
+ * @param {object} values  { email, username, password, name, server, syncMinutes, period, sync }
  *        strings as read from the fields (syncMinutes too), sync: { mail, calendar, contacts, tasks } booleans
  * @param {object|null} existing  the mailbox being edited (as listed by the background), or null for a new one
  * @returns {{ ok: boolean, errors: {field: string, message: string}[],
@@ -156,24 +150,11 @@ export function validateForm(values, existing = null) {
   if (!FREQUENCIES.some(([m]) => m === syncMinutes)) {
     error("syncMinutes", t("chooseFrequency"));
   }
-  const filterType = str(values.filterType);
-  if (!PERIODS.some(([f]) => f === filterType)) error("filterType", t("choosePeriod"));
+  const period = PERIODS.find(([value]) => value === str(values.period));
+  if (!period) error("period", t("choosePeriod"));
 
   const sync = Object.fromEntries(SYNC_KINDS.map((k) => [k, values.sync?.[k] === true]));
   if (!SYNC_KINDS.some((k) => sync[k])) error("sync", t("chooseKind"));
-
-  // Shown only while their item is checked. A hidden field keeps its value; one that
-  // cannot be used becomes the default, instead of an error on a field nobody sees.
-  let calendarPeriod = str(values.calendarPeriod);
-  if (!CALENDAR_PERIODS.some(([f]) => f === calendarPeriod)) {
-    if (sync.calendar) error("calendarPeriod", t("chooseCalendarPeriod"));
-    else calendarPeriod = DEFAULTS.calendarPeriod;
-  }
-  let taskFilter = str(values.taskFilter);
-  if (!TASK_FILTERS.some(([f]) => f === taskFilter)) {
-    if (sync.tasks) error("taskFilter", t("chooseTaskFilter"));
-    else taskFilter = DEFAULTS.taskFilter;
-  }
 
   if (errors.length) {
     errors.sort((a, b) => FIELD_ORDER.indexOf(a.field) - FIELD_ORDER.indexOf(b.field));
@@ -192,9 +173,10 @@ export function validateForm(values, existing = null) {
         name,
         server: server.display,
         syncMinutes,
-        filterType,
-        calendarPeriod,
-        taskFilter,
+        filterType: period[2],
+        calendarPeriod: period[3],
+        // Not asked in the form: a mailbox keeps the one it has.
+        taskFilter: TASK_FILTERS.includes(existing?.taskFilter) ? existing.taskFilter : DEFAULTS.taskFilter,
         sync,
       },
       password: password || null,
@@ -203,9 +185,7 @@ export function validateForm(values, existing = null) {
 }
 
 /**
- * Values of the form for a mailbox (edit), or the defaults (new). A mailbox
- * saved before calendar and tasks were synchronised has neither
- * calendarPeriod nor taskFilter: the defaults.
+ * Values of the form for a mailbox (edit), or the defaults (new).
  */
 export function formValues(mailbox = null) {
   if (!mailbox) {
@@ -216,9 +196,7 @@ export function formValues(mailbox = null) {
       name: "",
       server: "",
       syncMinutes: String(DEFAULTS.syncMinutes),
-      filterType: DEFAULTS.filterType,
-      calendarPeriod: DEFAULTS.calendarPeriod,
-      taskFilter: DEFAULTS.taskFilter,
+      period: DEFAULTS.period,
       sync: { ...DEFAULTS.sync },
     };
   }
@@ -230,9 +208,7 @@ export function formValues(mailbox = null) {
     name: str2(mailbox.name),
     server: str2(mailbox.server),
     syncMinutes: String(FREQUENCIES.some(([m]) => m === mailbox.syncMinutes) ? mailbox.syncMinutes : DEFAULTS.syncMinutes),
-    filterType: PERIODS.some(([f]) => f === mailbox.filterType) ? mailbox.filterType : DEFAULTS.filterType,
-    calendarPeriod: CALENDAR_PERIODS.some(([f]) => f === mailbox.calendarPeriod) ? mailbox.calendarPeriod : DEFAULTS.calendarPeriod,
-    taskFilter: TASK_FILTERS.some(([f]) => f === mailbox.taskFilter) ? mailbox.taskFilter : DEFAULTS.taskFilter,
+    period: periodOf(mailbox),
     sync,
   };
 }
@@ -242,10 +218,11 @@ const str2 = (v) => (typeof v === "string" ? v : "");
 // ── Texts shown for a mailbox ─────────────────────────────────────────────
 
 export const frequencyLabel = (minutes) => FREQUENCIES.find(([m]) => m === minutes)?.[1]() ?? t("freqEveryMinutes", minutes);
-export const periodLabel = (filterType) => PERIODS.find(([f]) => f === filterType)?.[1]() ?? t("periodUnknown");
+/** The period of a saved mailbox, as the list of mailboxes shows it. */
+export const periodLabel = (mailbox) => PERIODS.find(([value]) => value === periodOf(mailbox))[1]();
 
 export function kindsLabel(sync) {
-  const chosen = KINDS.filter((k) => sync?.[k.key] === true).map((k) => (k.soon ? t("kindSoon", k.label) : k.label));
+  const chosen = KINDS.filter((k) => sync?.[k.key] === true).map((k) => k.label);
   return chosen.length ? chosen.join(", ") : t("kindsNone");
 }
 
@@ -284,7 +261,7 @@ export function formatTime(ms, now = Date.now()) {
 export const shown = (s, max = 300) => cleanText(typeof s === "string" ? s : "", { max, singleLine: true, stripBidi: true }).trim();
 
 /** Asked before "Keep the local copies" (discardDeletes): messages, events and tasks alike. */
-export const discardConfirm = () => t("discardConfirm");
+export const discardConfirm = (mailbox = null) => (mailbox?.sync?.contacts === true ? `${t("discardConfirm")}\n\n${t("discardContactsNote")}` : t("discardConfirm"));
 
 /**
  * Asked before a mailbox is saved with its calendar or its tasks unchecked
@@ -293,15 +270,18 @@ export const discardConfirm = () => t("discardConfirm");
  * it are lost. `existing`: the mailbox as the background lists it; `sync`:
  * the items as the form has them; `name`: how the page names the mailbox.
  * → the question, or "" when the save removes nothing (a new mailbox,
- * nothing unchecked, contacts or mail unchecked).
+ * nothing unchecked, mail unchecked). Contacts unchecked have a question
+ * of their own, added to the other when both apply.
  */
 export function uncheckConfirm(existing, sync, name) {
   const dropped = (kind) => existing?.sync?.[kind] === true && sync?.[kind] !== true;
   const label = shown(name);
-  if (dropped("calendar") && dropped("tasks")) return t("uncheckBothConfirm", label);
-  if (dropped("calendar")) return t("uncheckCalendarConfirm", label);
-  if (dropped("tasks")) return t("uncheckTasksConfirm", label);
-  return "";
+  const questions = [];
+  if (dropped("calendar") && dropped("tasks")) questions.push(t("uncheckBothConfirm", label));
+  else if (dropped("calendar")) questions.push(t("uncheckCalendarConfirm", label));
+  else if (dropped("tasks")) questions.push(t("uncheckTasksConfirm", label));
+  if (dropped("contacts")) questions.push(t("uncheckContactsConfirm", label));
+  return questions.join("\n\n");
 }
 
 /**
@@ -321,10 +301,13 @@ export function uncheckConfirm(existing, sync, name) {
 export function moveConfirm(existing, server, mailbox, name) {
   if (!existing) return "";
   const kept = (kind) => existing.sync?.[kind] === true && mailbox?.sync?.[kind] === true;
-  if (!kept("calendar") && !kept("tasks")) return "";
   const signIn = (m) => String(m?.username || m?.email || "");
   const moved = (typeof server?.origin === "string" && server.origin !== existing.origin) || signIn(mailbox) !== signIn(existing);
-  return moved ? t("moveConfirm", shown(name)) : "";
+  if (!moved) return "";
+  const questions = [];
+  if (kept("calendar") || kept("tasks")) questions.push(t("moveConfirm", shown(name)));
+  if (kept("contacts")) questions.push(t("moveContactsConfirm", shown(name)));
+  return questions.join("\n\n");
 }
 
 /**

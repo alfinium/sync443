@@ -125,6 +125,7 @@ import { syncRequest, parseSync, addCommand, changeCommand, deleteCommand, fetch
 import { el } from "../core/wbxml.mjs";
 import { readEvent, writeEvent, calendarSupported, calendarOptions } from "../core/calendar-item.mjs";
 import { readTask, writeTask, taskOptions } from "../core/task-item.mjs";
+import { readContact, writeContact, contactOptions, contactSupported } from "../core/contact-item.mjs";
 import { PROTOCOL_VERSIONS } from "../core/recurrence.mjs";
 import { MAX_MEETING_RECIPIENTS } from "../core/itip.mjs";
 import { compareIds, nameKey, ROOT_ID, FOLDER_TYPE } from "../core/folder-tree.mjs";
@@ -177,12 +178,22 @@ const SYNC_TIMEOUT_MS = 180_000;
 const MAIN = "main";
 const CALENDAR = "Calendar";
 const TASKS = "Tasks";
+const CONTACTS = "Contacts";
+/** What an engine synchronizes: the calendars and task lists of a mailbox, or its address books. */
+export const DOMAINS = Object.freeze(["calendar", "contacts"]);
 const DEFAULT_CALENDAR_TYPE = 8;
 const USER_CALENDAR_TYPE = 13;
 const DEFAULT_TASKS_TYPE = 7;
 const USER_TASKS_TYPE = 15;
 const CLASS_OF_TYPE = new Map([[DEFAULT_CALENDAR_TYPE, CALENDAR], [USER_CALENDAR_TYPE, CALENDAR], [DEFAULT_TASKS_TYPE, TASKS], [USER_TASKS_TYPE, TASKS]]);
-const DEFAULT_TYPES = new Set([DEFAULT_CALENDAR_TYPE, DEFAULT_TASKS_TYPE]);
+const DEFAULT_CONTACTS_TYPE = 9;
+const USER_CONTACTS_TYPE = 14;
+const CONTACT_CLASS_OF_TYPE = new Map([[DEFAULT_CONTACTS_TYPE, CONTACTS], [USER_CONTACTS_TYPE, CONTACTS]]);
+const DEFAULT_TYPES = new Set([DEFAULT_CALENDAR_TYPE, DEFAULT_TASKS_TYPE, DEFAULT_CONTACTS_TYPE]);
+const CLASSES = new Set([CALENDAR, TASKS, CONTACTS]);
+const CLASS_OF_KIND = new Map([["event", CALENDAR], ["task", TASKS], ["contact", CONTACTS]]);
+/** Whether the mailbox synchronizes the items of a class. */
+const wanted = (sync, cls) => (cls === CALENDAR ? sync?.calendar === true : cls === TASKS ? sync?.tasks === true : sync?.contacts === true);
 /** Item statuses that settle a change for good ([MS-ASCMD] 2.2.3.177.17: 6 conversion error, 7 conflict, 8 not found). */
 const DEFINITIVE = new Set(["6", "7", "8"]);
 /** Statuses of a server that is unwell (5 server error, 16 retry; 110 and 111, the same for a whole command): never held against a change. */
@@ -255,6 +266,7 @@ function placeOf(folders, id) {
 function identityOf(item) {
   if (!isRecord(item)) return null;
   if (item.kind === "task") return derivedId("i", JSON.stringify(["task", item.summary ?? "", item.start ?? null, item.due ?? null]));
+  if (item.kind === "contact") return derivedId("i", JSON.stringify(["contact", item.summary ?? "", item.fields?.Email1Address ?? "", item.fields?.CompanyName ?? ""]));
   return typeof item.uid === "string" ? derivedId("i", JSON.stringify(["event", item.uid])) : null;
 }
 
@@ -266,6 +278,7 @@ function identityOf(item) {
  */
 function leaveMark(item) {
   if (!isRecord(item)) return 0;
+  if (item.kind === "contact") return 0;
   if (item.kind === "task") return item.completed === true ? 1 : 0;
   if (item.recurrence) return 0;
   const end = typeof item.end === "string" ? Date.parse(item.end) : NaN;
@@ -284,7 +297,8 @@ function leaveMark(item) {
  * others (slot = their ServerId), at most MAX_PIM_COLLECTIONS in all. A
  * folder in the server's Deleted Items is left out: it was deleted.
  */
-export function pimCollections(folders, sync) {
+export function pimCollections(folders, sync, domain = "calendar") {
+  const classes = domain === "contacts" ? CONTACT_CLASS_OF_TYPE : CLASS_OF_TYPE;
   const out = new Map();
   if (!(folders instanceof Map)) return out;
   const inTrash = (id) => {
@@ -298,9 +312,9 @@ export function pimCollections(folders, sync) {
   };
   const list = [];
   for (const [id, f] of folders) {
-    const cls = CLASS_OF_TYPE.get(f?.type);
+    const cls = classes.get(f?.type);
     if (!cls || !v.itemId(id) || id === MAIN) continue; // "main" names the shared calendar: never a folder's own
-    if (cls === CALENDAR ? sync?.calendar !== true : sync?.tasks !== true) continue;
+    if (!wanted(sync, cls)) continue;
     if (inTrash(f.parentId)) continue;
     list.push([id, f, cls]);
   }
@@ -328,7 +342,7 @@ function collState(id, raw) {
     id,
     /** The server's CollectionId, today (another one after a folder list that started over). */
     serverId: v.itemId(raw?.serverId) ?? id,
-    cls: raw?.cls === TASKS ? TASKS : CALENDAR,
+    cls: CLASSES.has(raw?.cls) ? raw.cls : CALENDAR,
     slot: raw?.slot === MAIN ? MAIN : id,
     /** Where the folder was in the list last seen (placeOf), and its type: what it is matched by when the list starts over. */
     place: typeof raw?.place === "string" && raw.place.length <= 64 ? raw.place : null,
@@ -582,6 +596,8 @@ export class PimSync {
   #ready = new Set(); // ServerIds of the collections with a SyncKey of their own, as the last pass left them
   #stuck = new Map();
   #outboxCleared = false; // the scheduler was told that no calendar collection is left
+  #domain;
+  #what; // how the log names what this engine synchronizes
 
   /**
    * @param {object} o
@@ -592,7 +608,10 @@ export class PimSync {
    * @param {object} [o.log]           { info, warn, error, debug }
    * @param {() => number} [o.now]
    */
-  constructor({ mailbox, records, calendarStore, scheduler, log = null, now = () => Date.now() }) {
+  constructor({ mailbox, records, calendarStore, scheduler, log = null, now = () => Date.now(), domain = "calendar" }) {
+    if (!DOMAINS.includes(domain)) throw new TypeError("PimSync : domaine invalide");
+    this.#domain = domain;
+    this.#what = domain === "contacts" ? "Contacts" : "Agenda";
     if (!mailbox?.id || v.emailAddress(mailbox.email) === null) throw new TypeError("PimSync : boîte invalide");
     if (!records || !calendarStore || !scheduler) throw new TypeError("PimSync : dépendance manquante");
     this.#mailbox = mailbox;
@@ -658,7 +677,7 @@ export class PimSync {
    */
   pingFolders(folders) {
     const out = [];
-    for (const [id, w] of pimCollections(folders, this.#mailbox.sync)) if (this.#ready.has(id)) out.push({ id, class: w.cls });
+    for (const [id, w] of pimCollections(folders, this.#mailbox.sync, this.#domain)) if (this.#ready.has(id)) out.push({ id, class: w.cls });
     return out;
   }
 
@@ -702,7 +721,7 @@ export class PimSync {
         await this.#saveDeletes(deletes);
       }
       if (keptChanged) await this.#records.setMap(KEPT, kept);
-      this.#log?.info?.(`Agenda : suppressions retenues abandonnées, ${detached} élément(s) gardé(s) localement, détaché(s) du serveur.`);
+      this.#log?.info?.(`${this.#what} : suppressions retenues abandonnées, ${detached} élément(s) gardé(s) localement, détaché(s) du serveur.`);
       return detached;
     });
   }
@@ -724,7 +743,7 @@ export class PimSync {
       this.#outboxCleared = true;
       this.#ready.clear();
       this.#stuck.clear();
-      this.#log?.info?.(`Agenda : ${removed} agenda(s) retiré(s) de Thunderbird.`);
+      this.#log?.info?.(`${this.#what} : ${removed} agenda(s) retiré(s) de Thunderbird.`);
       return removed;
     });
   }
@@ -759,7 +778,7 @@ export class PimSync {
     for (const c of raw.cmds.slice(0, UPLOAD_MAX)) {
       if (!isRecord(c) || typeof c.id !== "string" || !["add", "modify", "delete"].includes(c.op)) return null;
       if (c.op === "add" ? !/^[A-Za-z0-9-]{1,64}$/.test(c.clientId ?? "") : !v.itemId(c.serverId)) return null;
-      if (c.kind !== "event" && c.kind !== "task") return null;
+      if (!CLASS_OF_KIND.has(c.kind)) return null;
       cmds.push({
         id: c.id,
         changeId: c.id,
@@ -839,7 +858,7 @@ export class PimSync {
     try {
       run.deletes = checkDeletes(await this.#records.getMap(DELETES));
       run.sequences = await this.#loadSequences();
-      groups = await this.#layout(run, pimCollections(folders, this.#mailbox.sync), confirmDeletes);
+      groups = await this.#layout(run, pimCollections(folders, this.#mailbox.sync, this.#domain), confirmDeletes);
       // Messages of meetings that have no calendar any more are neither asked for nor sent.
       if (run.calendars) {
         this.#outboxCleared = false;
@@ -855,18 +874,18 @@ export class PimSync {
           if (signal?.aborted || e?.code === ERR.CANCELLED) throw cancelled();
           if (FATAL.has(e?.code)) throw e;
           run.errors.push(e);
-          this.#log?.warn?.(`Agenda ${group.slot} : ${e instanceof EasError ? String(e.message).slice(0, 300) : errorCode(e, 60)}`);
+          this.#log?.warn?.(`${this.#what} ${group.slot} : ${e instanceof EasError ? String(e.message).slice(0, 300) : errorCode(e, 60)}`);
         }
       }
     } catch (e) {
       if (signal?.aborted || e?.code === ERR.CANCELLED) throw cancelled();
-      throw e instanceof EasError ? e : new EasError(SYNC_ERR.LOCAL, `Agenda : erreur locale (${errorCode(e, 60)}).`, { cause: e });
+      throw e instanceof EasError ? e : new EasError(SYNC_ERR.LOCAL, `${this.#what} : erreur locale (${errorCode(e, 60)}).`, { cause: e });
     } finally {
       // (A pass that could not even look at the calendars leaves the Ping list as it was.)
       if (groups) this.#ready = new Set(groups.flatMap((g) => g.colls).filter((c) => c.syncKey !== "0").map((c) => c.serverId));
       // One notice for all the changes dropped in this pass, whatever became of the pass.
       if (run.dropped) {
-        this.#log?.warn?.(`Agenda : ${run.dropped} modification(s) locale(s) non envoyée(s), leur dossier n'est plus sur le serveur.`);
+        this.#log?.warn?.(`${this.#what} : ${run.dropped} modification(s) locale(s) non envoyée(s), leur dossier n'est plus sur le serveur.`);
         this.#scheduler.notice("changesDropped", "", run.dropped);
       }
     }
@@ -877,7 +896,7 @@ export class PimSync {
         await this.#scheduler.deliver({ client, signal });
       } catch (e) {
         if (signal?.aborted || e?.code === ERR.CANCELLED) throw cancelled();
-        this.#log?.warn?.(`Agenda : messages de réunion non traités (${errorCode(e, 60)}).`);
+        this.#log?.warn?.(`${this.#what} : messages de réunion non traités (${errorCode(e, 60)}).`);
       }
     }
 
@@ -892,7 +911,7 @@ export class PimSync {
     };
     if (run.errors.length) {
       const e = run.errors[0];
-      throw e instanceof EasError ? e : new EasError(SYNC_ERR.LOCAL, `Agenda : erreur locale (${errorCode(e, 60)}).`, { cause: e });
+      throw e instanceof EasError ? e : new EasError(SYNC_ERR.LOCAL, `${this.#what} : erreur locale (${errorCode(e, 60)}).`, { cause: e });
     }
     return result;
   }
@@ -902,10 +921,11 @@ export class PimSync {
   }
 
   #kindWanted(cls) {
-    return cls === CALENDAR ? this.#mailbox.sync?.calendar === true : this.#mailbox.sync?.tasks === true;
+    return wanted(this.#mailbox.sync, cls);
   }
 
   #filterOf(cls) {
+    if (cls === CONTACTS) return "0"; // contacts have no period
     if (cls === CALENDAR) return CALENDAR_PERIODS.includes(this.#mailbox.calendarPeriod) ? this.#mailbox.calendarPeriod : DEFAULT_CALENDAR_PERIOD;
     return TASK_FILTERS.includes(this.#mailbox.taskFilter) ? this.#mailbox.taskFilter : DEFAULT_TASK_FILTER;
   }
@@ -967,13 +987,13 @@ export class PimSync {
     let keptChanged = false;
     const held = run.held;
     const heldNow = new Set(); // collections whose removal is held by this very pass: no confirmation covers them
-    const anyKind = this.#kindWanted(CALENDAR) || this.#kindWanted(TASKS);
+    const anyKind = this.#domain === "contacts" ? this.#kindWanted(CONTACTS) : this.#kindWanted(CALENDAR) || this.#kindWanted(TASKS);
     const hold = async (id, slot, n, before) => {
       if (!before?.folder) {
         run.deletes.set(id, { folder: true, count: n, at: this.#now(), retained: true });
         heldNow.add(id);
         await this.#saveDeletes(run.deletes);
-        this.#log?.warn?.(`Agenda ${id} : dossier disparu ou changé sur le serveur avec ${n} élément(s) ; suppression retenue jusqu'à confirmation.`);
+        this.#log?.warn?.(`${this.#what} ${id} : dossier disparu ou changé sur le serveur avec ${n} élément(s) ; suppression retenue jusqu'à confirmation.`);
       }
       held.add(slot);
     };
@@ -1026,7 +1046,7 @@ export class PimSync {
       stored.delete(id);
       if (run.sequences.delete(id)) run.sequencesDirty = true;
       if (run.deletes.delete(id)) await this.#saveDeletes(run.deletes);
-      this.#log?.info?.(`Agenda ${coll.serverId} : ${chosen ? "élément décoché" : "dossier disparu ou changé sur le serveur"}, copies locales retirées.`);
+      this.#log?.info?.(`${this.#what} ${coll.serverId} : ${chosen ? "élément décoché" : "dossier disparu ou changé sur le serveur"}, copies locales retirées.`);
     }
 
     // 2. A collection for each wanted folder. A new one takes the folder's ServerId as its id, unless something
@@ -1111,8 +1131,8 @@ export class PimSync {
         out.push(g);
       } catch (e) {
         // One calendar that cannot be made (too many, a conflict) does not stop the others.
-        run.errors.push(new EasError(SYNC_ERR.LOCAL, `Agenda ${g.slot} : agenda impossible à préparer dans Thunderbird (${errorCode(e)}).`));
-        this.#log?.warn?.(`Agenda ${g.slot} : agenda impossible à préparer dans Thunderbird (${errorCode(e)}).`);
+        run.errors.push(new EasError(SYNC_ERR.LOCAL, `${this.#what} ${g.slot} : agenda impossible à préparer dans Thunderbird (${errorCode(e)}).`));
+        this.#log?.warn?.(`${this.#what} ${g.slot} : agenda impossible à préparer dans Thunderbird (${errorCode(e)}).`);
       }
     }
 
@@ -1136,7 +1156,7 @@ export class PimSync {
         await this.#saveDeletes(run.deletes);
       }
       await this.#saveSequences(run);
-      if (confirmed) this.#log?.info?.(`Agenda : suppressions confirmées par l'utilisateur (${applied} élément(s) retiré(s)).`);
+      if (confirmed) this.#log?.info?.(`${this.#what} : suppressions confirmées par l'utilisateur (${applied} élément(s) retiré(s)).`);
     }
     return out;
   }
@@ -1185,11 +1205,11 @@ export class PimSync {
       if (sid === undefined) {
         coll.lost = true;
         writes.push([collRecord(coll.id), collRaw(coll)]);
-        this.#log?.info?.(`Agenda ${coll.serverId} : dossier introuvable dans la nouvelle liste du serveur.`);
+        this.#log?.info?.(`${this.#what} ${coll.serverId} : dossier introuvable dans la nouvelle liste du serveur.`);
         continue;
       }
       if (sid === coll.serverId) continue; // (should its SyncKey be refused, Status 3 rebuilds it)
-      this.#log?.info?.(`Agenda ${coll.serverId} : dossier renuméroté par le serveur (${sid}), entièrement resynchronisé.`);
+      this.#log?.info?.(`${this.#what} ${coll.serverId} : dossier renuméroté par le serveur (${sid}), entièrement resynchronisé.`);
       coll.serverId = sid;
       this.#restart(coll, "moved");
       coll.full = "moved";
@@ -1329,12 +1349,12 @@ export class PimSync {
         continue;
       }
       checkAbort(run.signal);
-      this.#log?.info?.(`Agenda ${coll.serverId} : requête sans réponse renvoyée à l'identique (${out.cmds.length} commande(s)).`);
+      this.#log?.info?.(`${this.#what} ${coll.serverId} : requête sans réponse renvoyée à l'identique (${out.cmds.length} commande(s)).`);
       await this.#batch(run, group, coll, { replay: out.cmds });
     }
     for (const coll of active()) {
       if (coll.syncKey !== "0" && coll.filter !== null && coll.filter !== this.#filterOf(coll.cls)) {
-        this.#log?.info?.(`Agenda ${coll.serverId} : période changée, dossier entièrement resynchronisé.`);
+        this.#log?.info?.(`${this.#what} ${coll.serverId} : période changée, dossier entièrement resynchronisé.`);
         await this.#reset(run, coll, "period");
       }
     }
@@ -1365,7 +1385,7 @@ export class PimSync {
       }
       if (asked.get(next) >= PIM_MAX_BATCHES) {
         run.more = true;
-        this.#log?.debug?.(`Agenda ${next.serverId} : ${PIM_MAX_BATCHES} lots dans ce passage, la suite au prochain.`);
+        this.#log?.debug?.(`${this.#what} ${next.serverId} : ${PIM_MAX_BATCHES} lots dans ce passage, la suite au prochain.`);
         for (const u of uploads.get(next)) run.kept.add(u.change.changeId);
         continue;
       }
@@ -1381,7 +1401,7 @@ export class PimSync {
   /** The user's changes of a calendar that are waiting. Changes it could not even name are counted. */
   async #read(group) {
     const { changes, rejected } = await this.#store.readLocalChanges(group.calendarId, { max: READ_MAX });
-    if (rejected) this.#log?.warn?.(`Agenda ${group.slot} : ${rejected} modification(s) locale(s) illisible(s), ignorée(s).`);
+    if (rejected) this.#log?.warn?.(`${this.#what} ${group.slot} : ${rejected} modification(s) locale(s) illisible(s), ignorée(s).`);
     // What is known of changes that no longer wait is forgotten: the tries of a change that is gone do not count
     // against the next one, and an item nothing waits on needs no guard.
     if (changes.length < READ_MAX) {
@@ -1408,7 +1428,7 @@ export class PimSync {
 
   /** The collection a local change belongs to, or null (its kind is not synchronized here, or its folder is gone). */
   #collectionOf(group, change) {
-    const cls = change.kind === "event" ? CALENDAR : TASKS;
+    const cls = CLASS_OF_KIND.get(change.kind);
     if (change.collectionId !== null) {
       const coll = group.colls.find((c) => c.id === change.collectionId);
       return coll && coll.cls === cls ? coll : null;
@@ -1421,6 +1441,7 @@ export class PimSync {
   #write(run, coll, change) {
     if (change.op === "delete") return null;
     const previous = change.op === "modify" ? change.previous : null;
+    if (coll.cls === CONTACTS) return writeContact(change.item, { version: run.version, previous });
     return coll.cls === CALENDAR ? writeEvent(change.item, { version: run.version, previous }) : writeTask(change.item, { version: run.version, previous });
   }
 
@@ -1435,7 +1456,7 @@ export class PimSync {
     try {
       done = await this.#store.dropLocalChange(group.calendarId, change.changeId);
     } catch (e) {
-      this.#log?.warn?.(`Agenda ${coll?.serverId ?? group.slot} : annulation locale impossible (${errorCode(e)}).`);
+      this.#log?.warn?.(`${this.#what} ${coll?.serverId ?? group.slot} : annulation locale impossible (${errorCode(e)}).`);
     }
     if (coll?.tries.delete(change.changeId)) coll.dirty = true;
     if (coll?.answered.delete(change.changeId)) coll.dirty = true;
@@ -1515,7 +1536,7 @@ export class PimSync {
         }
         if (change.rewritten === true) {
           // The server changed the item while this change waited: the server wins, and nothing is sent for it.
-          this.#log?.info?.(`Agenda ${coll.serverId} : élément ${change.serverId} modifié par le serveur entre-temps, modification locale abandonnée.`);
+          this.#log?.info?.(`${this.#what} ${coll.serverId} : élément ${change.serverId} modifié par le serveur entre-temps, modification locale abandonnée.`);
           if (await this.#drop(run, group, coll, change, "serverChanged")) settled++;
           continue;
         }
@@ -1526,19 +1547,19 @@ export class PimSync {
       if (list.length && coll.tries.has(list[0].change.changeId)) continue; // a change that goes alone
 
       if (change.problem) {
-        this.#log?.info?.(`Agenda ${coll.serverId} : modification locale impossible à envoyer (${change.problem}), annulée.`);
+        this.#log?.info?.(`${this.#what} ${coll.serverId} : modification locale impossible à envoyer (${change.problem}), annulée.`);
         if (await this.#drop(run, group, coll, change, PROBLEM_NOTICE.get(change.problem) ?? "readOnly")) settled++;
         continue;
       }
       if ((coll.tries.get(change.changeId) ?? 0) >= MAX_TRIES) {
-        this.#log?.warn?.(`Agenda ${coll.serverId} : modification locale abandonnée après ${MAX_TRIES} essais.`);
+        this.#log?.warn?.(`${this.#what} ${coll.serverId} : modification locale abandonnée après ${MAX_TRIES} essais.`);
         if (await this.#refuse(run, group, coll, change)) settled++;
         continue;
       }
 
       const plan = this.#scheduler.plan(change, { version: run.version });
       if (plan.flow === "refuse") {
-        this.#log?.warn?.(`Agenda ${coll.serverId} : réunion de ${plan.count} participants, modification annulée (au plus ${MAX_MEETING_RECIPIENTS}).`);
+        this.#log?.warn?.(`${this.#what} ${coll.serverId} : réunion de ${plan.count} participants, modification annulée (au plus ${MAX_MEETING_RECIPIENTS}).`);
         if (await this.#drop(run, group, coll, change, "tooManyAttendees", MAX_MEETING_RECIPIENTS)) settled++;
         continue;
       }
@@ -1555,7 +1576,7 @@ export class PimSync {
         data = this.#write(run, coll, change);
       } catch (e) {
         const code = e instanceof ProtocolError ? e.code : null;
-        this.#log?.info?.(`Agenda ${coll.serverId} : modification locale impossible à écrire (${code ?? errorCode(e)}), annulée.`);
+        this.#log?.info?.(`${this.#what} ${coll.serverId} : modification locale impossible à écrire (${code ?? errorCode(e)}), annulée.`);
         if (code === "UNSUPPORTED_CHANGE" && change.op !== "add") {
           // What the user did cannot be told to the server (a deleted occurrence put back): the server's version comes again.
           if (await this.#drop(run, group, coll, change, "restoreUnsupported")) {
@@ -1588,7 +1609,7 @@ export class PimSync {
       run.kept.add(change.changeId);
       return false;
     }
-    const told = this.#kindWanted(change.kind === "event" ? CALENDAR : TASKS);
+    const told = this.#kindWanted(CLASS_OF_KIND.get(change.kind));
     if (told && change.collectionId !== null && change.serverId !== null && !group.colls.some((c) => c.id === change.collectionId)) {
       const key = `${group.slot}\n${change.collectionId}`;
       if (!run.orphans.has(key)) {
@@ -1597,7 +1618,7 @@ export class PimSync {
         for (let from = 0; from < ids.length; from += APPLY_MAX) {
           await this.#store.applyServerChanges(group.calendarId, ids.slice(from, from + APPLY_MAX).map((serverId) => ({ op: "detach", collectionId: change.collectionId, serverId })));
         }
-        this.#log?.warn?.(`Agenda ${group.slot} : ${ids.length} élément(s) d'un dossier inconnu, gardé(s) localement, détaché(s) du serveur.`);
+        this.#log?.warn?.(`${this.#what} ${group.slot} : ${ids.length} élément(s) d'un dossier inconnu, gardé(s) localement, détaché(s) du serveur.`);
       }
       run.dropped++; // (detaching forgets the change: the copy keeps what the user wrote)
       run.later.add(change.changeId); // (and should the calendar still name it, it is not looked at twice)
@@ -1617,7 +1638,7 @@ export class PimSync {
    * → true when the change is settled
    */
   async #stray(run, group, coll, change, other) {
-    this.#log?.warn?.(`Agenda ${coll.serverId} : élément ${change.serverId} ${other ? "différent" : "absent"} sur le serveur après resynchronisation, modification locale non envoyée.`);
+    this.#log?.warn?.(`${this.#what} ${coll.serverId} : élément ${change.serverId} ${other ? "différent" : "absent"} sur le serveur après resynchronisation, modification locale non envoyée.`);
     if (other && change.op === "delete") return this.#drop(run, group, coll, change, "serverChanged");
     const [r] = await this.#store.applyServerChanges(group.calendarId, [{ op: "detach", collectionId: coll.id, serverId: change.serverId }]);
     if (!r?.ok) {
@@ -1699,6 +1720,8 @@ export class PimSync {
   #options(coll, replay) {
     // A request sent again goes as it went: with the period it had.
     const filterType = replay && coll.filter !== null ? coll.filter : this.#filterOf(coll.cls);
+    // Contacts have no period: Conflict 1, then the body preference.
+    if (coll.cls === CONTACTS) return [el("AirSync:Conflict", "1"), ...contactOptions()];
     const base = coll.cls === CALENDAR ? calendarOptions({ filterType }) : taskOptions({ filterType });
     // FilterType, then Conflict 1 (the server wins), then the body preference.
     return [base[0], el("AirSync:Conflict", "1"), ...base.slice(1)];
@@ -1712,7 +1735,7 @@ export class PimSync {
         {
           collectionId: coll.serverId,
           syncKey: coll.syncKey,
-          supported: coll.cls === CALENDAR ? calendarSupported(run.version) : undefined,
+          supported: coll.cls === CALENDAR ? calendarSupported(run.version) : coll.cls === CONTACTS ? contactSupported() : undefined,
           deletesAsMoves: true,
           getChanges: true,
           windowSize: coll.windowSize ?? PIM_WINDOW_SIZE,
@@ -1727,7 +1750,7 @@ export class PimSync {
         const size = coll.windowSize ?? PIM_WINDOW_SIZE;
         if (size > 1 && (e?.code === ERR.TOO_LARGE || (e?.code === ERR.TIMEOUT && e?.sent))) {
           coll.windowSize = Math.max(1, Math.floor(size / 2));
-          this.#log?.info?.(`Agenda ${coll.serverId} : réponse trop lourde, lots réduits à ${coll.windowSize} élément(s).`);
+          this.#log?.info?.(`${this.#what} ${coll.serverId} : réponse trop lourde, lots réduits à ${coll.windowSize} élément(s).`);
           continue;
         }
         throw e;
@@ -1745,6 +1768,7 @@ export class PimSync {
     const fallbackUid = derivedId("sync443-", coll.id, cmd.serverId);
     const change = cmd.op === "change" && cmd.fetched !== true;
     if (coll.cls === TASKS) return readTask(cmd.data, { version: run.version, fallbackUid, change });
+    if (coll.cls === CONTACTS) return readContact(cmd.data, { version: run.version, fallbackUid, change });
     const item = readEvent(cmd.data, { version: run.version, ownEmail: this.#mailbox.email, fallbackUid, change });
     const sequence = run.sequences.get(coll.id)?.get(cmd.serverId);
     return sequence ? { ...item, sequence } : item;
@@ -1754,7 +1778,7 @@ export class PimSync {
     coll.quarantine.delete(sid);
     coll.quarantine.set(sid, String(code).slice(0, 40));
     while (coll.quarantine.size > QUARANTINE_MAX) coll.quarantine.delete(coll.quarantine.keys().next().value);
-    this.#log?.warn?.(`Agenda ${coll.serverId} : élément ${sid} illisible ou refusé (${String(code).slice(0, 40)}), ignoré.`);
+    this.#log?.warn?.(`${this.#what} ${coll.serverId} : élément ${sid} illisible ou refusé (${String(code).slice(0, 40)}), ignoré.`);
   }
 
   /**
@@ -1780,7 +1804,7 @@ export class PimSync {
       for (const c of cmds) this.#wait(run, coll, c, false);
       await this.#saveWas(coll, cmds);
       await this.#removeOut(coll.id);
-      this.#log?.warn?.(`Agenda ${coll.serverId} : requête sans réponse ${coll.strikes} fois de suite, ses ${cmds.length} modifications partiront une à une.`);
+      this.#log?.warn?.(`${this.#what} ${coll.serverId} : requête sans réponse ${coll.strikes} fois de suite, ses ${cmds.length} modifications partiront une à une.`);
     }
     await this.#saveColl(coll);
     return error;
@@ -1874,7 +1898,7 @@ export class PimSync {
     const c = parsed.collections.find((x) => x.collectionId === coll.serverId);
     if (!c) throw await this.#unanswered(run, coll, cmds, null);
     if (c.status === "3") {
-      this.#log?.warn?.(`Agenda ${coll.serverId} : clé de synchronisation refusée, resynchronisation complète du dossier.`);
+      this.#log?.warn?.(`${this.#what} ${coll.serverId} : clé de synchronisation refusée, resynchronisation complète du dossier.`);
       coll.strikes++;
       await this.#reset(run, coll, "status3");
       run.more = true;
@@ -1919,12 +1943,12 @@ export class PimSync {
       if (status === "1") {
         await this.#accepted(run, group, coll, cmd, serverId, ends);
       } else if (status === null || DEFINITIVE.has(status)) {
-        this.#log?.warn?.(`Agenda ${coll.serverId} : modification locale refusée par le serveur (Status ${status ?? "absent"}).`);
+        this.#log?.warn?.(`${this.#what} ${coll.serverId} : modification locale refusée par le serveur (Status ${status ?? "absent"}).`);
         await this.#refuse(run, group, coll, cmd);
       } else {
         // "Server error", "retry", or a status that says nothing final: the change waits, and goes alone next
         // time. A try is held against it only if it went alone and the server does not say it is unwell.
-        this.#log?.warn?.(`Agenda ${coll.serverId} : modification locale laissée en attente par le serveur (Status ${status}).`);
+        this.#log?.warn?.(`${this.#what} ${coll.serverId} : modification locale laissée en attente par le serveur (Status ${status}).`);
         waiting ??= status;
         this.#wait(run, coll, cmd, cmds.length === 1 && !UNWELL.has(status));
       }
@@ -2058,7 +2082,7 @@ export class PimSync {
       const n = (this.#stuck.get(key) ?? 0) + 1;
       if (n < STUCK_LIMIT) {
         this.#stuck.set(key, n);
-        throw new EasError(SYNC_ERR.LOCAL, `Agenda ${coll.serverId} : écriture impossible dans Thunderbird (${puts} échecs).`);
+        throw new EasError(SYNC_ERR.LOCAL, `${this.#what} ${coll.serverId} : écriture impossible dans Thunderbird (${puts} échecs).`);
       }
       this.#stuck.delete(key);
     }
@@ -2135,7 +2159,7 @@ export class PimSync {
       // bound, and its newer change follows.)
       if (!done && cmd.op === "add" && serverId && !(await this.#store.serverIds(group.calendarId, cid)).includes(serverId)) this.#refetch(coll, serverId);
     } catch (e) {
-      this.#log?.warn?.(`Agenda ${coll.serverId} : accusé local impossible (${errorCode(e)}).`);
+      this.#log?.warn?.(`${this.#what} ${coll.serverId} : accusé local impossible (${errorCode(e)}).`);
       // The server has the change; the calendar could not record it. A new item the calendar could not bind
       // would be created again on the server if it were sent again: the server's item is written in its
       // place instead. Anything else is left as it is, and sent again a few times.
@@ -2184,6 +2208,7 @@ export class PimSync {
     const filter = this.#filterOf(coll.cls);
     const days = coll.cls === CALENDAR ? PERIOD_DAYS.get(filter) : null;
     const out = new Set();
+    if (coll.cls === CONTACTS) return out; // a contact never leaves by itself
     if (coll.cls === CALENDAR ? !days : filter !== INCOMPLETE_TASKS) return out;
     const marks = await EndLog.load(this.#records, coll.id, await this.#records.names());
     const limit = Math.floor((this.#now() - (days ?? 0) * 86_400_000) / 60_000);
@@ -2207,7 +2232,7 @@ export class PimSync {
     const local = await this.#store.serverIds(cal, cid);
     coll.count = local.length;
     if (coll.overflow) {
-      this.#log?.warn?.(`Agenda ${coll.serverId} : trop d'éléments pour comparer avec le serveur, rien n'est retiré.`);
+      this.#log?.warn?.(`${this.#what} ${coll.serverId} : trop d'éléments pour comparer avec le serveur, rien n'est retiré.`);
     } else {
       const seen = await this.#seen(coll);
       let stale = local.filter((sid) => !seen.ids.has(sid) && !coll.guards.has(sid));
@@ -2219,7 +2244,7 @@ export class PimSync {
           const removed = await this.#remove(run, cal, cid, gone);
           run.counts.received += removed;
           coll.count = Math.max(0, coll.count - removed);
-          this.#log?.info?.(`Agenda ${coll.serverId} : ${removed} élément(s) hors de la période retiré(s).`);
+          this.#log?.info?.(`${this.#what} ${coll.serverId} : ${removed} élément(s) hors de la période retiré(s).`);
         }
       }
       if (stale.length) {
@@ -2265,7 +2290,7 @@ export class PimSync {
     if (isMassDelete(window.count + n, base)) {
       entry.retained = true;
       await this.#saveDeletes(run.deletes);
-      this.#log?.warn?.(`Agenda ${coll.serverId} : ${n} suppressions demandées par le serveur sur ${base} éléments ; suppressions retenues jusqu'à confirmation.`);
+      this.#log?.warn?.(`${this.#what} ${coll.serverId} : ${n} suppressions demandées par le serveur sur ${base} éléments ; suppressions retenues jusqu'à confirmation.`);
       return;
     }
     const removed = await this.#remove(run, group.calendarId, cid, entry.ids);

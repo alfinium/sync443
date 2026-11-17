@@ -3,7 +3,7 @@
     "message": "Sync443 – EAS Client for Thunderbird"
   },
   "extensionDescription": {
-    "message": "Exchange ActiveSync nativo in Thunderbird: posta, cartelle e invio, con qualsiasi server compatibile."
+    "message": "Exchange ActiveSync nativo in Thunderbird: posta, calendario, contatti e attività, con qualsiasi server compatibile."
   },
   "languageTag": {
     "message": "it"
@@ -60,14 +60,6 @@
   "unnamed": {
     "message": "senza nome"
   },
-  "metaMailPeriod": {
-    "message": "posta: $PERIOD$",
-    "placeholders": {
-      "period": {
-        "content": "$1"
-      }
-    }
-  },
   "confirmDeletes": {
     "message": "Conferma le eliminazioni"
   },
@@ -100,6 +92,9 @@
   "discardConfirm": {
     "message": "Le eliminazioni effettuate sul server non verranno applicate: i messaggi, gli eventi e le attività interessati restano in Thunderbird. Le cartelle di posta interessate vengono sincronizzate di nuovo con il server; gli eventi e le attività mantenuti non sono più collegati al server. Una cartella eliminata sul server resta qui, senza sincronizzazione."
   },
+  "discardContactsNote": {
+    "message": "Anche i contatti interessati restano in Thunderbird e non sono più collegati al server."
+  },
   "uncheckCalendarConfirm": {
     "message": "Interrompere la sincronizzazione del calendario di “$NAME$”? I relativi eventi verranno rimossi da Thunderbird. Nulla viene eliminato sul server. Le modifiche non ancora inviate al server vanno perse.",
     "placeholders": {
@@ -116,6 +111,14 @@
       }
     }
   },
+  "uncheckContactsConfirm": {
+    "message": "Interrompere la sincronizzazione dei contatti di “$NAME$”? Le relative rubriche verranno rimosse da Thunderbird. Nulla viene eliminato sul server. Le modifiche non ancora inviate al server vanno perse.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
   "uncheckBothConfirm": {
     "message": "Interrompere la sincronizzazione del calendario e delle attività di “$NAME$”? I relativi calendari verranno rimossi da Thunderbird, con i loro eventi e le loro attività. Nulla viene eliminato sul server. Le modifiche non ancora inviate al server vanno perse.",
     "placeholders": {
@@ -126,6 +129,14 @@
   },
   "moveConfirm": {
     "message": "Cambiare il server o il nome utente di “$NAME$”? I relativi calendari e le relative attività verranno rimossi da Thunderbird e sincronizzati di nuovo dal server. Le modifiche non ancora inviate al server vanno perse.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "moveContactsConfirm": {
+    "message": "Cambiare il server o il nome utente di “$NAME$”? Le relative rubriche verranno rimosse da Thunderbird e sincronizzate di nuovo dal server. Le modifiche non ancora inviate al server vanno perse.",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -243,25 +254,16 @@
     "message": "Frequenza"
   },
   "fieldPeriod": {
-    "message": "Periodo della posta"
+    "message": "Periodo da sincronizzare"
   },
-  "fieldCalendarPeriod": {
-    "message": "Periodo del calendario"
+  "periodHint": {
+    "message": "Vale per la posta e il calendario. La posta conserva al massimo 1 mese, a meno che non si scelga Tutto: ActiveSync non offre nulla di intermedio. Gli eventi futuri sono sempre sincronizzati."
   },
-  "calendarPeriodHint": {
-    "message": "Gli eventi precedenti a questo periodo non vengono sincronizzati. Gli eventi futuri vengono sempre sincronizzati."
-  },
-  "fieldTaskFilter": {
-    "message": "Attività da sincronizzare"
+  "moreSettings": {
+    "message": "Altre impostazioni"
   },
   "fieldKinds": {
     "message": "Elementi da sincronizzare"
-  },
-  "kindsHint": {
-    "message": "In questa versione i contatti non vengono ancora sincronizzati. Questa scelta viene salvata per il futuro."
-  },
-  "soon": {
-    "message": "prossimamente"
   },
   "save": {
     "message": "Salva"
@@ -294,15 +296,6 @@
   "freqEveryHour": {
     "message": "Ogni ora"
   },
-  "period1Day": {
-    "message": "1 giorno"
-  },
-  "period3Days": {
-    "message": "3 giorni"
-  },
-  "period1Week": {
-    "message": "1 settimana"
-  },
   "period2Weeks": {
     "message": "2 settimane"
   },
@@ -318,15 +311,6 @@
   "periodAll": {
     "message": "Tutto"
   },
-  "periodUnknown": {
-    "message": "Sconosciuto"
-  },
-  "taskFilterAll": {
-    "message": "Tutte le attività"
-  },
-  "taskFilterIncomplete": {
-    "message": "Solo le attività non completate"
-  },
   "kindMail": {
     "message": "Posta"
   },
@@ -338,14 +322,6 @@
   },
   "kindTasks": {
     "message": "Attività"
-  },
-  "kindSoon": {
-    "message": "$KIND$ (prossimamente)",
-    "placeholders": {
-      "kind": {
-        "content": "$1"
-      }
-    }
   },
   "kindsNone": {
     "message": "Nulla"
@@ -387,7 +363,7 @@
     "message": "Scegliere una frequenza di sincronizzazione."
   },
   "choosePeriod": {
-    "message": "Scegliere il periodo di posta da sincronizzare."
+    "message": "Scegliere il periodo da sincronizzare."
   },
   "chooseCalendarPeriod": {
     "message": "Scegliere il periodo del calendario da sincronizzare."
@@ -1208,6 +1184,17 @@
   },
   "calendarChangesDroppedMany": {
     "message": "$COUNT$ modifiche effettuate in Thunderbird non sono state inviate: il relativo calendario non è più sincronizzato con il server. I nuovi elementi restano in Thunderbird come copie locali.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "contactsChangesDroppedOne": {
+    "message": "Una modifica a un contatto fatta in Thunderbird non è stata inviata: la sua rubrica non è più sincronizzata con il server. Un nuovo contatto resta in Thunderbird come copia locale."
+  },
+  "contactsChangesDroppedMany": {
+    "message": "$COUNT$ modifiche a contatti fatte in Thunderbird non sono state inviate: la loro rubrica non è più sincronizzata con il server. I nuovi contatti restano in Thunderbird come copie locali.",
     "placeholders": {
       "count": {
         "content": "$1"

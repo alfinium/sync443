@@ -4,7 +4,7 @@
     "description": "Name of the extension (manifest). A product name: not translated."
   },
   "extensionDescription": {
-    "message": "Native Exchange ActiveSync in Thunderbird: mail, folders and sending, with any compatible server.",
+    "message": "Native Exchange ActiveSync in Thunderbird: mail, calendar, contacts and tasks, with any compatible server.",
     "description": "Description of the extension (manifest, add-ons manager)."
   },
   "languageTag": {
@@ -77,15 +77,6 @@
     "message": "unnamed",
     "description": "Name shown for a mailbox that has neither name nor address."
   },
-  "metaMailPeriod": {
-    "message": "mail: $PERIOD$",
-    "description": "Part of a mailbox's summary line; $PERIOD$: a period such as “1 month”.",
-    "placeholders": {
-      "period": {
-        "content": "$1"
-      }
-    }
-  },
   "confirmDeletes": {
     "message": "Confirm the deletions",
     "description": "Button: apply the deletions held back by the mass-deletion safeguard (messages, folders, events or tasks)."
@@ -127,6 +118,10 @@
     "message": "The deletions made on the server will not be applied: the messages, events and tasks concerned stay in Thunderbird. The mail folders concerned are synchronized again with the server; the events and tasks kept are no longer linked to the server. A folder deleted on the server stays here, without synchronization.",
     "description": "Asked before the deletions held back are dropped (keepLocalCopies); they may concern messages, mail folders, events or tasks."
   },
+  "discardContactsNote": {
+    "message": "The contacts concerned stay in Thunderbird too, and are no longer linked to the server.",
+    "description": "Sentence added to discardConfirm when the mailbox synchronizes contacts."
+  },
   "uncheckCalendarConfirm": {
     "message": "Stop synchronizing the calendar of “$NAME$”? Its events will be removed from Thunderbird. Nothing is deleted on the server. Changes not yet sent to the server are lost.",
     "description": "Asked before a mailbox is saved with its calendar unchecked (it was synchronized until now); $NAME$: name of the mailbox.",
@@ -145,6 +140,15 @@
       }
     }
   },
+  "uncheckContactsConfirm": {
+    "message": "Stop synchronizing the contacts of “$NAME$”? Its address books will be removed from Thunderbird. Nothing is deleted on the server. Changes not yet sent to the server are lost.",
+    "description": "Asked before a mailbox is saved with its contacts unchecked (they were synchronized until now); $NAME$: name of the mailbox.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
   "uncheckBothConfirm": {
     "message": "Stop synchronizing the calendar and the tasks of “$NAME$”? Its calendars will be removed from Thunderbird, with their events and tasks. Nothing is deleted on the server. Changes not yet sent to the server are lost.",
     "description": "Asked before a mailbox is saved with both its calendar and its tasks unchecked (they were synchronized until now); $NAME$: name of the mailbox.",
@@ -157,6 +161,15 @@
   "moveConfirm": {
     "message": "Change the server or the sign-in name of “$NAME$”? Its calendars and tasks will be removed from Thunderbird, then synchronized again from the server. Changes not yet sent to the server are lost.",
     "description": "Asked before a mailbox whose calendar or tasks are synchronized is saved with another server or sign-in name; $NAME$: name of the mailbox.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "moveContactsConfirm": {
+    "message": "Change the server or the sign-in name of “$NAME$”? Its address books will be removed from Thunderbird, then synchronized again from the server. Changes not yet sent to the server are lost.",
+    "description": "Asked before a mailbox whose contacts are synchronized is saved with another server or sign-in name; $NAME$: name of the mailbox.",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -304,32 +317,20 @@
     "description": "Label."
   },
   "fieldPeriod": {
-    "message": "Mail period",
+    "message": "Period to synchronize",
     "description": "Label: how far back mail is synchronized."
   },
-  "fieldCalendarPeriod": {
-    "message": "Calendar period",
-    "description": "Label: how far back calendar events are synchronized."
+  "periodHint": {
+    "message": "Applies to mail and calendar. Mail keeps at most 1 month unless you choose All: ActiveSync offers nothing in between. Future events are always synchronized.",
+    "description": "Hint under the period field of the mailbox form."
   },
-  "calendarPeriodHint": {
-    "message": "Events older than this period are not synchronized. Future events always are.",
-    "description": "Hint under the calendar period: it only limits past events."
-  },
-  "fieldTaskFilter": {
-    "message": "Tasks to synchronize",
-    "description": "Label of the choice between all tasks and incomplete tasks only."
+  "moreSettings": {
+    "message": "More settings",
+    "description": "Title of the folded part of the mailbox form (account name, sign-in name, frequency)."
   },
   "fieldKinds": {
     "message": "Items to synchronize",
     "description": "Label of the group of check boxes."
-  },
-  "kindsHint": {
-    "message": "In this version, contacts are not synchronized yet. This choice is saved for later.",
-    "description": "Hint under the items to synchronize: contacts cannot be synchronized yet."
-  },
-  "soon": {
-    "message": "coming soon",
-    "description": "Badge next to an item not synchronized yet in this version (contacts)."
   },
   "save": {
     "message": "Save",
@@ -369,18 +370,6 @@
     "message": "Every hour",
     "description": "Frequency choice."
   },
-  "period1Day": {
-    "message": "1 day",
-    "description": "Mail period choice."
-  },
-  "period3Days": {
-    "message": "3 days",
-    "description": "Mail period choice."
-  },
-  "period1Week": {
-    "message": "1 week",
-    "description": "Mail period choice."
-  },
   "period2Weeks": {
     "message": "2 weeks",
     "description": "Mail or calendar period choice."
@@ -401,18 +390,6 @@
     "message": "All",
     "description": "Mail or calendar period choice: everything."
   },
-  "periodUnknown": {
-    "message": "Unknown",
-    "description": "Mail period that is not one of the choices."
-  },
-  "taskFilterAll": {
-    "message": "All tasks",
-    "description": "Choice of tasks to synchronize: all of them."
-  },
-  "taskFilterIncomplete": {
-    "message": "Incomplete tasks only",
-    "description": "Choice of tasks to synchronize: only those not completed yet."
-  },
   "kindMail": {
     "message": "Mail",
     "description": "Item to synchronize."
@@ -428,15 +405,6 @@
   "kindTasks": {
     "message": "Tasks",
     "description": "Item to synchronize."
-  },
-  "kindSoon": {
-    "message": "$KIND$ (coming soon)",
-    "description": "Item in a mailbox's summary; $KIND$: the item, not synchronized yet in this version.",
-    "placeholders": {
-      "kind": {
-        "content": "$1"
-      }
-    }
   },
   "kindsNone": {
     "message": "Nothing",
@@ -491,7 +459,7 @@
     "description": "Field error."
   },
   "choosePeriod": {
-    "message": "Choose the period of mail to synchronize.",
+    "message": "Choose the period to synchronize.",
     "description": "Field error."
   },
   "chooseCalendarPeriod": {
@@ -1473,6 +1441,19 @@
   "calendarChangesDroppedMany": {
     "message": "$COUNT$ changes made in Thunderbird were not sent: their calendar is no longer synchronized with the server. New items stay in Thunderbird as local copies.",
     "description": "Notification: several changes the user made could not be sent because their calendar or task list is no longer synchronized (gone from the server, or unknown); $COUNT$: their number (2 or more). In languages whose plural depends on the number, put the number after a colon.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "contactsChangesDroppedOne": {
+    "message": "One change made to a contact in Thunderbird was not sent: its address book is no longer synchronized with the server. A new contact stays in Thunderbird as a local copy.",
+    "description": "Notification: one local change to a contact was dropped because its address book is no longer synchronized."
+  },
+  "contactsChangesDroppedMany": {
+    "message": "$COUNT$ changes made to contacts in Thunderbird were not sent: their address book is no longer synchronized with the server. New contacts stay in Thunderbird as local copies.",
+    "description": "Notification: several local changes to contacts were dropped. $COUNT$ is their number (2 or more).",
     "placeholders": {
       "count": {
         "content": "$1"

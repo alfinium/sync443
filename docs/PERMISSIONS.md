@@ -24,6 +24,7 @@ manifest (`src/manifest.json`); any added permission must be justified here.
 | `messagesDelete` | permanently deleting messages | Delete a message in the trash when it is deleted on the server, and the draft of a sent message. |
 | `compose` | compose window events and state | Intercept sending (`compose.onBeforeSend`) for the identities of Sync443 accounts: sending through ActiveSync, never by any other path. Read back the sender and the signing and encryption state (`compose.getComposeDetails`). |
 | `compose.save` | saving a message being composed | Save the message as a draft before sending it through ActiveSync (`compose.saveMessage`). |
+| `addressBooks` | address books and contacts | Create one address book per contacts folder of a mailbox, write the server's contacts into it and read the changes made there (`addressBooks`, `contacts`). Only the books Sync443 created itself are ever read or written: their ids are recorded, and no call names another book. Requested since contacts are synchronized (stage 5). |
 
 ### What sending transmits to the server
 

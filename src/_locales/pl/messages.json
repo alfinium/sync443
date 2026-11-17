@@ -3,7 +3,7 @@
     "message": "Sync443 – EAS Client for Thunderbird"
   },
   "extensionDescription": {
-    "message": "Natywna obsługa Exchange ActiveSync w Thunderbirdzie: poczta, foldery i wysyłanie, z każdym zgodnym serwerem."
+    "message": "Natywna obsługa Exchange ActiveSync w Thunderbirdzie: poczta, kalendarz, kontakty i zadania, z każdym zgodnym serwerem."
   },
   "languageTag": {
     "message": "pl"
@@ -60,14 +60,6 @@
   "unnamed": {
     "message": "bez nazwy"
   },
-  "metaMailPeriod": {
-    "message": "poczta: $PERIOD$",
-    "placeholders": {
-      "period": {
-        "content": "$1"
-      }
-    }
-  },
   "confirmDeletes": {
     "message": "Potwierdź usunięcia"
   },
@@ -100,6 +92,9 @@
   "discardConfirm": {
     "message": "Usunięcia wykonane na serwerze nie zostaną zastosowane: wiadomości, wydarzenia i zadania, których to dotyczy, pozostaną w Thunderbirdzie. Foldery poczty, których to dotyczy, zostaną ponownie zsynchronizowane z serwerem; zachowane wydarzenia i zadania nie będą już powiązane z serwerem. Folder usunięty na serwerze pozostanie tutaj, bez synchronizacji."
   },
+  "discardContactsNote": {
+    "message": "Kontakty, których to dotyczy, również pozostają w Thunderbirdzie i nie są już powiązane z serwerem."
+  },
   "uncheckCalendarConfirm": {
     "message": "Przestać synchronizować kalendarz skrzynki „$NAME$”? Jej wydarzenia zostaną usunięte z Thunderbirda. Na serwerze nic nie zostanie usunięte. Zmiany, które nie zostały jeszcze wysłane na serwer, zostaną utracone.",
     "placeholders": {
@@ -116,6 +111,14 @@
       }
     }
   },
+  "uncheckContactsConfirm": {
+    "message": "Przestać synchronizować kontakty skrzynki „$NAME$”? Jej książki adresowe zostaną usunięte z Thunderbirda. Na serwerze nic nie zostanie usunięte. Zmiany, które nie zostały jeszcze wysłane na serwer, zostaną utracone.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
   "uncheckBothConfirm": {
     "message": "Przestać synchronizować kalendarz i zadania skrzynki „$NAME$”? Jej kalendarze zostaną usunięte z Thunderbirda wraz z wydarzeniami i zadaniami. Na serwerze nic nie zostanie usunięte. Zmiany, które nie zostały jeszcze wysłane na serwer, zostaną utracone.",
     "placeholders": {
@@ -126,6 +129,14 @@
   },
   "moveConfirm": {
     "message": "Zmienić serwer lub nazwę użytkownika skrzynki „$NAME$”? Jej kalendarze i zadania zostaną usunięte z Thunderbirda, a następnie ponownie zsynchronizowane z serwera. Zmiany, które nie zostały jeszcze wysłane na serwer, zostaną utracone.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "moveContactsConfirm": {
+    "message": "Zmienić serwer lub nazwę użytkownika skrzynki „$NAME$”? Jej książki adresowe zostaną usunięte z Thunderbirda, a następnie ponownie zsynchronizowane z serwera. Zmiany, które nie zostały jeszcze wysłane na serwer, zostaną utracone.",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -243,25 +254,16 @@
     "message": "Częstotliwość"
   },
   "fieldPeriod": {
-    "message": "Okres synchronizacji poczty"
+    "message": "Okres synchronizacji"
   },
-  "fieldCalendarPeriod": {
-    "message": "Okres synchronizacji kalendarza"
+  "periodHint": {
+    "message": "Dotyczy poczty i kalendarza. Poczta obejmuje najwyżej 1 miesiąc, chyba że wybierzesz Wszystko: ActiveSync nie oferuje nic pośredniego. Przyszłe wydarzenia są zawsze synchronizowane."
   },
-  "calendarPeriodHint": {
-    "message": "Wydarzenia starsze niż ten okres nie są synchronizowane. Przyszłe wydarzenia są synchronizowane zawsze."
-  },
-  "fieldTaskFilter": {
-    "message": "Zadania do synchronizacji"
+  "moreSettings": {
+    "message": "Więcej ustawień"
   },
   "fieldKinds": {
     "message": "Elementy do synchronizacji"
-  },
-  "kindsHint": {
-    "message": "W tej wersji kontakty nie są jeszcze synchronizowane. Ta opcja jest zapisywana na przyszłość."
-  },
-  "soon": {
-    "message": "wkrótce"
   },
   "save": {
     "message": "Zapisz"
@@ -294,15 +296,6 @@
   "freqEveryHour": {
     "message": "Co godzinę"
   },
-  "period1Day": {
-    "message": "1 dzień"
-  },
-  "period3Days": {
-    "message": "3 dni"
-  },
-  "period1Week": {
-    "message": "1 tydzień"
-  },
   "period2Weeks": {
     "message": "2 tygodnie"
   },
@@ -318,15 +311,6 @@
   "periodAll": {
     "message": "Wszystko"
   },
-  "periodUnknown": {
-    "message": "Nieznany"
-  },
-  "taskFilterAll": {
-    "message": "Wszystkie zadania"
-  },
-  "taskFilterIncomplete": {
-    "message": "Tylko nieukończone zadania"
-  },
   "kindMail": {
     "message": "Poczta"
   },
@@ -338,14 +322,6 @@
   },
   "kindTasks": {
     "message": "Zadania"
-  },
-  "kindSoon": {
-    "message": "$KIND$ (wkrótce)",
-    "placeholders": {
-      "kind": {
-        "content": "$1"
-      }
-    }
   },
   "kindsNone": {
     "message": "Nic"
@@ -387,7 +363,7 @@
     "message": "Wybierz częstotliwość synchronizacji."
   },
   "choosePeriod": {
-    "message": "Wybierz okres synchronizacji poczty."
+    "message": "Wybierz okres synchronizacji."
   },
   "chooseCalendarPeriod": {
     "message": "Wybierz okres synchronizacji kalendarza."
@@ -1208,6 +1184,17 @@
   },
   "calendarChangesDroppedMany": {
     "message": "Nie wysłano zmian wprowadzonych w Thunderbirdzie (liczba zmian: $COUNT$): ich kalendarz nie jest już synchronizowany z serwerem. Nowe elementy pozostają w Thunderbirdzie jako kopie lokalne.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "contactsChangesDroppedOne": {
+    "message": "Zmiana kontaktu wprowadzona w Thunderbirdzie nie została wysłana: jego książka adresowa nie jest już synchronizowana z serwerem. Nowy kontakt pozostaje w Thunderbirdzie jako kopia lokalna."
+  },
+  "contactsChangesDroppedMany": {
+    "message": "Zmiany kontaktów wprowadzone w Thunderbirdzie nie zostały wysłane (liczba: $COUNT$): ich książka adresowa nie jest już synchronizowana z serwerem. Nowe kontakty pozostają w Thunderbirdzie jako kopie lokalne.",
     "placeholders": {
       "count": {
         "content": "$1"
